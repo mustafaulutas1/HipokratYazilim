@@ -196,6 +196,52 @@ const Users: React.FC<UsersProps> = ({ doctorProfile }) => {
         </div>
       </div>
 
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        {[
+          { 
+            title: 'Toplam Kullanıcı', 
+            value: users.length.toString(), 
+            icon: '👥', 
+            color: 'from-blue-500 to-cyan-500' 
+          },
+          { 
+            title: 'Aktif Kullanıcı', 
+            value: users.filter(u => u.isActive).length.toString(), 
+            icon: '✅', 
+            color: 'from-green-500 to-emerald-500' 
+          },
+          { 
+            title: 'Bu Ay Yeni', 
+            value: users.filter(u => {
+              const createdAt = new Date(u.createdAt);
+              const now = new Date();
+              return createdAt.getMonth() === now.getMonth() && createdAt.getFullYear() === now.getFullYear();
+            }).length.toString(), 
+            icon: '🆕', 
+            color: 'from-yellow-500 to-orange-500' 
+          },
+          { 
+            title: 'Admin Kullanıcı', 
+            value: users.filter(u => u.role === 'admin').length.toString(), 
+            icon: '👑', 
+            color: 'from-purple-500 to-pink-500' 
+          }
+        ].map((stat, index) => (
+          <div key={index} className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+            <div className="flex items-center gap-4">
+              <div className={`w-12 h-12 bg-gradient-to-br ${stat.color} rounded-xl flex items-center justify-center shadow-lg`}>
+                <span className="text-white text-xl">{stat.icon}</span>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-white">{stat.value}</div>
+                <div className="text-white/70 text-sm">{stat.title}</div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
       {/* Search and Filters */}
       <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
