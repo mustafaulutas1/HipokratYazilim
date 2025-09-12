@@ -9,7 +9,12 @@ interface AddPatientModalProps {
   doctorProfile?: any;
 }
 
-const AddPatientModal: React.FC<AddPatientModalProps> = ({ isOpen, onClose, onPatientAdded, doctorProfile }) => {
+const AddPatientModal: React.FC<AddPatientModalProps> = ({
+  isOpen,
+  onClose,
+  onPatientAdded,
+  doctorProfile,
+}) => {
   const [formData, setFormData] = useState({
     fullName: '',
     tcNo: '',
@@ -24,24 +29,31 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({ isOpen, onClose, onPa
     birthPlace: '',
     registeredProvince: '',
     registrationDate: '',
-    visitReason: ''
+    visitReason: '',
+    indirim_check: false,
   });
 
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
+  const handleInputChange = (
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >
+  ) => {
+    const target = e.target as HTMLInputElement;
+    const { name } = target;
+    const newValue = target.type === 'checkbox' ? target.checked : target.value;
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: newValue,
     }));
-    
+
     // Clear error when user starts typing
     if (errors[name]) {
-      setErrors(prev => ({
+      setErrors((prev) => ({
         ...prev,
-        [name]: ''
+        [name]: '',
       }));
     }
   };
@@ -99,7 +111,7 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({ isOpen, onClose, onPa
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!validateForm()) {
       return;
     }
@@ -111,11 +123,11 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({ isOpen, onClose, onPa
         clinicId: doctorProfile?.clinicId || 'default-clinic',
         isAnamnezCompleted: false,
         createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
       };
 
       await addDoc(collection(db, 'patients'), patientData);
-      
+
       // Reset form
       setFormData({
         fullName: '',
@@ -131,9 +143,10 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({ isOpen, onClose, onPa
         birthPlace: '',
         registeredProvince: '',
         registrationDate: '',
-        visitReason: ''
+        visitReason: '',
+        indirim_check: false,
       });
-      
+
       setErrors({});
       onPatientAdded();
       onClose();
@@ -152,7 +165,9 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({ isOpen, onClose, onPa
       <div className="bg-white/95 backdrop-blur-xl border border-gray-200 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
         <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-green-50 to-emerald-50 rounded-t-2xl">
           <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold text-gray-800">Yeni Hasta Ekle</h2>
+            <h2 className="text-2xl font-bold text-gray-800">
+              Yeni Hasta Ekle
+            </h2>
             <button
               onClick={onClose}
               className="text-gray-500 hover:text-gray-700 transition-colors text-xl font-bold"
@@ -243,12 +258,16 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({ isOpen, onClose, onPa
             </div>
 
             <div>
-              <label className="block text-gray-700 text-sm font-medium mb-2">
+              <label
+                htmlFor="birthDate"
+                className="block text-gray-700 text-sm font-medium mb-2"
+              >
                 Doğum Tarihi *
               </label>
               <input
                 type="date"
                 name="birthDate"
+                id="birthDate"
                 value={formData.birthDate}
                 onChange={handleInputChange}
                 className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
@@ -261,11 +280,15 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({ isOpen, onClose, onPa
             </div>
 
             <div>
-              <label className="block text-gray-700 text-sm font-medium mb-2">
+              <label
+                htmlFor="gender"
+                className="block text-gray-700 text-sm font-medium mb-2"
+              >
                 Cinsiyet *
               </label>
               <select
                 name="gender"
+                id="gender"
                 value={formData.gender}
                 onChange={handleInputChange}
                 className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
@@ -357,22 +380,30 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({ isOpen, onClose, onPa
                 value={formData.registeredProvince}
                 onChange={handleInputChange}
                 className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
-                  errors.registeredProvince ? 'border-red-500' : 'border-gray-300'
+                  errors.registeredProvince
+                    ? 'border-red-500'
+                    : 'border-gray-300'
                 }`}
                 placeholder="Kayıtlı il"
               />
               {errors.registeredProvince && (
-                <p className="text-red-500 text-sm mt-1">{errors.registeredProvince}</p>
+                <p className="text-red-500 text-sm mt-1">
+                  {errors.registeredProvince}
+                </p>
               )}
             </div>
 
             <div>
-              <label className="block text-gray-700 text-sm font-medium mb-2">
+              <label
+                htmlFor="registrationDate"
+                className="block text-gray-700 text-sm font-medium mb-2"
+              >
                 Kayıt Tarihi
               </label>
               <input
                 type="date"
                 name="registrationDate"
+                id="registrationDate"
                 value={formData.registrationDate}
                 onChange={handleInputChange}
                 className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
@@ -413,6 +444,28 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({ isOpen, onClose, onPa
               className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
               placeholder="Ziyaret nedeni (opsiyonel)"
             />
+          </div>
+
+          {/* Discount Option */}
+          <div className="flex items-start gap-3 p-4 bg-green-50 border border-green-200 rounded-xl">
+            <input
+              id="indirim_check"
+              name="indirim_check"
+              type="checkbox"
+              checked={formData.indirim_check}
+              onChange={handleInputChange}
+              className="mt-1 h-5 w-5 rounded border-green-300 text-green-600 focus:ring-green-500"
+              aria-label="Her zaman yüzde 20 indirim uygula"
+            />
+            <label htmlFor="indirim_check" className="text-sm text-green-900">
+              <span className="font-semibold">
+                Her zaman %20 indirim uygula
+              </span>
+              <span className="block text-green-800/80">
+                Bu seçenek aktifken hastanın işlemlerinde otomatik olarak %20
+                indirim işaretlenecektir.
+              </span>
+            </label>
           </div>
 
           {/* Action Buttons */}

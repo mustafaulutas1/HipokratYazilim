@@ -1,5 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, orderBy, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
+import {
+  collection,
+  getDocs,
+  query,
+  orderBy,
+  addDoc,
+  updateDoc,
+  doc,
+  deleteDoc,
+} from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../../firebase/config';
@@ -37,7 +46,8 @@ const Users: React.FC<UsersProps> = ({ doctorProfile }) => {
   const [isPermissionsModalOpen, setIsPermissionsModalOpen] = useState(false);
   const [isRoleManagementOpen, setIsRoleManagementOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [selectedUserForPermissions, setSelectedUserForPermissions] = useState<User | null>(null);
+  const [selectedUserForPermissions, setSelectedUserForPermissions] =
+    useState<User | null>(null);
 
   // Fetch users from Firestore
   const fetchUsers = async () => {
@@ -46,12 +56,12 @@ const Users: React.FC<UsersProps> = ({ doctorProfile }) => {
       const usersRef = collection(db, 'clinicUsers');
       const q = query(usersRef, orderBy('createdAt', 'desc'));
       const querySnapshot = await getDocs(q);
-      
+
       const usersData: User[] = [];
       querySnapshot.forEach((doc) => {
         usersData.push({
           id: doc.id,
-          ...doc.data()
+          ...doc.data(),
         } as User);
       });
 
@@ -106,7 +116,7 @@ const Users: React.FC<UsersProps> = ({ doctorProfile }) => {
       const userRef = doc(db, 'clinicUsers', userId);
       await updateDoc(userRef, {
         isActive: !currentStatus,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
       });
       fetchUsers();
     } catch (error) {
@@ -116,9 +126,10 @@ const Users: React.FC<UsersProps> = ({ doctorProfile }) => {
   };
 
   // Filter users based on search term and role
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = user.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user.email.toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredUsers = users.filter((user) => {
+    const matchesSearch =
+      user.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesRole = filterRole === 'all' || user.role === filterRole;
     return matchesSearch && matchesRole;
   });
@@ -185,6 +196,52 @@ const Users: React.FC<UsersProps> = ({ doctorProfile }) => {
         </div>
       </div>
 
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        {[
+          { 
+            title: 'Toplam Kullanıcı', 
+            value: users.length.toString(), 
+            icon: '👥', 
+            color: 'from-blue-500 to-cyan-500' 
+          },
+          { 
+            title: 'Aktif Kullanıcı', 
+            value: users.filter(u => u.isActive).length.toString(), 
+            icon: '✅', 
+            color: 'from-green-500 to-emerald-500' 
+          },
+          { 
+            title: 'Bu Ay Yeni', 
+            value: users.filter(u => {
+              const createdAt = new Date(u.createdAt);
+              const now = new Date();
+              return createdAt.getMonth() === now.getMonth() && createdAt.getFullYear() === now.getFullYear();
+            }).length.toString(), 
+            icon: '🆕', 
+            color: 'from-yellow-500 to-orange-500' 
+          },
+          { 
+            title: 'Admin Kullanıcı', 
+            value: users.filter(u => u.role === 'admin').length.toString(), 
+            icon: '👑', 
+            color: 'from-purple-500 to-pink-500' 
+          }
+        ].map((stat, index) => (
+          <div key={index} className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+            <div className="flex items-center gap-4">
+              <div className={`w-12 h-12 bg-gradient-to-br ${stat.color} rounded-xl flex items-center justify-center shadow-lg`}>
+                <span className="text-white text-xl">{stat.icon}</span>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-white">{stat.value}</div>
+                <div className="text-white/70 text-sm">{stat.title}</div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
       {/* Search and Filters */}
       <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -201,6 +258,7 @@ const Users: React.FC<UsersProps> = ({ doctorProfile }) => {
             <select
               value={filterRole}
               onChange={(e) => setFilterRole(e.target.value)}
+              aria-label="Rol filtrele"
               className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="all">Tüm Roller</option>
@@ -222,13 +280,27 @@ const Users: React.FC<UsersProps> = ({ doctorProfile }) => {
           <table className="w-full">
             <thead className="bg-white/5">
               <tr>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-white/90">Kullanıcı</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-white/90">Rol</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-white/90">Bölüm</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-white/90">Telefon</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-white/90">Yetkiler</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-white/90">Durum</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-white/90">İşlemler</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-white/90">
+                  Kullanıcı
+                </th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-white/90">
+                  Rol
+                </th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-white/90">
+                  Bölüm
+                </th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-white/90">
+                  Telefon
+                </th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-white/90">
+                  Yetkiler
+                </th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-white/90">
+                  Durum
+                </th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-white/90">
+                  İşlemler
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10">
@@ -236,12 +308,18 @@ const Users: React.FC<UsersProps> = ({ doctorProfile }) => {
                 <tr key={user.id} className="hover:bg-white/5">
                   <td className="px-6 py-4">
                     <div>
-                      <div className="font-semibold text-white">{user.fullName}</div>
+                      <div className="font-semibold text-white">
+                        {user.fullName}
+                      </div>
                       <div className="text-sm text-white/70">{user.email}</div>
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getRoleColor(user.role)}`}>
+                    <span
+                      className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getRoleColor(
+                        user.role
+                      )}`}
+                    >
                       {getRoleText(user.role)}
                     </span>
                   </td>
@@ -282,21 +360,24 @@ const Users: React.FC<UsersProps> = ({ doctorProfile }) => {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => handleEditUser(user)}
-                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
+                        className="p-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg text-green-300 hover:text-green-200 transition-all duration-200"
+                        title="Düzenle"
                       >
-                        Düzenle
+                        ✏️
                       </button>
                       <button
                         onClick={() => handleManagePermissions(user)}
-                        className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg transition-colors"
+                        className="p-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-lg text-purple-300 hover:text-purple-200 transition-all duration-200"
+                        title="Yetkiler"
                       >
-                        Yetkiler
+                        🔐
                       </button>
                       <button
                         onClick={() => handleDeleteUser(user.id)}
-                        className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors"
+                        className="p-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-all duration-200"
+                        title="Sil"
                       >
-                        Sil
+                        🗑️
                       </button>
                     </div>
                   </td>
@@ -304,7 +385,7 @@ const Users: React.FC<UsersProps> = ({ doctorProfile }) => {
               ))}
             </tbody>
           </table>
-          
+
           {filteredUsers.length === 0 && (
             <div className="text-center py-12">
               <p className="text-white/70">Kullanıcı bulunamadı.</p>
