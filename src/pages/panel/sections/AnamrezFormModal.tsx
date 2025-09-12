@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { collection, addDoc, doc, updateDoc } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
+import { collection, addDoc, doc, updateDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 
 interface Patient {
@@ -17,12 +17,17 @@ interface Patient {
   createdAt: string;
 }
 
-interface AnamrezFormModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  patient: Patient | null;
-  doctorProfile: any;
-  onAnamrezCompleted: () => void;
+interface Doctor {
+  id: string;
+  fullName?: string;
+  name?: string;
+  email?: string;
+  specialization?: string;
+  department?: string;
+  clinicId?: string;
+  hospital?: string;
+  role?: string;
+  userType?: string;
 }
 
 const DIAGNOSIS_SYSTEMS = [
@@ -36,6 +41,14 @@ const DIAGNOSIS_SYSTEMS = [
   'Ürogental Sistem Hastalıkları',
   'Endokrin Sistem'
 ];
+
+interface AnamrezFormModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  patient: Patient | null;
+  doctorProfile: any;
+  onAnamrezCompleted: () => void;
+}
 
 type SymptomKey = 
   | 'uykuHali' | 'gozdeUcusmalar' | 'carpinti' | 'siskinlik' | 'adetDuzensizligi' 
@@ -228,9 +241,14 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   onAnamrezCompleted
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [loadingDoctors, setLoadingDoctors] = useState(false);
   const [formData, setFormData] = useState({
     // Ana Şikayetler - Now array for multiple selections
     selectedDiagnosisSystems: [] as string[],
+    
+    // Doktor Seçimi
+    selectedDoctorId: '',
     
     // Şikayet Detayları
     complaintDetails: '',
@@ -358,6 +376,93 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showSuccessToast, setShowSuccessToast] = useState(false);
+
+  // Fetch doctors from the clinic when modal opens
+  useEffect(() => {
+    const fetchDoctors = async () => {
+      if (!patient?.clinicId || !isOpen) return;
+      
+      setLoadingDoctors(true);
+      try {
+        let doctorsList: Doctor[] = [];
+        
+        // 1. Get doctors from 'doctors' collection
+        const doctorsQuery = query(
+          collection(db, 'doctors'),
+          where('clinicId', '==', patient.clinicId)
+        );
+        const doctorsSnapshot = await getDocs(doctorsQuery);
+        
+        const doctorsFromCollection = doctorsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as Doctor));
+        
+        // 2. Get clinic users with doctor role from 'clinicUsers' collection
+        const clinicUsersQuery = query(
+          collection(db, 'clinicUsers'),
+          where('clinicId', '==', patient.clinicId),
+          where('role', '==', 'doctor')
+        );
+        const clinicUsersSnapshot = await getDocs(clinicUsersQuery);
+        
+        const clinicDoctors = clinicUsersSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as Doctor));
+        
+        // 3. Combine both lists
+        doctorsList = [...doctorsFromCollection, ...clinicDoctors];
+        
+        // 4. If no doctors found, try alternative approaches
+        if (doctorsList.length === 0) {
+          // Try with hospital field for doctors collection
+          const hospitalQuery = query(
+            collection(db, 'doctors'),
+            where('hospital', '==', patient.clinicId)
+          );
+          const hospitalSnapshot = await getDocs(hospitalQuery);
+          
+          if (hospitalSnapshot.size > 0) {
+            const hospitalDoctors = hospitalSnapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            } as Doctor));
+            doctorsList = [...doctorsList, ...hospitalDoctors];
+          }
+          
+          // Also try clinic users with userType 'doctor'
+          const clinicUsersAltQuery = query(
+            collection(db, 'clinicUsers'),
+            where('clinicId', '==', patient.clinicId),
+            where('userType', '==', 'doctor')
+          );
+          const clinicUsersAltSnapshot = await getDocs(clinicUsersAltQuery);
+          
+          const altClinicDoctors = clinicUsersAltSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          } as Doctor));
+          
+          doctorsList = [...doctorsList, ...altClinicDoctors];
+        }
+        
+        // Remove duplicates based on id
+        const uniqueDoctors = doctorsList.filter((doctor, index, self) => 
+          index === self.findIndex(d => d.id === doctor.id)
+        );
+        
+        setDoctors(uniqueDoctors);
+        
+      } catch (error) {
+        console.error('Doktorlar yüklenirken hata oluştu:', error);
+      } finally {
+        setLoadingDoctors(false);
+      }
+    };
+
+    fetchDoctors();
+  }, [patient?.clinicId, isOpen]);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -494,6 +599,10 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         newErrors.selectedDiagnosisSystems = 'En az bir tanı sistemi seçmelisiniz';
       }
 
+      if (!formData.selectedDoctorId.trim()) {
+        newErrors.selectedDoctorId = 'Doktor seçimi gereklidir';
+      }
+
       if (!formData.complaintDetails.trim()) {
         newErrors.complaintDetails = 'Şikayet detayları gereklidir';
       }
@@ -514,6 +623,10 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
     // Only validate fields that actually exist in the form
     if (formData.selectedDiagnosisSystems.length === 0) {
       newErrors.selectedDiagnosisSystems = 'En az bir tanı sistemi seçmelisiniz';
+    }
+
+    if (!formData.selectedDoctorId.trim()) {
+      newErrors.selectedDoctorId = 'Doktor seçimi gereklidir';
     }
 
     if (!formData.complaintDetails.trim()) {
@@ -567,6 +680,9 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
     setLoading(true);
     try {
+      // Find selected doctor information
+      const selectedDoctor = doctors.find(doc => doc.id === formData.selectedDoctorId);
+      
       // Create comprehensive anamnez record
       const anamrezData = {
         patientId: patient.id,
@@ -577,6 +693,15 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         patientGender: patient.gender,
         patientAddress: patient.address,
         clinicId: patient.clinicId,
+        
+        // Selected doctor information
+        selectedDoctor: selectedDoctor ? {
+          id: selectedDoctor.id,
+          name: selectedDoctor.fullName || selectedDoctor.name || '',
+          specialization: selectedDoctor.specialization || '',
+          department: selectedDoctor.department || '',
+          email: selectedDoctor.email || ''
+        } : null,
         
         // Form data
         selectedDiagnosisSystems: formData.selectedDiagnosisSystems,
@@ -661,16 +786,19 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
       // Show success toast
       setShowSuccessToast(true);
       
+      // Immediately update parent component
+      onAnamrezCompleted();
+      
       // Hide toast after 3 seconds and close modal
       setTimeout(() => {
         setShowSuccessToast(false);
-        onAnamrezCompleted();
         onClose();
       }, 3000);
       
       // Reset form
       setFormData({
         selectedDiagnosisSystems: [],
+        selectedDoctorId: '',
         complaintDetails: '',
         pastMedicalHistory: '',
         familyHistory: '',
@@ -901,6 +1029,47 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
               
               {errors.selectedDiagnosisSystems && (
                 <p className="text-red-500 text-sm mt-2">{errors.selectedDiagnosisSystems}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Doktor Seçimi */}
+          <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
+            <h3 className="text-lg font-bold text-blue-700 mb-4 flex items-center gap-2">
+              👨‍⚕️ Doktor Tercihi
+            </h3>
+            <div>
+              <label className="block text-gray-700 text-sm font-medium mb-2">
+                Hangi doktoru tercih edersiniz? *
+              </label>
+              {loadingDoctors ? (
+                <div className="flex items-center justify-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                  <span className="ml-2 text-gray-600">Doktorlar yükleniyor...</span>
+                </div>
+              ) : doctors.length === 0 ? (
+                <div className="text-center py-4 text-gray-500">
+                  Bu klinikten doktor bulunamadı.
+                </div>
+              ) : (
+                <select
+                  name="selectedDoctorId"
+                  value={formData.selectedDoctorId}
+                  onChange={handleInputChange}
+                  className={`w-full px-4 py-3 bg-white border rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                    errors.selectedDoctorId ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                >
+                  <option value="">Doktor seçiniz...</option>
+                  {doctors.map((doctor) => (
+                    <option key={doctor.id} value={doctor.id}>
+                      Dr. {doctor.fullName} - {doctor.specialization}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {errors.selectedDoctorId && (
+                <p className="text-red-500 text-sm mt-1">{errors.selectedDoctorId}</p>
               )}
             </div>
           </div>

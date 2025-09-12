@@ -21,6 +21,7 @@ interface Patient {
   clinicId: string;
   isAnamnezCompleted: boolean;
   createdAt: string;
+  anamrezCompletedAt?: string;
 }
 
 interface AnamrezRecord {
@@ -188,6 +189,19 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
           if (selectedPatient && !patientsList.find(p => p.id === selectedPatient.id) && !completedPatientsList.find(p => p.id === selectedPatient.id)) {
             setSelectedPatient(null);
           }
+
+          // Also refresh anamnez records
+          const recordsQuery = query(
+            collection(db, 'anamrezRecords'),
+            orderBy('createdAt', 'desc')
+          );
+          const recordsSnapshot = await getDocs(recordsQuery);
+          const recordsList = recordsSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          } as AnamrezRecord));
+          setAnamrezRecords(recordsList);
+          
         } catch (error) {
           console.error('❌ Anamnez: Error refreshing patients:', error);
         }
@@ -207,7 +221,7 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
   return (
     <>
       {/* Custom CSS for pulsing glow animation */}
-      <style jsx>{`
+      <style>{`
         @keyframes pulse-glow {
           0%, 100% {
             box-shadow: 0 0 5px rgba(249, 115, 22, 0.4), 0 0 10px rgba(249, 115, 22, 0.2), 0 0 15px rgba(249, 115, 22, 0.1);

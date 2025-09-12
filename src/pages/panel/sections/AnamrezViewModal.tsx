@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 
 // Import the diagnosis systems structure
 const DIAGNOSIS_SPECIFIC_QUESTIONS: Record<string, { label: string; questions: string[] }> = {
@@ -163,6 +162,13 @@ interface AnamrezData {
   patientId: string;
   patientName: string;
   selectedDiagnosisSystems: string[];
+  selectedDoctor?: {
+    id: string;
+    name: string;
+    specialization: string;
+    department: string;
+    email: string;
+  };
   complaintDetails: string;
   pastMedicalHistory: string;
   familyHistory: string;
@@ -331,6 +337,12 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
     addText(`Adres: ${patient.address}`);
     addText(`Acil Durum Telefonu: ${patient.emergencyPhone}`);
     addText(`Başvuru Nedeni: ${patient.visitReason}`);
+    if (anamrezData.selectedDoctor) {
+      addText(`Tercih Edilen Doktor: Dr. ${anamrezData.selectedDoctor.name}`);
+      addText(`Uzmanlık: ${anamrezData.selectedDoctor.specialization}`);
+      addText(`Bölüm: ${anamrezData.selectedDoctor.department}`);
+      addText(`E-posta: ${anamrezData.selectedDoctor.email}`);
+    }
     if (patient.anamrezCompletedAt) {
       addText(`Anamnez Tamamlanma Tarihi: ${new Date(patient.anamrezCompletedAt).toLocaleDateString('tr-TR')}`);
       addText(`Anamnez Tamamlayan: ${patient.anamrezCompletedBy}`);
@@ -641,6 +653,24 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                               <label className="block text-gray-600 text-sm font-medium mb-2">Başvuru Nedeni</label>
                               <div className="text-gray-900 font-semibold">{patient.visitReason}</div>
                             </div>
+                            {anamrezData.selectedDoctor && (
+                              <div className="md:col-span-2">
+                                <label className="block text-gray-600 text-sm font-medium mb-2">Tercih Edilen Doktor</label>
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                      <span className="text-blue-600 font-semibold">Dr</span>
+                                    </div>
+                                    <div>
+                                      <div className="text-gray-900 font-semibold">Dr. {anamrezData.selectedDoctor.name}</div>
+                                      <div className="text-sm text-gray-600">{anamrezData.selectedDoctor.specialization}</div>
+                                      <div className="text-sm text-gray-500">{anamrezData.selectedDoctor.department}</div>
+                                      <div className="text-sm text-gray-500">{anamrezData.selectedDoctor.email}</div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
