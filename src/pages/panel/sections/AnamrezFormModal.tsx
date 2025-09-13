@@ -1034,8 +1034,8 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
           </div>
 
           {/* Doktor Seçimi */}
-          <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
-            <h3 className="text-lg font-bold text-blue-700 mb-4 flex items-center gap-2">
+          <div className="bg-red-50 rounded-xl p-6 border border-red-200">
+            <h3 className="text-lg font-bold text-red-700 mb-4 flex items-center gap-2">
               👨‍⚕️ Doktor Tercihi
             </h3>
             <div>
@@ -1044,7 +1044,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
               </label>
               {loadingDoctors ? (
                 <div className="flex items-center justify-center py-4">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div>
                   <span className="ml-2 text-gray-600">Doktorlar yükleniyor...</span>
                 </div>
               ) : doctors.length === 0 ? (
@@ -1056,14 +1056,14 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                   name="selectedDoctorId"
                   value={formData.selectedDoctorId}
                   onChange={handleInputChange}
-                  className={`w-full px-4 py-3 bg-white border rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                  className={`w-full px-4 py-3 bg-white border rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 ${
                     errors.selectedDoctorId ? 'border-red-500' : 'border-gray-300'
                   }`}
                 >
                   <option value="">Doktor seçiniz...</option>
                   {doctors.map((doctor) => (
                     <option key={doctor.id} value={doctor.id}>
-                      Dr. {doctor.fullName} - {doctor.specialization}
+                      Dr. {doctor.fullName || doctor.name} {doctor.specialization ? `- ${doctor.specialization}` : ''}
                     </option>
                   ))}
                 </select>
