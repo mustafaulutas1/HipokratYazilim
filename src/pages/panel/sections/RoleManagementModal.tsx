@@ -4,7 +4,7 @@ import { db } from '../../../firebase/config';
 import { AVAILABLE_PERMISSIONS } from '../../../constants/permissions';
 import { DEFAULT_ROLES } from '../../../types/Role';
 import type { Role } from '../../../types/Role';
-import { updateRolesWithDoctorPanel } from '../../../services/updateRoles';
+import { updateRolesWithAssistantPanel } from '../../../services/updateRoles';
 
 interface RoleManagementModalProps {
   isOpen: boolean;
@@ -214,12 +214,12 @@ const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
     setShowAddForm(false);
   };
 
-  // Handle updating roles with doctor-panel permission
+  // Handle updating roles with assistant-panel permission
   const handleUpdateRoles = async () => {
     try {
       setLoading(true);
       console.log('🔄 Starting role update...');
-      await updateRolesWithDoctorPanel();
+      await updateRolesWithAssistantPanel();
       alert('Roller başarıyla güncellendi! Sayfa yenilenecek.');
       fetchRoles(); // Refresh the roles list
       window.location.reload(); // Reload to get updated permissions
@@ -264,7 +264,7 @@ const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
                   onClick={handleUpdateRoles}
                   disabled={loading}
                   className="px-3 py-2 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white text-sm rounded-lg transition-colors flex items-center gap-1"
-                  title="Rolleri güncelle ve Doktor Ekranı'nı etkinleştir"
+                  title="ZORUNLU: Rolleri güncelle ve Asistan Ekranı'nı etkinleştir - Asistan ekranı gözükmüyorsa bu butona tıklayın"
                 >
                   🔧 Rolleri Güncelle
                 </button>

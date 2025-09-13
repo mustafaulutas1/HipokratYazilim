@@ -2,13 +2,12 @@ import React from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { rtmLogo } from '../../../assets';
-import { getUserPermissions, getRoleDisplayName } from '../../../constants/permissions';
-import { getRolePermissions } from '../../../services/roleService';
+import { getRoleDisplayName } from '../../../constants/permissions';
 import { useUserPermissions } from '../../../hooks/useUserPermissions';
 
 interface SidebarProps {
-  currentSection: 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'doctor-panel';
-  onSectionChange: (section: 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'doctor-panel') => void;
+  currentSection: 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel';
+  onSectionChange: (section: 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel') => void;
   doctorProfile: any;
 }
 
@@ -33,8 +32,17 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
         clinicId: doctorProfile?.clinicId,
         customPermissions: doctorProfile?.permissions,
         resolvedRole: userRole,
-        finalPermissions: userPermissions
+        finalPermissions: userPermissions,
+        hasAssistantPanel: userPermissions.includes('assistant-panel')
       });
+      
+      // Check if assistant-panel is missing
+      if (!userPermissions.includes('assistant-panel')) {
+        console.warn('⚠️ assistant-panel permission missing for user role:', userRole);
+        console.log('📋 Available menu items that will show:', 
+          menuItems.filter(item => userPermissions.includes(item.id)).map(item => item.label)
+        );
+      }
     }
   }, [doctorProfile, userRole, userPermissions, permissionsLoading]);
 
@@ -97,10 +105,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
       description: 'Hasta anamnez kayıtları'
     },
     {
-      id: 'doctor-panel',
-      label: 'Doktor Ekranı',
+      id: 'assistant-panel',
+      label: 'Asistan Ekranı',
       icon: '👨‍⚕️',
-      description: 'Doktor özel işlemleri ve yönetimi'
+      description: 'Asistan özel işlemleri ve yönetimi'
     },
     {
       id: 'treatment-protocols',

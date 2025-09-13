@@ -73,18 +73,18 @@ export const AVAILABLE_PERMISSIONS: Permission[] = [
     icon: '📈'
   },
   {
-    id: 'doctor-panel',
-    name: 'Doktor Ekranı',
-    description: 'Doktor özel işlemleri ve yönetimi',
+    id: 'assistant-panel',
+    name: 'Asistan Ekranı',
+    description: 'Asistan özel işlemleri ve yönetimi',
     icon: '👨‍⚕️'
   }
 ];
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
-  admin: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'prescriptions', 'reports', 'doctor-panel'],
-  doctor: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'settings', 'doctor-panel'],
+  admin: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'prescriptions', 'reports', 'assistant-panel'],
+  doctor: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'settings', 'assistant-panel'],
   nurse: ['dashboard', 'patients', 'appointments', 'anamnez'],
-  assistant: ['dashboard', 'patients', 'appointments'],
+  assistant: ['dashboard', 'patients', 'appointments', 'assistant-panel'],
   desk: ['dashboard', 'patients', 'appointments'],
   anamnez: ['dashboard', 'patients', 'anamnez'],
   accounting: ['dashboard', 'patients', 'accounting', 'reports'],
@@ -117,7 +117,7 @@ export const getUserPermissions = (userRole: string, customPermissions?: string[
 };
 
 // This function will be updated to work with dynamic roles from Firestore
-export const getUserPermissionsFromRole = async (userRole: string, customPermissions?: string[], clinicId?: string): Promise<string[]> => {
+export const getUserPermissionsFromRole = async (userRole: string, customPermissions?: string[], _clinicId?: string): Promise<string[]> => {
   if (customPermissions && customPermissions.length > 0) {
     return customPermissions;
   }
