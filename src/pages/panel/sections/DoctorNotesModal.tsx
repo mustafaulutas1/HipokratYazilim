@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, query, where, orderBy } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { useAuth } from '../../../context/AuthContext';
 import { getUserPermissions } from '../../../constants/permissions';
@@ -75,7 +75,7 @@ const DoctorNotesModal: React.FC<DoctorNotesModalProps> = ({ isOpen, onClose, do
     if (!user || !doctorProfile) return false;
     const userRole = doctorProfile.role || doctorProfile.userType || 'doctor';
     const permissions = getUserPermissions(userRole, doctorProfile.permissions);
-    return permissions.includes('doctor-panel');
+    return permissions.includes('assistant-panel');
   }, [user, doctorProfile]);
 
   const fetchNotes = useCallback(async () => {

@@ -1,13 +1,13 @@
 import { collection, getDocs, query, where, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
-// Update existing roles to add the new doctor-panel permission
-export const updateRolesWithDoctorPanel = async () => {
+// Update existing roles to add the new assistant-panel permission
+export const updateRolesWithAssistantPanel = async () => {
   try {
     console.log('🔄 Starting role update process...');
     
-    // Get all default roles that should have doctor-panel permission
-    const rolesToUpdate = ['admin', 'doctor'];
+    // Get all default roles that should have assistant-panel permission
+    const rolesToUpdate = ['admin', 'doctor', 'assistant'];
     
     for (const roleName of rolesToUpdate) {
       // Query for default roles (clinicId: 'default')
@@ -24,9 +24,9 @@ export const updateRolesWithDoctorPanel = async () => {
         const roleData = roleDoc.data();
         const currentPermissions = roleData.permissions || [];
         
-        // Check if doctor-panel is already in permissions
-        if (!currentPermissions.includes('doctor-panel')) {
-          const updatedPermissions = [...currentPermissions, 'doctor-panel'];
+        // Check if assistant-panel is already in permissions
+        if (!currentPermissions.includes('assistant-panel')) {
+          const updatedPermissions = [...currentPermissions, 'assistant-panel'];
           
           console.log(`📝 Updating ${roleName} role permissions:`, {
             before: currentPermissions,
@@ -41,7 +41,7 @@ export const updateRolesWithDoctorPanel = async () => {
           
           console.log(`✅ Successfully updated ${roleName} role`);
         } else {
-          console.log(`ℹ️ ${roleName} role already has doctor-panel permission`);
+          console.log(`ℹ️ ${roleName} role already has assistant-panel permission`);
         }
       });
     }
