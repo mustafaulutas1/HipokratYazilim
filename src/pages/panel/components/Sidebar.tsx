@@ -6,8 +6,8 @@ import { getRoleDisplayName } from '../../../constants/permissions';
 import { useUserPermissions } from '../../../hooks/useUserPermissions';
 
 interface SidebarProps {
-  currentSection: 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel';
-  onSectionChange: (section: 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel') => void;
+  currentSection: 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel' | 'doctor-panel';
+  onSectionChange: (section: 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel' | 'doctor-panel') => void;
   doctorProfile: any;
 }
 
@@ -109,6 +109,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
       label: 'Asistan Ekranı',
       icon: '👨‍⚕️',
       description: 'Asistan özel işlemleri ve yönetimi'
+    },
+    {
+      id: 'doctor-panel',
+      label: 'Doktor Ekranı',
+      icon: '🩺',
+      description: 'Doktor özel işlemleri ve hasta yönetimi'
     },
     {
       id: 'treatment-protocols',
