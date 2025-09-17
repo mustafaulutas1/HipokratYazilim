@@ -420,7 +420,7 @@ export default function ProfilePage() {
               <div className="w-full h-px bg-gradient-to-r from-green-200 via-emerald-200 to-transparent mb-8"></div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-gray-700 font-semibold mb-2 text-sm font-inter">Telefon *</nlabel>
+                  <label className="block text-gray-700 font-semibold mb-2 text-sm font-inter">Telefon *</label>
                   <PhoneInput
                     name="phone"
                     value={profile.phone || ''}
