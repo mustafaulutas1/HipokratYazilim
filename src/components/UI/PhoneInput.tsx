@@ -83,18 +83,18 @@ const PhoneInput: React.FC<PhoneInputProps> = ({
 
   return (
     <div className="flex w-full gap-2">
-      <div className="flex items-center">
+      <div className="flex items-center w-24">
         <select
           aria-label="Ülke"
           value={country.code}
           onChange={handleCountryChange}
-          className={`px-3 py-3 bg-gray-50 border rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+          className={`w-full px-2 py-3 bg-gray-50 border rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm ${
             hasError ? 'border-red-500' : 'border-gray-300'
           }`}
         >
           {COUNTRIES.map((c) => (
             <option key={c.code} value={c.code}>
-              {c.flag} {c.name} (+{c.dialCode})
+              {c.flag} (+{c.dialCode})
             </option>
           ))}
         </select>
