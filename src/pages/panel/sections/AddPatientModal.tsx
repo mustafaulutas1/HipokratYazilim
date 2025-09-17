@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import PhoneInput from '../../../components/UI/PhoneInput';
+import { toast } from 'react-toastify';
 import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 
@@ -129,6 +130,7 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
     e.preventDefault();
 
     if (!validateForm()) {
+      toast.error('Lütfen eksik alanları doldurun.');
       return;
     }
 
@@ -144,6 +146,16 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
 
       if (!patientsSnap.empty || !clinicUsersSnap.empty || !doctorsSnap.empty) {
         setErrors((prev) => ({ ...prev, email: 'Bu email ile kayıt zaten mevcut' }));
+        toast.error('Bu email ile kayıt zaten mevcut');
+        setLoading(false);
+        return;
+      }
+
+      // TC No uniqueness check in patients
+      const tcSnap = await getDocs(query(collection(db, 'patients'), where('tcNo', '==', formData.tcNo)));
+      if (!tcSnap.empty) {
+        setErrors((prev) => ({ ...prev, tcNo: 'Bu TC Kimlik No ile kayıt zaten mevcut' }));
+        toast.error('Bu TC Kimlik No ile kayıt zaten mevcut');
         setLoading(false);
         return;
       }
@@ -183,7 +195,7 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
       onClose();
     } catch (error) {
       console.error('Error adding patient:', error);
-      alert('Hasta eklenirken bir hata oluştu. Lütfen tekrar deneyin.');
+      toast.error('Hasta eklenirken bir hata oluştu. Lütfen tekrar deneyin.');
     } finally {
       setLoading(false);
     }
