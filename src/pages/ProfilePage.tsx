@@ -93,6 +93,11 @@ export default function ProfilePage() {
     }
   }, [user, loading, navigate]);
 
+  const handlePhoneChange = (fieldName: string, e164Value: string) => {
+    if (!profile) return;
+    setProfile({ ...profile, [fieldName]: e164Value });
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     console.log("📝 Input değişikliği:", { name: e.target.name, value: e.target.value });
 
@@ -109,10 +114,6 @@ export default function ProfilePage() {
     } else if (name === 'tcNo') {
       value = value.replace(/\D/g, '').slice(0, 11);
     }
-  const handlePhoneChange = (fieldName: string, e164Value: string) => {
-    if (!profile) return;
-    setProfile({ ...profile, [fieldName]: e164Value });
-  };
 
     setProfile({ ...profile, [name]: value });
   };
@@ -420,7 +421,7 @@ export default function ProfilePage() {
               <div className="w-full h-px bg-gradient-to-r from-green-200 via-emerald-200 to-transparent mb-8"></div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-gray-700 font-semibold mb-2 text-sm font-inter">Telefon *</nlabel>
+                  <label className="block text-gray-700 font-semibold mb-2 text-sm font-inter">Telefon *</label>
                   <PhoneInput
                     name="phone"
                     value={profile.phone || ''}
