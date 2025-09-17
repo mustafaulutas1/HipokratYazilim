@@ -3,6 +3,7 @@ import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/f
 import { db } from '../../../firebase/config';
 import { useAuth } from '../../../context/AuthContext';
 import AnamrezViewModal from './AnamrezViewModal';
+import TreatmentModal from '../components/TreatmentModal';
 
 interface DoctorPanelProps {
   doctorProfile?: any;
@@ -38,6 +39,11 @@ interface PatientStats {
   pendingReview: number;
 }
 
+interface TreatmentOptions {
+  protocol?: string;
+  notes?: string;
+}
+
 const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
   const { user } = useAuth();
   const [assignedPatients, setAssignedPatients] = useState<AssignedPatient[]>([]);
@@ -50,6 +56,8 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
   const [loading, setLoading] = useState(true);
   const [selectedPatient, setSelectedPatient] = useState<AssignedPatient | null>(null);
   const [isAnamrezViewModalOpen, setIsAnamrezViewModalOpen] = useState(false);
+  const [isTreatmentModalOpen, setIsTreatmentModalOpen] = useState(false);
+  const [treatmentPatient, setTreatmentPatient] = useState<AssignedPatient | null>(null);
 
   useEffect(() => {
     // Use the Firebase user UID as the doctor ID
@@ -152,12 +160,18 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
     setIsAnamrezViewModalOpen(true);
   };
 
-  const handleStartTreatment = async (patient: AssignedPatient) => {
+  const handleOpenTreatmentModal = (patient: AssignedPatient) => {
+    setTreatmentPatient(patient);
+    setIsTreatmentModalOpen(true);
+  };
+
+  const handleStartTreatment = async (patient: AssignedPatient, treatmentOptions: TreatmentOptions) => {
     try {
       const patientRef = doc(db, 'patients', patient.id);
       await updateDoc(patientRef, {
         status: 'in_treatment',
         treatmentStartedAt: new Date().toISOString(),
+        treatmentOptions: treatmentOptions,
         updatedAt: new Date().toISOString()
       });
       console.log(`✅ Treatment started for patient: ${patient.fullName}`);
@@ -369,7 +383,7 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
                       
                       {patient.status === 'assigned_to_doctor' && (
                         <button 
-                          onClick={() => handleStartTreatment(patient)}
+                          onClick={() => handleOpenTreatmentModal(patient)}
                           className="px-4 py-2 bg-blue-500/30 hover:bg-blue-500/40 border border-blue-500/50 rounded-xl text-blue-200 hover:text-white text-sm font-medium transition-all duration-200 flex items-center gap-2"
                         >
                           🏥 Tedaviye Başla
@@ -492,6 +506,13 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
         isOpen={isAnamrezViewModalOpen}
         onClose={() => setIsAnamrezViewModalOpen(false)}
         patient={selectedPatient}
+      />
+
+      <TreatmentModal
+        isOpen={isTreatmentModalOpen}
+        onClose={() => setIsTreatmentModalOpen(false)}
+        patient={treatmentPatient}
+        onStartTreatment={handleStartTreatment}
       />
     </div>
   );
