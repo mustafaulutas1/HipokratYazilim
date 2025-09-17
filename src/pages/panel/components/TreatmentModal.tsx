@@ -101,6 +101,108 @@ const TREATMENT_PROTOCOLS = {
       dosage: '10/20 GAMA ARASI',
       control: '3 AYDA 1 KONTROL'
     }
+  },
+  'Gastrointestinal Sistem': {
+    'DVZ-SIRO': {
+      name: 'DVZ-SİRO',
+      description: 'GASTROİNTESTİNAL SİSTEM HASTALIKLARI İÇİN UYGULANAN STANDART TEDAVİ PROTOKOLÜ',
+      ageGroups: {
+        '2-7': {
+          sessions: '2X1 T',
+          frequency: 'Regülin',
+          treatmentSequence: [
+            { phase: 'Remember', treatment: 'ARD-REM', dosage: '2X1/2 T', order: 1 },
+            { phase: '1 Regeneration', treatment: 'DVD-REG', dosage: '3X2 A', order: 2 },
+            { phase: '2 Regeneration', treatment: 'ISY-REG', dosage: '2X2 T', order: 3 },
+            { phase: '3 Regeneration', treatment: 'HUB-MP', dosage: '2X2 T', order: 4 },
+            { phase: 'Main Treatment', treatment: 'DVZ-SIRO', dosage: '2X1 T', order: 5 }
+          ]
+        },
+        '8-14': {
+          sessions: '2X4 T',
+          frequency: 'Regülin',
+          treatmentSequence: [
+            { phase: 'Remember', treatment: 'ARD-REM', dosage: '3X1/2 T', order: 1 },
+            { phase: '1 Regeneration', treatment: 'DVD-REG', dosage: '3X4 A', order: 2 },
+            { phase: '2 Regeneration', treatment: 'ISY-REG', dosage: '2X4 T', order: 3 },
+            { phase: '3 Regeneration', treatment: 'HUB-MP', dosage: '2X4 T', order: 4 },
+            { phase: 'Main Treatment', treatment: 'DVZ-SIRO', dosage: '2X4 T', order: 5 }
+          ]
+        },
+        'adult': {
+          sessions: '3X4 T',
+          frequency: 'Regülin',
+          treatmentSequence: [
+            { phase: 'Remember', treatment: 'ARD-REM', dosage: '3X1 T', order: 1 },
+            { phase: '1 Regeneration', treatment: 'DVD-REG', dosage: '3X4 A', order: 2 },
+            { phase: '2 Regeneration', treatment: 'ISY-REG', dosage: '3X4 A', order: 3 },
+            { phase: '3 Regeneration', treatment: 'HUB-MP', dosage: '3X4 A', order: 4 },
+            { phase: 'Main Treatment', treatment: 'DVZ-SIRO', dosage: '3X4 T', order: 5 }
+          ]
+        }
+      },
+      supportingTreatments: ['DVD-REG', 'ISY-REG', 'HUB-MP'],
+      conditions: ['GASTROİNTESTİNAL SİSTEM HASTALIKLARI'],
+      symptomRequirements: {}, // No specific symptom requirements for standard treatment
+      priority: 1, // Standard treatment, lower priority
+      contraindications: [],
+      control: '3 AYDA 1 KONTROL'
+    },
+    'DVZ-SDS-O': {
+      name: 'DVZ-SDS-O',
+      description: 'GASTROİNTESTİNAL SİSTEM HASTALIKLARI İÇİN İLERİ TEDAVİ PROTOKOLÜ - YÜKSEK TOKSİSİTE VE STRES DURUMLARINDA UYGULANIR',
+      ageGroups: {
+        '2-7': {
+          sessions: '2X1 T',
+          frequency: 'Regülin',
+          treatmentSequence: [
+            { phase: 'Remember', treatment: 'ARD-REM', dosage: '2X1/2 T', order: 1 },
+            { phase: '1 Regeneration', treatment: 'DVD-REG', dosage: '3X2 A', order: 2 },
+            { phase: '2 Regeneration', treatment: 'ISY-REG', dosage: '2X2 T', order: 3 },
+            { phase: '3 Regeneration', treatment: 'HUB-MP', dosage: '2X2 T', order: 4 },
+            { phase: '4 Regeneration', treatment: 'DTX-19', dosage: '3X1 ÇK', order: 5 },
+            { phase: '5 Regeneration', treatment: 'SDS-X', dosage: '2X1/2 T', order: 6 },
+            { phase: 'Main Treatment', treatment: 'DVZ-SDS-O', dosage: '2X1 T', order: 7 }
+          ]
+        },
+        '8-14': {
+          sessions: '2X4 T',
+          frequency: 'Regülin',
+          treatmentSequence: [
+            { phase: 'Remember', treatment: 'ARD-REM', dosage: '3X1/2 T', order: 1 },
+            { phase: '1 Regeneration', treatment: 'DVD-REG', dosage: '3X4 A', order: 2 },
+            { phase: '2 Regeneration', treatment: 'ISY-REG', dosage: '2X4 T', order: 3 },
+            { phase: '3 Regeneration', treatment: 'HUB-MP', dosage: '2X4 T', order: 4 },
+            { phase: '4 Regeneration', treatment: 'DTX-19', dosage: '3X1 TK', order: 5 },
+            { phase: '5 Regeneration', treatment: 'SDS-X', dosage: '3X1/2 T', order: 6 },
+            { phase: 'Main Treatment', treatment: 'DVZ-SDS-O', dosage: '2X4 T', order: 7 }
+          ]
+        },
+        'adult': {
+          sessions: '3X4 T',
+          frequency: 'Regülin',
+          treatmentSequence: [
+            { phase: 'Remember', treatment: 'ARD-REM', dosage: '3X1 T', order: 1 },
+            { phase: '1 Regeneration', treatment: 'DVD-REG', dosage: '3X4 A', order: 2 },
+            { phase: '2 Regeneration', treatment: 'ISY-REG', dosage: '3X4 A', order: 3 },
+            { phase: '3 Regeneration', treatment: 'HUB-MP', dosage: '3X4 A', order: 4 },
+            { phase: '4 Regeneration', treatment: 'DTX-19', dosage: '3X1 TK', order: 5 },
+            { phase: '5 Regeneration', treatment: 'SDS-X', dosage: '3X1 T', order: 6 },
+            { phase: 'Main Treatment', treatment: 'DVZ-SDS-O', dosage: '3X4 T', order: 7 }
+          ]
+        }
+      },
+      supportingTreatments: ['DVD-REG', 'ISY-REG', 'HUB-MP', 'DTX-19', 'SDS-X'],
+      conditions: ['GASTROİNTESTİNAL SİSTEM HASTALIKLARI'],
+      // DVZ-SDS-O is indicated for high toxicity OR high stress
+      toxicityRequirement: true, // Show for high toxicity patients
+      symptomRequirements: {
+        'stres': 7 // OR stress rating must be 7 or higher
+      },
+      priority: 2, // Higher priority than DVZ-SIRO when conditions are met
+      contraindications: [],
+      control: '3 AYDA 1 KONTROL'
+    }
   }
 };
 
@@ -207,7 +309,10 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
         'DTX-19': '3X1 ÇK',
         'SDS-X': '2X1/2 T',
         'HACAMAT': '2X1 T',
-        'MINOR OZON': '2X1 T'
+        'MINOR OZON': '2X1 T',
+        'HUB-MP': '2X2 T',
+        'DVZ-SIRO': '2X1 T',
+        'DVZ-SDS-O': '2X1 T'
       },
       '8-14': {
         'ARD-REM': '3X1/2 T',
@@ -216,7 +321,10 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
         'DTX-19': '3X1 TK',
         'SDS-X': '3X1/2 T',
         'HACAMAT': '3X1 T',
-        'MINOR OZON': '3X1 T'
+        'MINOR OZON': '3X1 T',
+        'HUB-MP': '2X4 T',
+        'DVZ-SIRO': '2X4 T',
+        'DVZ-SDS-O': '2X4 T'
       },
       'adult': {
         'ARD-REM': '3X1 T',
@@ -225,7 +333,10 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
         'DTX-19': '3X1 TK',
         'SDS-X': '3X1 T',
         'HACAMAT': '3X2 T',
-        'MINOR OZON': '3X2 T'
+        'MINOR OZON': '3X2 T',
+        'HUB-MP': '3X4 A',
+        'DVZ-SIRO': '3X4 T',
+        'DVZ-SDS-O': '3X4 T'
       }
     };
 
@@ -238,42 +349,68 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
     sequence.push({ phase: '1 Regeneration', treatment: 'DVD-REG', dosage: dosages['DVD-REG'], order: order++ });
     sequence.push({ phase: '2 Regeneration', treatment: 'ISY-REG', dosage: dosages['ISY-REG'], order: order++ });
 
+    // Gastrointestinal system always gets HUB-MP
+    if (dosages['HUB-MP']) {
+      sequence.push({ phase: '3 Regeneration', treatment: 'HUB-MP', dosage: dosages['HUB-MP'], order: order++ });
+    }
+
     // Conditional regeneration steps
     if (hasHighToxicity) {
-      sequence.push({ phase: '3 Regeneration', treatment: 'DTX-19', dosage: dosages['DTX-19'], order: order++ });
+      const phaseNumber = dosages['HUB-MP'] ? '4 Regeneration' : '3 Regeneration';
+      sequence.push({ phase: phaseNumber, treatment: 'DTX-19', dosage: dosages['DTX-19'], order: order++ });
     }
 
     if (hasHighStress) {
-      const phaseNumber = hasHighToxicity ? '4 Regeneration' : '3 Regeneration';
+      let phaseNumber = '3 Regeneration';
+      if (dosages['HUB-MP'] && hasHighToxicity) {
+        phaseNumber = '5 Regeneration';
+      } else if (dosages['HUB-MP'] || hasHighToxicity) {
+        phaseNumber = '4 Regeneration';
+      }
       sequence.push({ phase: phaseNumber, treatment: 'SDS-X', dosage: dosages['SDS-X'], order: order++ });
     }
 
     // Main treatment
-    const mainTreatment = (hasHighToxicity || hasHighStress) ? 'MINOR OZON' : 'HACAMAT';
+    let mainTreatment = 'HACAMAT'; // Default for dermatological
+    
+    // Determine main treatment based on system and conditions
+    if (dosages['DVZ-SIRO'] || dosages['DVZ-SDS-O']) {
+      // Gastrointestinal system
+      mainTreatment = (hasHighToxicity || hasHighStress) ? 'DVZ-SDS-O' : 'DVZ-SIRO';
+    } else {
+      // Dermatological system
+      mainTreatment = (hasHighToxicity || hasHighStress) ? 'MINOR OZON' : 'HACAMAT';
+    }
+    
     sequence.push({
       phase: 'Main Treatment',
       treatment: mainTreatment,
-      dosage: dosages[mainTreatment],
+      dosage: dosages[mainTreatment as keyof typeof dosages],
       order: order++
     });
 
     return sequence;
   };
 
-  // Helper function to get the best treatment for selected diagnosis systems
-  const getBestTreatment = () => {
-    if (!anamrezData?.selectedDiagnosisSystems) return null;
+  // Helper function to get treatments for each selected diagnosis system
+  const getTreatmentsForAllSystems = () => {
+    if (!anamrezData?.selectedDiagnosisSystems) return [];
 
-    const applicableTreatments = [];
+    const treatmentsBySystem: { [key: string]: any } = {};
 
     anamrezData.selectedDiagnosisSystems.forEach(system => {
       const systemTreatments = TREATMENT_PROTOCOLS[system as keyof typeof TREATMENT_PROTOCOLS];
       if (systemTreatments) {
+        const applicableTreatments = [];
+
         Object.entries(systemTreatments).forEach(([treatmentKey, treatment]) => {
           // Check if treatment is suitable based on patient conditions
           const isApplicable = treatment.conditions.some(condition => {
             if (condition === 'DERMATOLOJIK SİSTEM HASTALIKLARI') {
               return system === 'Dermatolojik Sistem';
+            }
+            if (condition === 'GASTROİNTESTİNAL SİSTEM HASTALIKLARI') {
+              return system === 'Gastrointestinal Sistem';
             }
             if (condition === 'Yüksek Toksisite') {
               return anamrezData.toxicityAssessment?.hasToxicity || false;
@@ -303,14 +440,17 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
             });
           }
         });
+
+        // Sort by priority and get the best treatment for this system
+        if (applicableTreatments.length > 0) {
+          const sortedTreatments = applicableTreatments.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+          treatmentsBySystem[system] = sortedTreatments[0]; // Best treatment for this system
+        }
       }
     });
 
-    // Sort by priority (higher priority first) and return the best treatment
-    if (applicableTreatments.length === 0) return null;
-
-    const sortedTreatments = applicableTreatments.sort((a, b) => (b.priority || 0) - (a.priority || 0));
-    return sortedTreatments[0]; // Return only the highest priority treatment
+    // Return array of treatments (one for each system)
+    return Object.values(treatmentsBySystem);
   };
 
   // Fetch anamnez data when modal opens
@@ -487,9 +627,9 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
               ) : (
                 <>
                   {(() => {
-                    const bestTreatment = getBestTreatment();
+                    const allTreatments = getTreatmentsForAllSystems();
 
-                    if (!bestTreatment) {
+                    if (!allTreatments || allTreatments.length === 0) {
                       return (
                         <div className="text-center py-8">
                           <div className="text-4xl mb-4">🔍</div>
@@ -548,174 +688,179 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                           </div>
                         </div>
 
-                        {/* Recommended Treatment */}
-                        <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-xl p-1">
-                          <div className="bg-white rounded-lg p-6 shadow-sm">
-                            <div className="flex items-center justify-between mb-4">
-                              <div className="flex items-center gap-3">
-                                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                                  <span className="text-green-700 text-xl">🩺</span>
-                                </div>
-                                <div>
-                                  <h5 className="text-xl font-bold text-gray-900 mb-1">
-                                    {(() => {
-                                      const hasHighToxicity = anamrezData?.toxicityAssessment?.hasToxicity || false;
-                                      const hasHighStress = (anamrezData?.symptomRatings?.stres || 0) >= 7;
-                                      return (hasHighToxicity || hasHighStress) ? 'MINOR OZON' : 'HACAMAT';
-                                    })()}
-                                  </h5>
-                                  <span className="text-sm text-blue-600 bg-blue-100 px-3 py-1 rounded-full font-medium">
-                                    Önerilen Tedavi - {bestTreatment.system}
-                                  </span>
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <div className="text-sm text-gray-600">Yaş Grubu: {bestTreatment.patientAgeGroup}</div>
-                                <div className="text-2xl font-bold text-green-600">
-                                  {bestTreatment.ageGroupData?.sessions}
-                                </div>
-                                <div className="text-sm text-gray-600 font-medium">{bestTreatment.ageGroupData?.frequency}</div>
-                              </div>
-                            </div>
-
-                            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-                              <p className="text-gray-800 text-sm leading-relaxed">
-                                {(() => {
-                                  const hasHighToxicity = anamrezData?.toxicityAssessment?.hasToxicity || false;
-                                  const hasHighStress = (anamrezData?.symptomRatings?.stres || 0) >= 7;
-
-                                  if (hasHighToxicity || hasHighStress) {
-                                    return 'ALTI HAFTA SÜREYLE HER HAFTA MİNOR OZON UYGULAMASI YAPILIR. 10/20 GAMA ARASI';
-                                  } else {
-                                    return 'RTM TEDAVİ TRİADININ TEMİZLENME (DETOKS) BASAMAĞINA DESTEK VERİR, 3 AY ARAYLA 1 YILDA 4 DEFA GENEL TARAMA HACAMATI ÖNERİLİR.';
-                                  }
-                                })()}
-                              </p>
-                            </div>
-
-                            {/* Complete Treatment Timeline */}
-                            <div className="mb-6">
-                              <h6 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                                <span className="text-blue-600">📋</span>
-                                Tedavi Protokolü - {bestTreatment.patientAgeGroup} Yaş Grubu
-                              </h6>
-
-                              <div className="space-y-3">
-                                {bestTreatment.ageGroupData?.treatmentSequence?.map((step, index) => (
-                                  <div key={index} className="flex items-center gap-4 p-3 bg-white border border-gray-200 rounded-lg shadow-sm">
-                                    <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold">
-                                      {step.order}
+                        {/* Treatments for each diagnosis system */}
+                        {allTreatments.map((bestTreatment, systemIndex) => (
+                          <div key={systemIndex} className="mb-6">
+                            <h4 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                              <span className="text-blue-600">🏥</span>
+                              Tedavi Protokolü - {bestTreatment.system}
+                            </h4>
+                            <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-xl p-1">
+                              <div className="bg-white rounded-lg p-6 shadow-sm">
+                                <div className="flex items-center justify-between mb-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                                      <span className="text-green-700 text-xl">🩺</span>
                                     </div>
-                                    <div className="flex-1">
-                                      <div className="flex items-center gap-3">
-                                        <span className="text-sm font-semibold text-gray-900">{step.phase}</span>
-                                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
-                                          {step.treatment}
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <div className="text-right">
-                                      <div className="text-sm font-bold text-green-600">{step.dosage}</div>
-                                      <div className="text-xs text-gray-500">
-                                        {bestTreatment.ageGroupData?.frequency}
-                                      </div>
+                                    <div>
+                                      <h5 className="text-xl font-bold text-gray-900 mb-1">
+                                        {(() => {
+                                          const hasHighToxicity = anamrezData?.toxicityAssessment?.hasToxicity || false;
+                                          const hasHighStress = (anamrezData?.symptomRatings?.stres || 0) >= 7;
+
+                                          if (bestTreatment.system === 'Dermatolojik Sistem') {
+                                            return (hasHighToxicity || hasHighStress) ? 'MINOR OZON' : 'HACAMAT';
+                                          } else if (bestTreatment.system === 'Gastrointestinal Sistem') {
+                                            return (hasHighToxicity || hasHighStress) ? 'DVZ-SDS-O' : 'DVZ-SIRO';
+                                          }
+                                          return bestTreatment.name;
+                                        })()}
+                                      </h5>
+                                      <span className="text-sm text-blue-600 bg-blue-100 px-3 py-1 rounded-full font-medium">
+                                        Önerilen Tedavi - {bestTreatment.system}
+                                      </span>
                                     </div>
                                   </div>
-                                ))}
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                              {(() => {
-                                const hasHighToxicity = anamrezData?.toxicityAssessment?.hasToxicity || false;
-                                const hasHighStress = (anamrezData?.symptomRatings?.stres || 0) >= 7;
-                                const isMinorOzon = hasHighToxicity || hasHighStress;
-
-                                return (
-                                  <>
-                                    {isMinorOzon && (
-                                      <div className="bg-gray-50 rounded-lg p-3">
-                                        <span className="text-sm font-medium text-gray-700 block">Ana Tedavi Süresi</span>
-                                        <span className="text-sm text-gray-900 font-semibold">6 hafta</span>
-                                      </div>
-                                    )}
-
-                                    {isMinorOzon && (
-                                      <div className="bg-gray-50 rounded-lg p-3">
-                                        <span className="text-sm font-medium text-gray-700 block">Ana Tedavi Dozu</span>
-                                        <span className="text-sm text-gray-900 font-semibold">10/20 GAMA ARASI</span>
-                                      </div>
-                                    )}
-
-                                    <div className="bg-gray-50 rounded-lg p-3">
-                                      <span className="text-sm font-medium text-gray-700 block">Kontrol</span>
-                                      <span className="text-sm text-gray-900 font-semibold">3 AYDA 1 KONTROL</span>
+                                  <div className="text-right">
+                                    <div className="text-sm text-gray-600">Yaş Grubu: {bestTreatment.patientAgeGroup}</div>
+                                    <div className="text-2xl font-bold text-green-600">
+                                      {bestTreatment.ageGroupData?.sessions}
                                     </div>
-                                  </>
-                                );
-                              })()}
-                            </div>
+                                    <div className="text-sm text-gray-600 font-medium">{bestTreatment.ageGroupData?.frequency}</div>
+                                  </div>
+                                </div>
 
+                                <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                                  <p className="text-gray-800 text-sm leading-relaxed">
+                                    {bestTreatment.description}
+                                  </p>
+                                </div>
 
-                            {/* Treatment Selection Criteria */}
-                            <div className="mb-4">
-                              <span className="text-sm font-medium text-gray-700 block mb-2">Tedavi Seçim Kriterleri:</span>
-                              <div className="flex flex-wrap gap-2">
-                                {/* High Toxicity Check */}
-                                {bestTreatment.toxicityRequirement && (
-                                  <span className={`text-xs px-2 py-1 rounded-full ${
-                                    anamrezData?.toxicityAssessment?.hasToxicity
-                                      ? 'bg-red-100 text-red-800'
-                                      : 'bg-gray-100 text-gray-600'
-                                  }`}>
-                                    Yüksek Toksisite: {anamrezData?.toxicityAssessment?.hasToxicity ? 'VAR ✓' : 'YOK'}
-                                  </span>
-                                )}
+                                {/* Complete Treatment Timeline */}
+                                <div className="mb-6">
+                                  <h6 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                    <span className="text-blue-600">📋</span>
+                                    Tedavi Protokolü - {bestTreatment.patientAgeGroup} Yaş Grubu
+                                  </h6>
 
-                                {/* Symptom Requirements */}
-                                {Object.keys(bestTreatment.symptomRequirements || {}).length > 0 &&
-                                  Object.entries(bestTreatment.symptomRequirements).map(([symptom, required]) => {
-                                    const patientRating = anamrezData?.symptomRatings?.[symptom] || 0;
-                                    const meetsRequirement = patientRating >= required;
+                                  <div className="space-y-3">
+                                    {bestTreatment.ageGroupData?.treatmentSequence?.map((step, index) => (
+                                      <div key={index} className="flex items-center gap-4 p-3 bg-white border border-gray-200 rounded-lg shadow-sm">
+                                        <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold">
+                                          {step.order}
+                                        </div>
+                                        <div className="flex-1">
+                                          <div className="flex items-center gap-3">
+                                            <span className="text-sm font-semibold text-gray-900">{step.phase}</span>
+                                            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                                              {step.treatment}
+                                            </span>
+                                          </div>
+                                        </div>
+                                        <div className="text-right">
+                                          <div className="text-sm font-bold text-green-600">{step.dosage}</div>
+                                          <div className="text-xs text-gray-500">
+                                            {bestTreatment.ageGroupData?.frequency}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                  {(() => {
+                                    const hasHighToxicity = anamrezData?.toxicityAssessment?.hasToxicity || false;
+                                    const hasHighStress = (anamrezData?.symptomRatings?.stres || 0) >= 7;
+                                    const isMinorOzon = (hasHighToxicity || hasHighStress) && bestTreatment.system === 'Dermatolojik Sistem';
 
                                     return (
-                                      <span key={symptom} className={`text-xs px-2 py-1 rounded-full ${
-                                        meetsRequirement
-                                          ? 'bg-green-100 text-green-800'
+                                      <>
+                                        {isMinorOzon && (
+                                          <div className="bg-gray-50 rounded-lg p-3">
+                                            <span className="text-sm font-medium text-gray-700 block">Ana Tedavi Süresi</span>
+                                            <span className="text-sm text-gray-900 font-semibold">6 hafta</span>
+                                          </div>
+                                        )}
+
+                                        {isMinorOzon && (
+                                          <div className="bg-gray-50 rounded-lg p-3">
+                                            <span className="text-sm font-medium text-gray-700 block">Ana Tedavi Dozu</span>
+                                            <span className="text-sm text-gray-900 font-semibold">10/20 GAMA ARASI</span>
+                                          </div>
+                                        )}
+
+                                        <div className="bg-gray-50 rounded-lg p-3">
+                                          <span className="text-sm font-medium text-gray-700 block">Kontrol</span>
+                                          <span className="text-sm text-gray-900 font-semibold">{bestTreatment.control || '3 AYDA 1 KONTROL'}</span>
+                                        </div>
+                                      </>
+                                    );
+                                  })()}
+                                </div>
+
+
+                                {/* Treatment Selection Criteria */}
+                                <div className="mb-4">
+                                  <span className="text-sm font-medium text-gray-700 block mb-2">Tedavi Seçim Kriterleri:</span>
+                                  <div className="flex flex-wrap gap-2">
+                                    {/* High Toxicity Check */}
+                                    {bestTreatment.toxicityRequirement && (
+                                      <span className={`text-xs px-2 py-1 rounded-full ${
+                                        anamrezData?.toxicityAssessment?.hasToxicity
+                                          ? 'bg-red-100 text-red-800'
                                           : 'bg-gray-100 text-gray-600'
                                       }`}>
-                                        {symptom === 'stres' ? 'Stres' : symptom}: {patientRating}/10
-                                        {meetsRequirement ? ` ✓ (≥${required})` : ` (≥${required} gerekli)`}
+                                        Yüksek Toksisite: {anamrezData?.toxicityAssessment?.hasToxicity ? 'VAR ✓' : 'YOK'}
                                       </span>
-                                    );
-                                  })
-                                }
+                                    )}
 
-                                {/* Show primary reason for selection */}
-                                {bestTreatment.toxicityRequirement && anamrezData?.toxicityAssessment?.hasToxicity && (
-                                  <span className="text-xs bg-red-50 text-red-700 px-2 py-1 rounded-full border border-red-200">
-                                    🚨 Yüksek Toksisite nedeniyle seçildi
-                                  </span>
-                                )}
-                              </div>
-                            </div>
+                                    {/* Symptom Requirements */}
+                                    {Object.keys(bestTreatment.symptomRequirements || {}).length > 0 &&
+                                      Object.entries(bestTreatment.symptomRequirements).map(([symptom, required]) => {
+                                        const patientRating = anamrezData?.symptomRatings?.[symptom] || 0;
+                                        const meetsRequirement = patientRating >= required;
 
-                            <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-                              <div className="text-sm text-gray-600">
-                                <span className="font-medium">Endikasyonlar:</span>
-                                <span className="ml-1">{bestTreatment.conditions.join(', ')}</span>
+                                        return (
+                                          <span key={symptom} className={`text-xs px-2 py-1 rounded-full ${
+                                            meetsRequirement
+                                              ? 'bg-green-100 text-green-800'
+                                              : 'bg-gray-100 text-gray-600'
+                                          }`}>
+                                            {symptom === 'stres' ? 'Stres' : symptom}: {patientRating}/10
+                                            {meetsRequirement ? ` ✓ (≥${required})` : ` (≥${required} gerekli)`}
+                                          </span>
+                                        );
+                                      })
+                                    }
+
+                                    {/* Show primary reason for selection */}
+                                    {bestTreatment.toxicityRequirement && anamrezData?.toxicityAssessment?.hasToxicity && (
+                                      <span className="text-xs bg-red-50 text-red-700 px-2 py-1 rounded-full border border-red-200">
+                                        🚨 Yüksek Toksisite nedeniyle seçildi
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                                  <div className="text-sm text-gray-600">
+                                    <span className="font-medium">Endikasyonlar:</span>
+                                    <span className="ml-1">{bestTreatment.conditions.join(', ')}</span>
+                                  </div>
+                                  <button
+                                    className="px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-lg transition-all font-medium shadow-md hover:shadow-lg"
+                                    onClick={() => {
+                                      console.log('Selected treatment:', bestTreatment.name);
+                                    }}
+                                  >
+                                    Bu Tedaviyi Seç
+                                  </button>
+                                </div>
                               </div>
-                              <button
-                                className="px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-lg transition-all font-medium shadow-md hover:shadow-lg"
-                                onClick={() => {
-                                  console.log('Selected treatment:', bestTreatment.name);
-                                }}
-                              >
-                                Bu Tedaviyi Seç
-                              </button>
                             </div>
                           </div>
-                        </div>
+                        ))}
                       </>
                     );
                   })()}
