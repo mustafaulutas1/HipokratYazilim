@@ -185,7 +185,7 @@ const Users: React.FC<UsersProps> = ({ doctorProfile }) => {
             onClick={() => setIsRoleManagementOpen(true)}
             className="px-6 py-3 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white font-semibold rounded-xl transition-all duration-200 shadow-lg"
           >
-            🏷️ Yeni Rol Ekle
+            🏷️ Rol Yönetimi
           </button>
           <button
             onClick={() => setIsAddModalOpen(true)}

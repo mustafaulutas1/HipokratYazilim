@@ -268,12 +268,15 @@ const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
                 >
                   🔧 Rolleri Güncelle
                 </button>
-                <button
-                  onClick={() => setShowAddForm(true)}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg transition-colors"
-                >
-                  ➕ Yeni Rol
-                </button>
+                {/* Temporarily hidden - can be re-enabled by removing the false condition */}
+                {false && (
+                  <button
+                    onClick={() => setShowAddForm(true)}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg transition-colors"
+                  >
+                    ➕ Yeni Rol
+                  </button>
+                )}
               </div>
             </div>
 

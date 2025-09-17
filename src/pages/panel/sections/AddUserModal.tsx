@@ -19,7 +19,6 @@ const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onUserAdde
     email: '',
     password: '',
     role: 'doctor',
-    specialization: '',
     phone: '',
     clinicId: doctorProfile?.clinicId || 'default-clinic'
   });
@@ -160,10 +159,6 @@ const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onUserAdde
       newErrors.phone = 'Telefon numarası gereklidir';
     }
 
-    if (formData.role === 'doctor' && !formData.specialization.trim()) {
-      newErrors.specialization = 'Doktor için uzmanlık alanı gereklidir';
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -186,7 +181,6 @@ const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onUserAdde
         email: '',
         password: '',
         role: 'doctor',
-        specialization: '',
         phone: '',
         clinicId: doctorProfile?.clinicId || 'default-clinic'
       });
@@ -323,27 +317,6 @@ const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onUserAdde
                 <p className="text-red-500 text-sm mt-1">{errors.role}</p>
               )}
             </div>
-
-            {formData.role === 'doctor' && (
-              <div>
-                <label className="block text-gray-700 text-sm font-medium mb-2">
-                  Uzmanlık Alanı *
-                </label>
-                <input
-                  type="text"
-                  name="specialization"
-                  value={formData.specialization}
-                  onChange={handleInputChange}
-                  className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
-                    errors.specialization ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  placeholder="Kardiyoloji, Nöroloji, vb."
-                />
-                {errors.specialization && (
-                  <p className="text-red-500 text-sm mt-1">{errors.specialization}</p>
-                )}
-              </div>
-            )}
           </div>
 
           {/* Action Buttons */}
