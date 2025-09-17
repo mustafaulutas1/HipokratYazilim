@@ -43,7 +43,7 @@ export const DEFAULT_ROLES: Omit<Role, 'id' | 'createdAt' | 'updatedAt'>[] = [
     name: 'doctor',
     displayName: 'Doktor',
     description: 'Tıbbi muayene, teşhis ve tedavi protokolleri',
-    permissions: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'settings', 'assistant-panel'],
+    permissions: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'settings', 'assistant-panel', 'doctor-panel'],
     isDefault: true
   },
   {

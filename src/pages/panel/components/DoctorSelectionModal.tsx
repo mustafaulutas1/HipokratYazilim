@@ -10,6 +10,8 @@ interface Doctor {
   department: string;
   hospital: string;
   isAvailable?: boolean;
+  hasActivePatient?: boolean;
+  activePatientName?: string;
 }
 
 interface Patient {
@@ -136,8 +138,38 @@ const DoctorSelectionModal: React.FC<DoctorSelectionModalProps> = ({
         return a.fullName.localeCompare(b.fullName);
       });
 
-      setDoctors(uniqueDoctors);
-      return uniqueDoctors;
+      // Check availability for each doctor
+      const doctorsWithAvailability = await Promise.all(
+        uniqueDoctors.map(async (doctor) => {
+          try {
+            const activePatientQuery = query(
+              collection(db, 'patients'),
+              where('assignedDoctorId', '==', doctor.id),
+              where('status', 'in', ['assigned_to_doctor', 'in_treatment'])
+            );
+            
+            const activePatientSnapshot = await getDocs(activePatientQuery);
+            const hasActivePatient = activePatientSnapshot.docs.length > 0;
+            const activePatientName = hasActivePatient ? 
+              activePatientSnapshot.docs[0].data().fullName : undefined;
+            
+            return {
+              ...doctor,
+              hasActivePatient,
+              activePatientName
+            };
+          } catch (error) {
+            console.error(`Error checking availability for doctor ${doctor.id}:`, error);
+            return {
+              ...doctor,
+              hasActivePatient: false
+            };
+          }
+        })
+      );
+
+      setDoctors(doctorsWithAvailability);
+      return doctorsWithAvailability;
     } catch (error) {
       console.error('Error fetching doctors:', error);
       return [];
@@ -203,6 +235,21 @@ const DoctorSelectionModal: React.FC<DoctorSelectionModalProps> = ({
 
     try {
       setAssigning(true);
+
+      // Check if the doctor already has an active patient
+      const activePatientQuery = query(
+        collection(db, 'patients'),
+        where('assignedDoctorId', '==', selectedDoctor.id),
+        where('status', 'in', ['assigned_to_doctor', 'in_treatment'])
+      );
+      
+      const activePatientSnapshot = await getDocs(activePatientQuery);
+      
+      if (activePatientSnapshot.docs.length > 0) {
+        alert(`Dr. ${selectedDoctor.fullName} şu anda aktif bir hastası var. Lütfen başka bir doktor seçin.`);
+        setAssigning(false);
+        return;
+      }
 
       // Update patient record with assigned doctor
       const patientRef = doc(db, 'patients', patient.id);
@@ -330,18 +377,26 @@ const DoctorSelectionModal: React.FC<DoctorSelectionModalProps> = ({
                   className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
                     selectedDoctor?.id === doctor.id
                       ? 'border-blue-500 bg-blue-50'
+                      : doctor.hasActivePatient
+                      ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
                       : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
                   }`}
-                  onClick={() => setSelectedDoctor(doctor)}
+                  onClick={() => !doctor.hasActivePatient && setSelectedDoctor(doctor)}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-500 rounded-full flex items-center justify-center">
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                      doctor.hasActivePatient 
+                        ? 'bg-gradient-to-br from-gray-400 to-gray-500'
+                        : 'bg-gradient-to-br from-green-500 to-emerald-500'
+                    }`}>
                       <span className="text-white text-lg">👨‍⚕️</span>
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <h4 className="font-semibold text-gray-800">Dr. {doctor.fullName}</h4>
-                        {isPreferredDoctor(doctor) && (
+                        <h4 className={`font-semibold ${doctor.hasActivePatient ? 'text-gray-500' : 'text-gray-800'}`}>
+                          Dr. {doctor.fullName}
+                        </h4>
+                        {isPreferredDoctor(doctor) && !doctor.hasActivePatient && (
                           <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-300">
                             Tercih edilen doktor
                           </span>
@@ -350,13 +405,28 @@ const DoctorSelectionModal: React.FC<DoctorSelectionModalProps> = ({
                           <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
                         )}
                       </div>
-                      <p className="text-sm text-gray-600">{doctor.specialization}</p>
-                      <p className="text-xs text-gray-500">{doctor.department} • {doctor.hospital}</p>
+                      <p className={`text-sm ${doctor.hasActivePatient ? 'text-gray-400' : 'text-gray-600'}`}>
+                        {doctor.specialization}
+                      </p>
+                      <p className={`text-xs ${doctor.hasActivePatient ? 'text-gray-400' : 'text-gray-500'}`}>
+                        {doctor.department} • {doctor.hospital}
+                      </p>
+                      {doctor.hasActivePatient && doctor.activePatientName && (
+                        <p className="text-xs text-red-600 mt-1">
+                          Aktif hasta: {doctor.activePatientName}
+                        </p>
+                      )}
                     </div>
                     <div className="text-right">
-                      <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
-                        Müsait
-                      </span>
+                      {doctor.hasActivePatient ? (
+                        <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded-full">
+                          Meşgul
+                        </span>
+                      ) : (
+                        <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                          Müsait
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -394,8 +464,12 @@ const DoctorSelectionModal: React.FC<DoctorSelectionModalProps> = ({
               </button>
               <button
                 onClick={handleAssignPatient}
-                disabled={!selectedDoctor || assigning}
-                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg transition-colors flex items-center gap-2"
+                disabled={!selectedDoctor || assigning || selectedDoctor?.hasActivePatient}
+                className={`px-6 py-2 text-white rounded-lg transition-colors flex items-center gap-2 ${
+                  !selectedDoctor || assigning || selectedDoctor?.hasActivePatient
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
               >
                 {assigning ? (
                   <>

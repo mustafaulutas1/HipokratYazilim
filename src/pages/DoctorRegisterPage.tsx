@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import PhoneInput from "../components/UI/PhoneInput";
 import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { db } from "../firebase/config";
@@ -92,16 +93,15 @@ export default function DoctorRegisterPage() {
       value = value.split(' ').map(word =>
         word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
       ).join(' ');
-    } else if (name === 'phone') {
-      const cleaned = value.replace(/\D/g, '');
-      if (cleaned.length === 11 && cleaned.startsWith('0')) {
-        value = cleaned.replace(/(\d{4})(\d{3})(\d{2})(\d{2})/, '$1 $2 $3 $4');
-      }
     } else if (name === 'tcNo') {
       value = value.replace(/\D/g, '').slice(0, 11);
     } else if (name === 'licenseNumber') {
       value = value.replace(/\D/g, '').slice(0, 10);
     }
+  const handlePhoneChange = (fieldName: string, e164Value: string) => {
+    if (!profile) return;
+    setProfile({ ...profile, [fieldName]: e164Value });
+  };
 
     setProfile({ ...profile, [name]: value });
   };
@@ -340,13 +340,12 @@ export default function DoctorRegisterPage() {
                 </div>
                 <div>
                   <label className="block text-gray-700 font-semibold mb-2 text-sm font-inter">Telefon *</label>
-                  <input
+                  <PhoneInput
                     name="phone"
                     value={profile.phone || ''}
-                    onChange={handleChange}
-                    className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-cyan-400 focus:outline-none text-base bg-white/90 backdrop-blur-sm transition-all duration-200 font-inter hover:shadow-md"
-                    required
-                    placeholder="05XX XXX XX XX"
+                    onChange={handlePhoneChange}
+                    defaultCountryCode="TR"
+                    placeholder="5XX XXX XX XX"
                   />
                 </div>
               </div>

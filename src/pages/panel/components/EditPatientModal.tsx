@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import PhoneInput from '../../../components/UI/PhoneInput';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 
@@ -89,6 +90,19 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
     }
   };
 
+  const handlePhoneChange = (fieldName: string, e164Value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      [fieldName]: e164Value
+    }));
+    if (errors[fieldName]) {
+      setErrors(prev => ({
+        ...prev,
+        [fieldName]: ''
+      }));
+    }
+  };
+
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
@@ -104,6 +118,8 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
 
     if (!formData.phone.trim()) {
       newErrors.phone = 'Telefon numarası gereklidir';
+    } else if (!/^\+\d{6,15}$/.test(formData.phone.replace(/\s/g, ''))) {
+      newErrors.phone = 'Telefon numarası + ile başlamalı ve 6-15 haneli olmalıdır (E.164)';
     }
 
     if (!formData.email.trim()) {
@@ -230,15 +246,13 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
               <label className="block text-gray-700 text-sm font-medium mb-2">
                 Telefon *
               </label>
-              <input
-                type="tel"
+              <PhoneInput
                 name="phone"
                 value={formData.phone}
-                onChange={handleInputChange}
-                className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                  errors.phone ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="+90 5XX XXX XX XX"
+                onChange={handlePhoneChange}
+                defaultCountryCode="TR"
+                hasError={!!errors.phone}
+                placeholder="5XX XXX XX XX"
               />
               {errors.phone && (
                 <p className="text-red-500 text-sm mt-1">{errors.phone}</p>
@@ -307,13 +321,12 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
               <label className="block text-gray-700 text-sm font-medium mb-2">
                 Acil Telefon
               </label>
-              <input
-                type="tel"
+              <PhoneInput
                 name="emergencyPhone"
                 value={formData.emergencyPhone}
-                onChange={handleInputChange}
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="+90 5XX XXX XX XX"
+                onChange={handlePhoneChange}
+                defaultCountryCode="TR"
+                placeholder="5XX XXX XX XX"
               />
             </div>
 

@@ -77,12 +77,18 @@ export const AVAILABLE_PERMISSIONS: Permission[] = [
     name: 'Asistan Ekranı',
     description: 'Asistan özel işlemleri ve yönetimi',
     icon: '👨‍⚕️'
+  },
+  {
+    id: 'doctor-panel',
+    name: 'Doktor Ekranı',
+    description: 'Doktor özel işlemleri ve hasta yönetimi',
+    icon: '🩺'
   }
 ];
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
-  admin: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'prescriptions', 'reports', 'assistant-panel'],
-  doctor: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'settings', 'assistant-panel'],
+  admin: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'prescriptions', 'reports', 'assistant-panel', 'doctor-panel'],
+  doctor: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'settings', 'assistant-panel', 'doctor-panel'],
   nurse: ['dashboard', 'patients', 'appointments', 'anamnez'],
   assistant: ['dashboard', 'patients', 'appointments', 'assistant-panel'],
   desk: ['dashboard', 'patients', 'appointments'],

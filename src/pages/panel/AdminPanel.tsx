@@ -11,10 +11,11 @@ import Settings from './sections/Settings';
 import TreatmentProtocols from './sections/TreatmentProtocols';
 import Users from './sections/Users';
 import Anamnez from './sections/Anamnez';
+import AssistantPanel from './sections/AssistantPanel';
 import DoctorPanel from './sections/DoctorPanel';
 import { getUserPermissions } from '../../constants/permissions';
 
-type PanelSection = 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel';
+type PanelSection = 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel' | 'doctor-panel';
 
 interface DoctorProfile {
   fullName: string;
@@ -131,6 +132,8 @@ export default function AdminPanel() {
       case 'users':
         return <Users doctorProfile={doctorProfile} />;
       case 'assistant-panel':
+        return <AssistantPanel doctorProfile={doctorProfile} />;
+      case 'doctor-panel':
         return <DoctorPanel doctorProfile={doctorProfile} />;
       default:
         return <Dashboard doctorProfile={doctorProfile} />;
@@ -191,6 +194,7 @@ export default function AdminPanel() {
                     {currentSection === 'prescriptions' && 'Reçeteler'}
                     {currentSection === 'reports' && 'Raporlar'}
                     {currentSection === 'assistant-panel' && 'Asistan Ekranı'}
+                    {currentSection === 'doctor-panel' && 'Doktor Ekranı'}
                   </h1>
                   <p className="text-white/70 text-sm">
                     {doctorProfile?.specialization} • {doctorProfile?.hospital}
