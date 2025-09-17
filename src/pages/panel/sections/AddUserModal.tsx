@@ -3,6 +3,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import type { Role } from '../../../types/Role';
+import PhoneInput from '../../../components/UI/PhoneInput';
 
 interface AddUserModalProps {
   isOpen: boolean;
@@ -158,6 +159,8 @@ const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onUserAdde
 
     if (!formData.phone.trim()) {
       newErrors.phone = 'Telefon numarası gereklidir';
+    } else if (!/^\+\d{6,15}$/.test(formData.phone.replace(/\s/g, ''))) {
+      newErrors.phone = 'Telefon numarası + ile başlamalı ve 6-15 haneli olmalıdır (E.164)';
     }
 
     if (formData.role === 'doctor' && !formData.specialization.trim()) {
@@ -177,8 +180,25 @@ const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onUserAdde
 
     setLoading(true);
     try {
+      // Uniqueness check via auth helper already exists in registerClinicUser,
+      // but we also guard against duplicates in Firestore collections for safety
+      const emailToCheck = formData.email.trim().toLowerCase();
+      const { collection, getDocs, query, where } = await import('firebase/firestore');
+      const { db } = await import('../../../firebase/config');
+      const [patientsSnap, clinicUsersSnap, doctorsSnap] = await Promise.all([
+        getDocs(query(collection(db, 'patients'), where('email', '==', emailToCheck))),
+        getDocs(query(collection(db, 'clinicUsers'), where('email', '==', emailToCheck))),
+        getDocs(query(collection(db, 'doctors'), where('email', '==', emailToCheck)))
+      ]);
+
+      if (!patientsSnap.empty || !clinicUsersSnap.empty || !doctorsSnap.empty) {
+        setErrors((prev) => ({ ...prev, email: 'Bu email ile kayıt zaten mevcut' }));
+        setLoading(false);
+        return;
+      }
+
       // Create Firebase Auth user and Firestore document
-      await registerClinicUser(formData);
+      await registerClinicUser({ ...formData, email: emailToCheck });
       
       // Reset form
       setFormData({
@@ -202,6 +222,19 @@ const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onUserAdde
       alert(errorMessage);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePhoneChange = (fieldName: string, e164Value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      [fieldName]: e164Value
+    }));
+    if (errors[fieldName]) {
+      setErrors(prev => ({
+        ...prev,
+        [fieldName]: ''
+      }));
     }
   };
 
@@ -286,15 +319,13 @@ const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onUserAdde
               <label className="block text-gray-700 text-sm font-medium mb-2">
                 Telefon *
               </label>
-              <input
-                type="tel"
+              <PhoneInput
                 name="phone"
                 value={formData.phone}
-                onChange={handleInputChange}
-                className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
-                  errors.phone ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="+90 5XX XXX XX XX"
+                onChange={handlePhoneChange}
+                defaultCountryCode="TR"
+                hasError={!!errors.phone}
+                placeholder="5XX XXX XX XX"
               />
               {errors.phone && (
                 <p className="text-red-500 text-sm mt-1">{errors.phone}</p>

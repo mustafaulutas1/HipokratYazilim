@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import PhoneInput from '../../../components/UI/PhoneInput';
+import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 
 interface AddPatientModalProps {
@@ -58,6 +59,19 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
     }
   };
 
+  const handlePhoneChange = (fieldName: string, e164Value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      [fieldName]: e164Value,
+    }));
+    if (errors[fieldName]) {
+      setErrors((prev) => ({
+        ...prev,
+        [fieldName]: '',
+      }));
+    }
+  };
+
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
@@ -73,6 +87,8 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
 
     if (!formData.phone.trim()) {
       newErrors.phone = 'Telefon numarası gereklidir';
+    } else if (!/^\+\d{6,15}$/.test(formData.phone.replace(/\s/g, ''))) {
+      newErrors.phone = 'Telefon numarası + ile başlamalı ve 6-15 haneli olmalıdır (E.164)';
     }
 
     if (!formData.email.trim()) {
@@ -118,8 +134,23 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
 
     setLoading(true);
     try {
+      // Email uniqueness check across patients, clinicUsers and doctors
+      const emailToCheck = formData.email.trim().toLowerCase();
+      const [patientsSnap, clinicUsersSnap, doctorsSnap] = await Promise.all([
+        getDocs(query(collection(db, 'patients'), where('email', '==', emailToCheck))),
+        getDocs(query(collection(db, 'clinicUsers'), where('email', '==', emailToCheck))),
+        getDocs(query(collection(db, 'doctors'), where('email', '==', emailToCheck)))
+      ]);
+
+      if (!patientsSnap.empty || !clinicUsersSnap.empty || !doctorsSnap.empty) {
+        setErrors((prev) => ({ ...prev, email: 'Bu email ile kayıt zaten mevcut' }));
+        setLoading(false);
+        return;
+      }
+
       const patientData = {
         ...formData,
+        email: emailToCheck,
         clinicId: doctorProfile?.clinicId || 'default-clinic',
         isAnamnezCompleted: false,
         createdAt: new Date().toISOString(),
@@ -223,15 +254,13 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
               <label className="block text-gray-700 text-sm font-medium mb-2">
                 Telefon *
               </label>
-              <input
-                type="tel"
+              <PhoneInput
                 name="phone"
                 value={formData.phone}
-                onChange={handleInputChange}
-                className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
-                  errors.phone ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="+90 5XX XXX XX XX"
+                onChange={handlePhoneChange}
+                defaultCountryCode="TR"
+                hasError={!!errors.phone}
+                placeholder="5XX XXX XX XX"
               />
               {errors.phone && (
                 <p className="text-red-500 text-sm mt-1">{errors.phone}</p>
@@ -308,13 +337,12 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
               <label className="block text-gray-700 text-sm font-medium mb-2">
                 Acil Telefon
               </label>
-              <input
-                type="tel"
+              <PhoneInput
                 name="emergencyPhone"
                 value={formData.emergencyPhone}
-                onChange={handleInputChange}
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                placeholder="+90 5XX XXX XX XX"
+                onChange={handlePhoneChange}
+                defaultCountryCode="TR"
+                placeholder="5XX XXX XX XX"
               />
             </div>
 
