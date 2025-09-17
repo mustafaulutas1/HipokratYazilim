@@ -4,6 +4,7 @@ import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import type { Role } from '../../../types/Role';
 import PhoneInput from '../../../components/UI/PhoneInput';
+import { toast } from 'react-toastify';
 
 interface AddUserModalProps {
   isOpen: boolean;
@@ -170,6 +171,7 @@ const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onUserAdde
     e.preventDefault();
     
     if (!validateForm()) {
+      toast.error('Lütfen eksik alanları doldurun.');
       return;
     }
 
@@ -188,6 +190,7 @@ const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onUserAdde
 
       if (!patientsSnap.empty || !clinicUsersSnap.empty || !doctorsSnap.empty) {
         setErrors((prev) => ({ ...prev, email: 'Bu email ile kayıt zaten mevcut' }));
+        toast.error('Bu email ile kayıt zaten mevcut');
         setLoading(false);
         return;
       }
@@ -213,7 +216,7 @@ const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onUserAdde
     } catch (error: any) {
       console.error('Error adding user:', error);
       const errorMessage = error?.message || 'Kullanıcı eklenirken bir hata oluştu. Lütfen tekrar deneyin.';
-      alert(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
