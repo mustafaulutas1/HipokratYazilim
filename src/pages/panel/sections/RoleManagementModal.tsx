@@ -4,7 +4,6 @@ import { db } from '../../../firebase/config';
 import { AVAILABLE_PERMISSIONS } from '../../../constants/permissions';
 import { DEFAULT_ROLES } from '../../../types/Role';
 import type { Role } from '../../../types/Role';
-import { updateRolesWithAssistantPanel } from '../../../services/updateRoles';
 
 interface RoleManagementModalProps {
   isOpen: boolean;
@@ -214,22 +213,6 @@ const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
     setShowAddForm(false);
   };
 
-  // Handle updating roles with assistant-panel permission
-  const handleUpdateRoles = async () => {
-    try {
-      setLoading(true);
-      console.log('🔄 Starting role update...');
-      await updateRolesWithAssistantPanel();
-      alert('Roller başarıyla güncellendi! Sayfa yenilenecek.');
-      fetchRoles(); // Refresh the roles list
-      window.location.reload(); // Reload to get updated permissions
-    } catch (error) {
-      console.error('❌ Role update error:', error);
-      alert('Rolleri güncellerken hata oluştu.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   if (!isOpen) return null;
 
@@ -260,14 +243,6 @@ const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
             <div className="flex items-center justify-between mb-4 flex-shrink-0">
               <h3 className="text-lg font-semibold text-gray-800">Mevcut Roller</h3>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={handleUpdateRoles}
-                  disabled={loading}
-                  className="px-3 py-2 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white text-sm rounded-lg transition-colors flex items-center gap-1"
-                  title="ZORUNLU: Rolleri güncelle ve Asistan Ekranı'nı etkinleştir - Asistan ekranı gözükmüyorsa bu butona tıklayın"
-                >
-                  🔧 Rolleri Güncelle
-                </button>
                 {/* Temporarily hidden - can be re-enabled by removing the false condition */}
                 {false && (
                   <button
