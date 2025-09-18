@@ -136,20 +136,8 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
 
     setLoading(true);
     try {
-      // Email uniqueness check across patients, clinicUsers and doctors
+      // Email format normalization
       const emailToCheck = formData.email.trim().toLowerCase();
-      const [patientsSnap, clinicUsersSnap, doctorsSnap] = await Promise.all([
-        getDocs(query(collection(db, 'patients'), where('email', '==', emailToCheck))),
-        getDocs(query(collection(db, 'clinicUsers'), where('email', '==', emailToCheck))),
-        getDocs(query(collection(db, 'doctors'), where('email', '==', emailToCheck)))
-      ]);
-
-      if (!patientsSnap.empty || !clinicUsersSnap.empty || !doctorsSnap.empty) {
-        setErrors((prev) => ({ ...prev, email: 'Bu email ile kayıt zaten mevcut' }));
-        toast.error('Bu email ile kayıt zaten mevcut');
-        setLoading(false);
-        return;
-      }
 
       // TC No uniqueness check in patients
       const tcSnap = await getDocs(query(collection(db, 'patients'), where('tcNo', '==', formData.tcNo)));

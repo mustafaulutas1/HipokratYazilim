@@ -121,7 +121,7 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
       console.log('👥 DoctorPanel: Processed patients:', patients);
 
       // Show all active patients assigned to any doctor
-      const displayPatients = patients.filter(p => 
+      const displayPatients = patients.filter(p =>
         p.status === 'assigned_to_doctor' || p.status === 'in_treatment'
       );
       setAssignedPatients(displayPatients);
@@ -246,12 +246,12 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
     try {
       const patientRef = doc(db, 'patients', patient.id);
       await updateDoc(patientRef, {
-        status: 'in_treatment',
+        status: 'treatment_decided',
         treatmentStartedAt: new Date().toISOString(),
         treatmentOptions: treatmentOptions,
         updatedAt: new Date().toISOString()
       });
-      console.log(`✅ Treatment started for patient: ${patient.fullName}`);
+      console.log(`✅ Treatment decided for patient: ${patient.fullName}`);
     } catch (error) {
       console.error('❌ Error starting treatment:', error);
       alert('Tedaviye başlarken bir hata oluştu. Lütfen tekrar deneyin.');
@@ -305,6 +305,12 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
         return (
           <span className="px-2 py-1 bg-yellow-500/20 border border-yellow-500/30 text-yellow-300 text-xs rounded-full">
             🔄 Atandı
+          </span>
+        );
+      case 'treatment_decided':
+        return (
+          <span className="px-2 py-1 bg-purple-500/20 border border-purple-500/30 text-purple-300 text-xs rounded-full">
+            📋 Tedavi Belirlendi
           </span>
         );
       case 'in_treatment':

@@ -55,6 +55,10 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
     pendingReports: 0
   });
   const [waitingPatients, setWaitingPatients] = useState<WaitingPatient[]>([]);
+  const [accountingPatients, setAccountingPatients] = useState<WaitingPatient[]>([]);
+  const [treatmentCompletedPatients, setTreatmentCompletedPatients] = useState<WaitingPatient[]>([]);
+  const [emergencyPatients, setEmergencyPatients] = useState<WaitingPatient[]>([]);
+  const [todayAppointmentPatients, setTodayAppointmentPatients] = useState<WaitingPatient[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPatient, setSelectedPatient] = useState<WaitingPatient | null>(null);
   const [isAnamrezViewModalOpen, setIsAnamrezViewModalOpen] = useState(false);
@@ -62,6 +66,7 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
   const [isDoctorSelectionModalOpen, setIsDoctorSelectionModalOpen] = useState(false);
   const [patientToAssign, setPatientToAssign] = useState<WaitingPatient | null>(null);
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
+  const [activeListType, setActiveListType] = useState<'anamnez_completed' | 'waiting_accounting' | 'treatment_completed' | 'emergency' | 'today_appointments'>('anamnez_completed');
 
   useEffect(() => {
     const fetchDoctorData = async () => {
@@ -164,6 +169,80 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
           setWaitingPatients(completedPatients);
         }
 
+        // Fetch patients waiting for accounting (treatment decided but not paid)
+        const accountingPatientsFiltered = allClinicPatients.filter(patient =>
+          patient.status === 'treatment_decided' &&
+          patient.assignedDoctorId
+        ).sort((a, b) => {
+          const dateA = new Date(a.createdAt || 0).getTime();
+          const dateB = new Date(b.createdAt || 0).getTime();
+          return dateB - dateA;
+        });
+        setAccountingPatients(accountingPatientsFiltered);
+
+        // Fetch fully completed treatments (paid and discharged)
+        const treatmentCompletedFiltered = allClinicPatients.filter(patient =>
+          patient.status === 'discharged' ||
+          (patient.status === 'treatment_completed' && patient.paymentCompleted)
+        ).sort((a, b) => {
+          const dateA = new Date(a.createdAt || 0).getTime();
+          const dateB = new Date(b.createdAt || 0).getTime();
+          return dateB - dateA;
+        }).slice(0, 20);
+        setTreatmentCompletedPatients(treatmentCompletedFiltered);
+
+        // Fetch emergency patients (marked as emergency or urgent)
+        const emergencyPatientsFiltered = allClinicPatients.filter(patient =>
+          patient.priority === 'emergency' ||
+          patient.priority === 'urgent' ||
+          patient.visitReason?.toLowerCase().includes('acil') ||
+          patient.visitReason?.toLowerCase().includes('emergency')
+        ).sort((a, b) => {
+          const dateA = new Date(a.createdAt || 0).getTime();
+          const dateB = new Date(b.createdAt || 0).getTime();
+          return dateB - dateA;
+        });
+        setEmergencyPatients(emergencyPatientsFiltered);
+
+        // Fetch today's appointment patients
+        const todayDate = new Date();
+        const todayDateString = todayDate.toISOString().split('T')[0];
+
+        try {
+          const appointmentsQuery = query(
+            collection(db, 'appointments'),
+            where('clinicId', '==', doctorProfile.clinicId)
+          );
+          const appointmentsSnapshot = await getDocs(appointmentsQuery);
+
+          const todayAppointmentsList = appointmentsSnapshot.docs.filter(doc => {
+            const data = doc.data();
+            const appointmentDate = data.date || data.appointmentDate || data.scheduledDate;
+            if (!appointmentDate) return false;
+
+            const dateStr = typeof appointmentDate === 'string' ?
+              appointmentDate.split('T')[0] :
+              new Date(appointmentDate).toISOString().split('T')[0];
+
+            return dateStr === todayDateString;
+          }).map(doc => {
+            const appointmentData = doc.data();
+            const patientId = appointmentData.patientId;
+            const patient = allClinicPatients.find(p => p.id === patientId);
+
+            return patient ? {
+              ...patient,
+              appointmentTime: appointmentData.time || appointmentData.appointmentTime,
+              appointmentType: appointmentData.type || 'Genel Muayene'
+            } : null;
+          }).filter(patient => patient !== null) as WaitingPatient[];
+
+          setTodayAppointmentPatients(todayAppointmentsList);
+        } catch (error) {
+          console.warn('⚠️ Could not fetch today\'s appointment patients:', error);
+          setTodayAppointmentPatients([]);
+        }
+
         // Get the final waiting patients count for stats
         const finalWaitingPatientsCount = completedPatients.length;
 
@@ -176,9 +255,9 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
         const totalPatients = allPatientsSnapshot.size;
 
         // Fetch today's appointments
-        const today = new Date();
-        const todayDateString = today.toISOString().split('T')[0]; // YYYY-MM-DD format
-        console.log('📅 AssistantPanel: Looking for appointments on date:', todayDateString);
+        const todayForStats = new Date();
+        const todayDateStringForStats = todayForStats.toISOString().split('T')[0]; // YYYY-MM-DD format
+        console.log('📅 AssistantPanel: Looking for appointments on date:', todayDateStringForStats);
         
         let todayAppointments = 0;
         try {
@@ -196,11 +275,11 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
             if (!appointmentDate) return false;
             
             // Handle different date formats
-            const dateStr = typeof appointmentDate === 'string' ? 
-              appointmentDate.split('T')[0] : 
+            const dateStr = typeof appointmentDate === 'string' ?
+              appointmentDate.split('T')[0] :
               new Date(appointmentDate).toISOString().split('T')[0];
-            
-            return dateStr === todayDateString;
+
+            return dateStr === todayDateStringForStats;
           });
           
           todayAppointments = todayAppointmentsList.length;
@@ -375,6 +454,80 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
         setWaitingPatients(completedPatients);
       }
 
+      // Fetch patients waiting for accounting (treatment decided but not paid)
+      const accountingPatientsFiltered = allClinicPatients.filter(patient =>
+        patient.status === 'treatment_decided' &&
+        patient.assignedDoctorId
+      ).sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0).getTime();
+        const dateB = new Date(b.createdAt || 0).getTime();
+        return dateB - dateA;
+      });
+      setAccountingPatients(accountingPatientsFiltered);
+
+      // Fetch fully completed treatments (paid and discharged)
+      const treatmentCompletedFiltered = allClinicPatients.filter(patient =>
+        patient.status === 'discharged' ||
+        (patient.status === 'treatment_completed' && patient.paymentCompleted)
+      ).sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0).getTime();
+        const dateB = new Date(b.createdAt || 0).getTime();
+        return dateB - dateA;
+      }).slice(0, 20);
+      setTreatmentCompletedPatients(treatmentCompletedFiltered);
+
+      // Fetch emergency patients (marked as emergency or urgent)
+      const emergencyPatientsFiltered = allClinicPatients.filter(patient =>
+        patient.priority === 'emergency' ||
+        patient.priority === 'urgent' ||
+        patient.visitReason?.toLowerCase().includes('acil') ||
+        patient.visitReason?.toLowerCase().includes('emergency')
+      ).sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0).getTime();
+        const dateB = new Date(b.createdAt || 0).getTime();
+        return dateB - dateA;
+      });
+      setEmergencyPatients(emergencyPatientsFiltered);
+
+      // Fetch today's appointment patients
+      const today = new Date();
+      const todayDateString = today.toISOString().split('T')[0];
+
+      try {
+        const appointmentsQuery = query(
+          collection(db, 'appointments'),
+          where('clinicId', '==', doctorProfile.clinicId)
+        );
+        const appointmentsSnapshot = await getDocs(appointmentsQuery);
+
+        const todayAppointmentsList = appointmentsSnapshot.docs.filter(doc => {
+          const data = doc.data();
+          const appointmentDate = data.date || data.appointmentDate || data.scheduledDate;
+          if (!appointmentDate) return false;
+
+          const dateStr = typeof appointmentDate === 'string' ?
+            appointmentDate.split('T')[0] :
+            new Date(appointmentDate).toISOString().split('T')[0];
+
+          return dateStr === todayDateString;
+        }).map(doc => {
+          const appointmentData = doc.data();
+          const patientId = appointmentData.patientId;
+          const patient = allClinicPatients.find(p => p.id === patientId);
+
+          return patient ? {
+            ...patient,
+            appointmentTime: appointmentData.time || appointmentData.appointmentTime,
+            appointmentType: appointmentData.type || 'Genel Muayene'
+          } : null;
+        }).filter(patient => patient !== null) as WaitingPatient[];
+
+        setTodayAppointmentPatients(todayAppointmentsList);
+      } catch (error) {
+        console.warn('⚠️ Could not fetch today\'s appointment patients:', error);
+        setTodayAppointmentPatients([]);
+      }
+
       // Get the final waiting patients count for stats
       const finalWaitingPatientsCount = completedPatients.length;
 
@@ -387,9 +540,9 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
       const totalPatients = allPatientsSnapshot.size;
 
       // Fetch today's appointments
-      const today = new Date();
-      const todayDateString = today.toISOString().split('T')[0]; // YYYY-MM-DD format
-      console.log('📅 AssistantPanel: Looking for appointments on date:', todayDateString);
+      const todayForDuplicateStats = new Date();
+      const todayDateStringForDuplicateStats = todayForDuplicateStats.toISOString().split('T')[0]; // YYYY-MM-DD format
+      console.log('📅 AssistantPanel: Looking for appointments on date:', todayDateStringForDuplicateStats);
       
       let todayAppointments = 0;
       try {
@@ -407,11 +560,11 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
           if (!appointmentDate) return false;
           
           // Handle different date formats
-          const dateStr = typeof appointmentDate === 'string' ? 
-            appointmentDate.split('T')[0] : 
+          const dateStr = typeof appointmentDate === 'string' ?
+            appointmentDate.split('T')[0] :
             new Date(appointmentDate).toISOString().split('T')[0];
-          
-          return dateStr === todayDateString;
+
+          return dateStr === todayDateStringForDuplicateStats;
         });
         
         todayAppointments = todayAppointmentsList.length;
@@ -453,6 +606,57 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
       console.error('❌ AssistantPanel: Error fetching doctor data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const getCurrentPatientList = () => {
+    switch (activeListType) {
+      case 'anamnez_completed':
+        return waitingPatients;
+      case 'waiting_accounting':
+        return accountingPatients;
+      case 'treatment_completed':
+        return treatmentCompletedPatients;
+      case 'emergency':
+        return emergencyPatients;
+      case 'today_appointments':
+        return todayAppointmentPatients;
+      default:
+        return waitingPatients;
+    }
+  };
+
+  const getCurrentListTitle = () => {
+    switch (activeListType) {
+      case 'anamnez_completed':
+        return 'Doktora Gönderilecek Hastalar';
+      case 'waiting_accounting':
+        return 'Muhasebede Bekleyen Hastalar';
+      case 'treatment_completed':
+        return 'Tedavi Tamamlanan Hastalar';
+      case 'emergency':
+        return 'Acil Durum Hastaları';
+      case 'today_appointments':
+        return 'Bugünkü Randevulu Hastalar';
+      default:
+        return 'Hasta Listesi';
+    }
+  };
+
+  const getCurrentListIcon = () => {
+    switch (activeListType) {
+      case 'anamnez_completed':
+        return '📤';
+      case 'waiting_accounting':
+        return '💰';
+      case 'treatment_completed':
+        return '🏁';
+      case 'emergency':
+        return '🚨';
+      case 'today_appointments':
+        return '📅';
+      default:
+        return '📋';
     }
   };
 
@@ -550,18 +754,88 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
         </div>
       </div>
 
+      {/* List Filter Buttons */}
+      <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+          <span className="text-2xl">📋</span>
+          Hasta Listesi Filtreleri
+        </h3>
+
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={() => setActiveListType('anamnez_completed')}
+            className={`px-4 py-2 rounded-xl font-medium text-sm transition-all duration-200 flex items-center gap-2 ${
+              activeListType === 'anamnez_completed'
+                ? 'bg-blue-500/30 border-2 border-blue-400 text-blue-200'
+                : 'bg-white/5 border border-white/20 text-white/70 hover:bg-white/10'
+            }`}
+          >
+            <span className="text-lg">✅</span>
+            Anamnez Tamamlananlar ({waitingPatients.length})
+          </button>
+
+          <button
+            onClick={() => setActiveListType('waiting_accounting')}
+            className={`px-4 py-2 rounded-xl font-medium text-sm transition-all duration-200 flex items-center gap-2 ${
+              activeListType === 'waiting_accounting'
+                ? 'bg-orange-500/30 border-2 border-orange-400 text-orange-200'
+                : 'bg-white/5 border border-white/20 text-white/70 hover:bg-white/10'
+            }`}
+          >
+            <span className="text-lg">💰</span>
+            Muhasebede Bekleyenler ({accountingPatients.length})
+          </button>
+
+          <button
+            onClick={() => setActiveListType('treatment_completed')}
+            className={`px-4 py-2 rounded-xl font-medium text-sm transition-all duration-200 flex items-center gap-2 ${
+              activeListType === 'treatment_completed'
+                ? 'bg-green-500/30 border-2 border-green-400 text-green-200'
+                : 'bg-white/5 border border-white/20 text-white/70 hover:bg-white/10'
+            }`}
+          >
+            <span className="text-lg">🏁</span>
+            Tedavi Tamamlananlar ({treatmentCompletedPatients.length})
+          </button>
+
+          <button
+            onClick={() => setActiveListType('emergency')}
+            className={`px-4 py-2 rounded-xl font-medium text-sm transition-all duration-200 flex items-center gap-2 ${
+              activeListType === 'emergency'
+                ? 'bg-red-500/30 border-2 border-red-400 text-red-200'
+                : 'bg-white/5 border border-white/20 text-white/70 hover:bg-white/10'
+            }`}
+          >
+            <span className="text-lg">🚨</span>
+            Acil Durumlar ({emergencyPatients.length})
+          </button>
+
+          <button
+            onClick={() => setActiveListType('today_appointments')}
+            className={`px-4 py-2 rounded-xl font-medium text-sm transition-all duration-200 flex items-center gap-2 ${
+              activeListType === 'today_appointments'
+                ? 'bg-purple-500/30 border-2 border-purple-400 text-purple-200'
+                : 'bg-white/5 border border-white/20 text-white/70 hover:bg-white/10'
+            }`}
+          >
+            <span className="text-lg">📅</span>
+            Bugünkü Randevular ({todayAppointmentPatients.length})
+          </button>
+        </div>
+      </div>
+
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Patients Waiting for Treatment */}
         <div className="lg:col-span-2 bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
           <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-            <span className="text-2xl">📤</span>
-            Doktora Gönderilecek Hastalar ({waitingPatients.length})
+            <span className="text-2xl">{getCurrentListIcon()}</span>
+            {getCurrentListTitle()} ({getCurrentPatientList().length})
           </h3>
           
           <div className="space-y-4 max-h-96 overflow-y-auto">
-            {waitingPatients.length > 0 ? (
-              waitingPatients.map((patient) => (
+            {getCurrentPatientList().length > 0 ? (
+              getCurrentPatientList().map((patient) => (
                 <div 
                   key={patient.id}
                   className="flex items-center gap-4 p-4 bg-white/5 rounded-xl hover:bg-white/10 transition-all duration-200"
@@ -572,12 +846,36 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-white font-medium">{patient.fullName}</span>
-                      <span className="text-xs bg-green-500/30 text-green-200 px-2 py-1 rounded-full">
-                        Anamnez Tamamlandı
-                      </span>
-                      <span className="text-xs bg-orange-500/30 text-orange-200 px-2 py-1 rounded-full">
-                        {getWaitingDuration(patient.anamrezCompletedAt || patient.createdAt)} bekliyor
-                      </span>
+                      {activeListType === 'anamnez_completed' && (
+                        <>
+                          <span className="text-xs bg-green-500/30 text-green-200 px-2 py-1 rounded-full">
+                            Anamnez Tamamlandı
+                          </span>
+                          <span className="text-xs bg-orange-500/30 text-orange-200 px-2 py-1 rounded-full">
+                            {getWaitingDuration(patient.anamrezCompletedAt || patient.createdAt)} bekliyor
+                          </span>
+                        </>
+                      )}
+                      {activeListType === 'waiting_accounting' && (
+                        <span className="text-xs bg-yellow-500/30 text-yellow-200 px-2 py-1 rounded-full">
+                          Tedavi Kararı Verildi
+                        </span>
+                      )}
+                      {activeListType === 'treatment_completed' && (
+                        <span className="text-xs bg-green-500/30 text-green-200 px-2 py-1 rounded-full">
+                          Tedavi Tamamlandı
+                        </span>
+                      )}
+                      {activeListType === 'emergency' && (
+                        <span className="text-xs bg-red-500/30 text-red-200 px-2 py-1 rounded-full animate-pulse">
+                          ACİL DURUM
+                        </span>
+                      )}
+                      {activeListType === 'today_appointments' && (
+                        <span className="text-xs bg-blue-500/30 text-blue-200 px-2 py-1 rounded-full">
+                          {(patient as any).appointmentTime || 'Saat Belirsiz'}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-4 text-white/70 text-sm">
                       <span>Yaş: {calculateAge(patient.birthDate)}</span>
@@ -604,31 +902,72 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
                       </div>
                     </div>
                     <p className="text-white/50 text-xs mt-1">
-                      Anamnez Tamamlanma: {formatDate(patient.anamrezCompletedAt || patient.createdAt)}
+                      {activeListType === 'anamnez_completed' && `Anamnez Tamamlanma: ${formatDate(patient.anamrezCompletedAt || patient.createdAt)}`}
+                      {activeListType === 'waiting_accounting' && `Tedavi Kararı: ${formatDate(patient.createdAt)}`}
+                      {activeListType === 'treatment_completed' && `Taburcu: ${formatDate(patient.createdAt)}`}
+                      {activeListType === 'emergency' && `Acil Kayıt: ${formatDate(patient.createdAt)}`}
+                      {activeListType === 'today_appointments' && `Randevu Türü: ${(patient as any).appointmentType || 'Genel Muayene'}`}
                     </p>
                   </div>
                   <div className="flex flex-col gap-2">
-                    <button 
-                      onClick={() => handleSendToDoctor(patient)}
-                      className="px-3 py-1 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-blue-200 text-sm transition-all duration-200"
-                    >
-                      Doktora Gönder
-                    </button>
-                    <button 
+                    {activeListType === 'anamnez_completed' && (
+                      <button
+                        onClick={() => handleSendToDoctor(patient)}
+                        className="px-3 py-1 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-blue-200 text-sm transition-all duration-200"
+                      >
+                        Doktora Gönder
+                      </button>
+                    )}
+                    {activeListType === 'waiting_accounting' && (
+                      <button
+                        className="px-3 py-1 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg text-green-200 text-sm transition-all duration-200"
+                      >
+                        Ödeme Al
+                      </button>
+                    )}
+                    {activeListType === 'today_appointments' && (
+                      <button
+                        className="px-3 py-1 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-lg text-purple-200 text-sm transition-all duration-200"
+                      >
+                        Randevu Detay
+                      </button>
+                    )}
+                    {activeListType === 'emergency' && (
+                      <button
+                        className="px-3 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-200 text-sm transition-all duration-200"
+                      >
+                        Acil İşlem
+                      </button>
+                    )}
+                    <button
                       onClick={() => handleViewAnamnez(patient)}
                       className="px-3 py-1 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-lg text-purple-200 text-sm transition-all duration-200"
                     >
-                      Anamnez Görüntüle
+                      {activeListType === 'today_appointments' ? 'Hasta Detayı' : 'Anamnez Görüntüle'}
                     </button>
                   </div>
                 </div>
               ))
             ) : (
               <div className="text-center py-8">
-                <div className="text-6xl mb-4">📤</div>
-                <h4 className="text-white/80 text-lg font-semibold mb-2">Gönderilecek Hasta Yok</h4>
-                <p className="text-white/60">Anamnezi tamamlanmış ve doktora gönderilmeyi bekleyen hasta bulunmuyor.</p>
-                <p className="text-white/50 text-xs mt-2">💡 Doktorlar aynı anda sadece bir hasta ile ilgilenebilir</p>
+                <div className="text-6xl mb-4">{getCurrentListIcon()}</div>
+                <h4 className="text-white/80 text-lg font-semibold mb-2">
+                  {activeListType === 'anamnez_completed' && 'Gönderilecek Hasta Yok'}
+                  {activeListType === 'waiting_accounting' && 'Tedavi Kararı Verilen Hasta Yok'}
+                  {activeListType === 'treatment_completed' && 'Tedavi Tamamlanan Hasta Yok'}
+                  {activeListType === 'emergency' && 'Acil Durum Hastası Yok'}
+                  {activeListType === 'today_appointments' && 'Bugün Randevulu Hasta Yok'}
+                </h4>
+                <p className="text-white/60">
+                  {activeListType === 'anamnez_completed' && 'Anamnezi tamamlanmış ve doktora gönderilmeyi bekleyen hasta bulunmuyor.'}
+                  {activeListType === 'waiting_accounting' && 'Doktor tarafından tedavi kararı verilmiş hasta bulunmuyor.'}
+                  {activeListType === 'treatment_completed' && 'Tedavisi tamamen bitmiş hasta bulunmuyor.'}
+                  {activeListType === 'emergency' && 'Acil durum hastası bulunmuyor.'}
+                  {activeListType === 'today_appointments' && 'Bugün için randevulu hasta bulunmuyor.'}
+                </p>
+                {activeListType === 'anamnez_completed' && (
+                  <p className="text-white/50 text-xs mt-2">💡 Doktorlar aynı anda sadece bir hasta ile ilgilenebilir</p>
+                )}
               </div>
             )}
           </div>
