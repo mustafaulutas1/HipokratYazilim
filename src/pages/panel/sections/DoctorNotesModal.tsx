@@ -247,21 +247,21 @@ const DoctorNotesModal: React.FC<DoctorNotesModalProps> = ({ isOpen, onClose, do
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'high': return 'bg-red-500/20 text-red-200 border-red-500/30';
-      case 'medium': return 'bg-yellow-500/20 text-yellow-200 border-yellow-500/30';
-      case 'low': return 'bg-green-500/20 text-green-200 border-green-500/30';
-      default: return 'bg-gray-500/20 text-gray-200 border-gray-500/30';
+      case 'high': return 'bg-red-100 text-red-700 border-red-200';
+      case 'medium': return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+      case 'low': return 'bg-green-100 text-green-700 border-green-200';
+      default: return 'bg-gray-100 text-gray-700 border-gray-200';
     }
   };
 
   const getCategoryColor = (category: string) => {
     switch (category) {
-      case 'patient': return 'bg-blue-500/20 text-blue-200 border-blue-500/30';
-      case 'treatment': return 'bg-purple-500/20 text-purple-200 border-purple-500/30';
-      case 'reminder': return 'bg-orange-500/20 text-orange-200 border-orange-500/30';
-      case 'research': return 'bg-cyan-500/20 text-cyan-200 border-cyan-500/30';
-      case 'personal': return 'bg-pink-500/20 text-pink-200 border-pink-500/30';
-      default: return 'bg-gray-500/20 text-gray-200 border-gray-500/30';
+      case 'patient': return 'bg-blue-100 text-blue-700 border-blue-200';
+      case 'treatment': return 'bg-purple-100 text-purple-700 border-purple-200';
+      case 'reminder': return 'bg-orange-100 text-orange-700 border-orange-200';
+      case 'research': return 'bg-cyan-100 text-cyan-700 border-cyan-200';
+      case 'personal': return 'bg-pink-100 text-pink-700 border-pink-200';
+      default: return 'bg-gray-100 text-gray-700 border-gray-200';
     }
   };
 
@@ -271,14 +271,14 @@ const DoctorNotesModal: React.FC<DoctorNotesModalProps> = ({ isOpen, onClose, do
   if (!hasAccess()) {
     return (
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-        <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-8 max-w-md mx-4">
+        <div className="bg-white border border-gray-200 rounded-2xl p-8 max-w-md mx-4 shadow-2xl">
           <div className="text-center">
             <div className="text-6xl mb-4">🚫</div>
-            <h3 className="text-xl font-bold text-white mb-2">Erişim Engellendi</h3>
-            <p className="text-white/70 mb-4">Bu özelliğe erişim yetkiniz bulunmuyor.</p>
+            <h3 className="text-xl font-bold text-gray-800 mb-2">Erişim Engellendi</h3>
+            <p className="text-gray-600 mb-4">Bu özelliğe erişim yetkiniz bulunmuyor.</p>
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-200 transition-all duration-200"
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all duration-200"
             >
               Kapat
             </button>
@@ -290,27 +290,27 @@ const DoctorNotesModal: React.FC<DoctorNotesModalProps> = ({ isOpen, onClose, do
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl w-full max-w-6xl max-h-[90vh] mx-4 overflow-hidden flex flex-col">
+      <div className="bg-white border border-gray-200 rounded-2xl w-full max-w-6xl max-h-[90vh] mx-4 overflow-hidden flex flex-col shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-white/20">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gray-50">
           <div className="flex items-center gap-3">
             <span className="text-3xl">📝</span>
             <div>
-              <h2 className="text-2xl font-bold text-white">Doktor Notlarım</h2>
-              <p className="text-white/70">Kişisel notlar ve hasta kayıtları</p>
+              <h2 className="text-2xl font-bold text-gray-800">Doktor Notlarım</h2>
+              <p className="text-gray-600">Kişisel notlar ve hasta kayıtları</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowCreateForm(true)}
-              className="px-4 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg text-green-200 transition-all duration-200 flex items-center gap-2"
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all duration-200 flex items-center gap-2 font-medium"
             >
               <span className="text-lg">➕</span>
               Yeni Not
             </button>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-white/10 rounded-lg text-white/70 hover:text-white transition-all duration-200"
+              className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-gray-700 transition-all duration-200"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -323,7 +323,7 @@ const DoctorNotesModal: React.FC<DoctorNotesModalProps> = ({ isOpen, onClose, do
           {/* Notes List */}
           <div className="flex-1 flex flex-col">
             {/* Search and Filters */}
-            <div className="p-6 border-b border-white/20">
+            <div className="p-6 border-b border-gray-200 bg-gray-50">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <input
@@ -331,18 +331,18 @@ const DoctorNotesModal: React.FC<DoctorNotesModalProps> = ({ isOpen, onClose, do
                     placeholder="Notlarda ara..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-blue-500/50"
+                    className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-800 placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                   />
                 </div>
                 <div>
                   <select
                     value={selectedCategory}
                     onChange={(e) => setSelectedCategory(e.target.value)}
-                    className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500/50"
+                    className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                   >
                     <option value="all">Tüm Kategoriler</option>
                     {Object.entries(CATEGORY_TRANSLATIONS).map(([value, label]) => (
-                      <option key={value} value={value} className="bg-gray-800">{label}</option>
+                      <option key={value} value={value} className="bg-white">{label}</option>
                     ))}
                   </select>
                 </div>
@@ -350,11 +350,11 @@ const DoctorNotesModal: React.FC<DoctorNotesModalProps> = ({ isOpen, onClose, do
                   <select
                     value={selectedPriority}
                     onChange={(e) => setSelectedPriority(e.target.value)}
-                    className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500/50"
+                    className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                   >
                     <option value="all">Tüm Öncelikler</option>
                     {Object.entries(PRIORITY_TRANSLATIONS).map(([value, label]) => (
-                      <option key={value} value={value} className="bg-gray-800">{label}</option>
+                      <option key={value} value={value} className="bg-white">{label}</option>
                     ))}
                   </select>
                 </div>
@@ -362,7 +362,7 @@ const DoctorNotesModal: React.FC<DoctorNotesModalProps> = ({ isOpen, onClose, do
             </div>
 
             {/* Notes Content */}
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-6 bg-white">
               {loading ? (
                 <div className="flex items-center justify-center h-32">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
@@ -370,13 +370,13 @@ const DoctorNotesModal: React.FC<DoctorNotesModalProps> = ({ isOpen, onClose, do
               ) : filteredNotes.length > 0 ? (
                 <div className="grid gap-4">
                   {filteredNotes.map((note) => (
-                    <div key={note.id} className="bg-white/5 rounded-xl p-4 hover:bg-white/10 transition-all duration-200">
+                    <div key={note.id} className="bg-gray-50 border border-gray-200 rounded-xl p-4 hover:bg-gray-100 transition-all duration-200 shadow-sm">
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-2">
-                            <h3 className="text-lg font-semibold text-white">{note.title}</h3>
+                            <h3 className="text-lg font-semibold text-gray-800">{note.title}</h3>
                             {note.isPrivate && (
-                              <span className="text-xs bg-gray-500/30 text-gray-200 px-2 py-1 rounded-full">🔒 Özel</span>
+                              <span className="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded-full border">🔒 Özel</span>
                             )}
                           </div>
                           <div className="flex items-center gap-2 mb-2">
@@ -387,7 +387,7 @@ const DoctorNotesModal: React.FC<DoctorNotesModalProps> = ({ isOpen, onClose, do
                               {PRIORITY_TRANSLATIONS[note.priority]}
                             </span>
                             {note.patientName && (
-                              <span className="text-xs bg-blue-500/20 text-blue-200 px-2 py-1 rounded-full border border-blue-500/30">
+                              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full border border-blue-200">
                                 👤 {note.patientName}
                               </span>
                             )}
@@ -396,7 +396,7 @@ const DoctorNotesModal: React.FC<DoctorNotesModalProps> = ({ isOpen, onClose, do
                         <div className="flex items-center gap-1 ml-4">
                           <button
                             onClick={() => handleEdit(note)}
-                            className="p-1 hover:bg-blue-500/20 rounded text-blue-200 transition-all duration-200"
+                            className="p-1 hover:bg-blue-100 rounded text-blue-600 transition-all duration-200"
                             title="Düzenle"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -405,7 +405,7 @@ const DoctorNotesModal: React.FC<DoctorNotesModalProps> = ({ isOpen, onClose, do
                           </button>
                           <button
                             onClick={() => handleDelete(note.id)}
-                            className="p-1 hover:bg-red-500/20 rounded text-red-200 transition-all duration-200"
+                            className="p-1 hover:bg-red-100 rounded text-red-600 transition-all duration-200"
                             title="Sil"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -414,20 +414,20 @@ const DoctorNotesModal: React.FC<DoctorNotesModalProps> = ({ isOpen, onClose, do
                           </button>
                         </div>
                       </div>
-                      
-                      <p className="text-white/80 text-sm mb-3 line-clamp-3">{note.content}</p>
-                      
+
+                      <p className="text-gray-700 text-sm mb-3 line-clamp-3">{note.content}</p>
+
                       {note.tags.length > 0 && (
                         <div className="flex flex-wrap gap-1 mb-3">
                           {note.tags.map((tag, index) => (
-                            <span key={index} className="text-xs bg-white/10 text-white/60 px-2 py-1 rounded-full">
+                            <span key={index} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full border border-blue-200">
                               #{tag}
                             </span>
                           ))}
                         </div>
                       )}
-                      
-                      <div className="text-xs text-white/50">
+
+                      <div className="text-xs text-gray-500">
                         Oluşturuldu: {formatDate(note.createdAt)}
                         {note.updatedAt !== note.createdAt && (
                           <span> • Güncellendi: {formatDate(note.updatedAt)}</span>
@@ -439,13 +439,13 @@ const DoctorNotesModal: React.FC<DoctorNotesModalProps> = ({ isOpen, onClose, do
               ) : (
                 <div className="text-center py-12">
                   <div className="text-6xl mb-4">📝</div>
-                  <h3 className="text-xl font-bold text-white/80 mb-2">
+                  <h3 className="text-xl font-bold text-gray-700 mb-2">
                     {searchTerm || selectedCategory !== 'all' || selectedPriority !== 'all' 
                       ? 'Arama Sonucu Bulunamadı' 
                       : 'Henüz Not Bulunmuyor'
                     }
                   </h3>
-                  <p className="text-white/60 mb-4">
+                  <p className="text-gray-500 mb-4">
                     {searchTerm || selectedCategory !== 'all' || selectedPriority !== 'all'
                       ? 'Arama kriterlerinizi değiştirmeyi deneyin.'
                       : 'İlk notunuzu eklemek için "Yeni Not" butonuna tıklayın.'
@@ -458,15 +458,15 @@ const DoctorNotesModal: React.FC<DoctorNotesModalProps> = ({ isOpen, onClose, do
 
           {/* Create/Edit Form */}
           {showCreateForm && (
-            <div className="w-96 bg-white/5 border-l border-white/20 flex flex-col">
-              <div className="p-4 border-b border-white/20">
+            <div className="w-96 bg-gray-50 border-l border-gray-200 flex flex-col">
+              <div className="p-4 border-b border-gray-200">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-white">
+                  <h3 className="text-lg font-semibold text-gray-800">
                     {editingNote ? 'Not Düzenle' : 'Yeni Not Ekle'}
                   </h3>
                   <button
                     onClick={resetForm}
-                    className="p-1 hover:bg-white/10 rounded text-white/70 hover:text-white transition-all duration-200"
+                    className="p-1 hover:bg-gray-200 rounded text-gray-500 hover:text-gray-700 transition-all duration-200"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -477,75 +477,75 @@ const DoctorNotesModal: React.FC<DoctorNotesModalProps> = ({ isOpen, onClose, do
               
               <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-white/70 mb-1">Başlık *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Başlık *</label>
                   <input
                     type="text"
                     required
                     value={formData.title}
                     onChange={(e) => setFormData({...formData, title: e.target.value})}
-                    className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-blue-500/50 text-sm"
+                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-800 placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-sm"
                     placeholder="Not başlığı"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-white/70 mb-1">İçerik *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">İçerik *</label>
                   <textarea
                     required
                     value={formData.content}
                     onChange={(e) => setFormData({...formData, content: e.target.value})}
                     rows={6}
-                    className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-blue-500/50 text-sm resize-none"
+                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-800 placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-sm resize-none"
                     placeholder="Not içeriği..."
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-white/70 mb-1">Kategori</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Kategori</label>
                     <select
                       value={formData.category}
                       onChange={(e) => setFormData({...formData, category: e.target.value as DoctorNote['category']})}
-                      className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500/50 text-sm"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-sm"
                     >
                       {Object.entries(CATEGORY_TRANSLATIONS).map(([value, label]) => (
-                        <option key={value} value={value} className="bg-gray-800">{label}</option>
+                        <option key={value} value={value} className="bg-white">{label}</option>
                       ))}
                     </select>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-white/70 mb-1">Öncelik</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Öncelik</label>
                     <select
                       value={formData.priority}
                       onChange={(e) => setFormData({...formData, priority: e.target.value as DoctorNote['priority']})}
-                      className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500/50 text-sm"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-sm"
                     >
                       {Object.entries(PRIORITY_TRANSLATIONS).map(([value, label]) => (
-                        <option key={value} value={value} className="bg-gray-800">{label}</option>
+                        <option key={value} value={value} className="bg-white">{label}</option>
                       ))}
                     </select>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-white/70 mb-1">Hasta Adı (Opsiyonel)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Hasta Adı (Opsiyonel)</label>
                   <input
                     type="text"
                     value={formData.patientName}
                     onChange={(e) => setFormData({...formData, patientName: e.target.value})}
-                    className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-blue-500/50 text-sm"
+                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-800 placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-sm"
                     placeholder="Hasta adı"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-white/70 mb-1">Etiketler (virgülle ayırın)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Etiketler (virgülle ayırın)</label>
                   <input
                     type="text"
                     value={formData.tags}
                     onChange={(e) => setFormData({...formData, tags: e.target.value})}
-                    className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-blue-500/50 text-sm"
+                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-800 placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-sm"
                     placeholder="etiket1, etiket2, etiket3"
                   />
                 </div>
@@ -556,22 +556,22 @@ const DoctorNotesModal: React.FC<DoctorNotesModalProps> = ({ isOpen, onClose, do
                     id="isPrivate"
                     checked={formData.isPrivate}
                     onChange={(e) => setFormData({...formData, isPrivate: e.target.checked})}
-                    className="w-4 h-4 text-blue-500 bg-white/10 border-white/20 rounded focus:ring-blue-500/50 focus:ring-2"
+                    className="w-4 h-4 text-blue-600 bg-white border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
                   />
-                  <label htmlFor="isPrivate" className="text-sm text-white/70">Özel not (sadece ben görebilirim)</label>
+                  <label htmlFor="isPrivate" className="text-sm text-gray-700">Özel not (sadece ben görebilirim)</label>
                 </div>
 
                 <div className="flex gap-2 pt-2">
                   <button
                     type="submit"
-                    className="flex-1 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-blue-200 transition-all duration-200 text-sm font-medium"
+                    className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all duration-200 text-sm font-medium"
                   >
                     {editingNote ? 'Güncelle' : 'Kaydet'}
                   </button>
                   <button
                     type="button"
                     onClick={resetForm}
-                    className="px-4 py-2 bg-gray-500/20 hover:bg-gray-500/30 border border-gray-500/30 rounded-lg text-gray-200 transition-all duration-200 text-sm"
+                    className="px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-700 rounded-lg transition-all duration-200 text-sm"
                   >
                     İptal
                   </button>

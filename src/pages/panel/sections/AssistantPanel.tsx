@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import AnamrezViewModal from './AnamrezViewModal';
 import DoctorNotesModal from './DoctorNotesModal';
+import DoctorMessageModal from '../components/DoctorMessageModal';
 import DoctorSelectionModal from '../components/DoctorSelectionModal';
 
 interface AssistantPanelProps {
@@ -60,6 +61,7 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
   const [isNotesModalOpen, setIsNotesModalOpen] = useState(false);
   const [isDoctorSelectionModalOpen, setIsDoctorSelectionModalOpen] = useState(false);
   const [patientToAssign, setPatientToAssign] = useState<WaitingPatient | null>(null);
+  const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
 
   useEffect(() => {
     const fetchDoctorData = async () => {
@@ -87,16 +89,29 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
         console.log('📊 AssistantPanel: Total patients in clinic:', allClinicPatients.length);
         console.log('📋 AssistantPanel: Sample patient data:', allClinicPatients[0]);
         
-        // Filter for completed anamnez in memory to avoid composite index issues
+        // Debug: Log all patients with their status
+        console.log('🔍 AssistantPanel: All patients debug info:');
+        allClinicPatients.forEach(patient => {
+          console.log(`Patient: ${patient.fullName}`, {
+            isAnamnezCompleted: patient.isAnamnezCompleted,
+            assignedDoctorId: patient.assignedDoctorId,
+            assignedDoctorName: patient.assignedDoctorName,
+            status: patient.status
+          });
+        });
+        
+        // Filter for completed anamnez and either not assigned or treatment completed (for re-assignment)
         const completedPatients = allClinicPatients.filter(patient => 
-          patient.isAnamnezCompleted === true
+          patient.isAnamnezCompleted === true && 
+          (!patient.assignedDoctorId || patient.status === 'treatment_completed')
         ).sort((a, b) => {
           const dateA = new Date(a.createdAt || 0).getTime();
           const dateB = new Date(b.createdAt || 0).getTime();
           return dateB - dateA; // Most recent first
         }).slice(0, 10);
 
-        console.log('👥 AssistantPanel: Patients with completed anamnez:', completedPatients.length);
+        console.log('👥 AssistantPanel: Patients with completed anamnez (not assigned):', completedPatients.length);
+        console.log('👥 AssistantPanel: Filtered patients:', completedPatients.map(p => p.fullName));
         
         // Fetch anamnez records for these patients to get their diagnosis systems
         if (completedPatients.length > 0) {
@@ -297,9 +312,10 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
       console.log('📊 AssistantPanel: Total patients in clinic:', allClinicPatients.length);
       console.log('📋 AssistantPanel: Sample patient data:', allClinicPatients[0]);
       
-      // Filter for completed anamnez and not yet assigned to doctor
+      // Filter for completed anamnez and either not assigned or treatment completed (for re-assignment)
       const completedPatients = allClinicPatients.filter(patient => 
-        patient.isAnamnezCompleted === true && !patient.assignedDoctorId
+        patient.isAnamnezCompleted === true && 
+        (!patient.assignedDoctorId || patient.status === 'treatment_completed')
       ).sort((a, b) => {
         const dateA = new Date(a.createdAt || 0).getTime();
         const dateB = new Date(b.createdAt || 0).getTime();
@@ -644,7 +660,10 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
               <span className="font-medium text-sm">Randevu Planla</span>
             </button>
             
-            <button className="w-full flex items-center gap-3 p-3 bg-gradient-to-r from-orange-500/20 to-orange-600/30 hover:from-orange-500/30 hover:to-orange-600/40 border border-orange-500/30 rounded-xl text-white transition-all duration-200">
+            <button 
+              onClick={() => setIsMessageModalOpen(true)}
+              className="w-full flex items-center gap-3 p-3 bg-gradient-to-r from-orange-500/20 to-orange-600/30 hover:from-orange-500/30 hover:to-orange-600/40 border border-orange-500/30 rounded-xl text-white transition-all duration-200"
+            >
               <span className="text-lg">👨‍⚕️</span>
               <span className="font-medium text-sm">Doktora Bildir</span>
             </button>
@@ -707,6 +726,15 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
         patient={patientToAssign}
         clinicId={doctorProfile?.clinicId || ''}
         onPatientAssigned={handlePatientAssigned}
+      />
+
+      {/* Doctor Message Modal */}
+      <DoctorMessageModal
+        isOpen={isMessageModalOpen}
+        onClose={() => setIsMessageModalOpen(false)}
+        patientId={undefined}
+        patientName={undefined}
+        doctorProfile={doctorProfile}
       />
     </div>
   );

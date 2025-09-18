@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, orderBy, limit } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { useAuth } from '../../../context/AuthContext';
 import AnamrezViewModal from './AnamrezViewModal';
@@ -44,6 +44,23 @@ interface TreatmentOptions {
   notes?: string;
 }
 
+interface DoctorMessage {
+  id: string;
+  fromUserId: string;
+  fromUserName: string;
+  fromUserRole: string;
+  toUserId: string;
+  toDoctorName: string;
+  message: string;
+  messageType: 'info' | 'urgent' | 'question';
+  patientId?: string;
+  patientName?: string;
+  clinicId: string;
+  isRead: boolean;
+  createdAt: string;
+  timestamp: any;
+}
+
 const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
   const { user } = useAuth();
   const [assignedPatients, setAssignedPatients] = useState<AssignedPatient[]>([]);
@@ -58,26 +75,21 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
   const [isAnamrezViewModalOpen, setIsAnamrezViewModalOpen] = useState(false);
   const [isTreatmentModalOpen, setIsTreatmentModalOpen] = useState(false);
   const [treatmentPatient, setTreatmentPatient] = useState<AssignedPatient | null>(null);
+  const [messages, setMessages] = useState<DoctorMessage[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    // Use the Firebase user UID as the doctor ID
-    if (!user?.uid) {
-      console.log('❌ DoctorPanel: No user UID available');
-      setLoading(false);
-      return;
-    }
-
-    console.log('🔍 DoctorPanel: Setting up real-time listener for doctor UID:', user.uid);
+    console.log('🔍 DoctorPanel: Setting up real-time listener for all doctor assignments');
     console.log('🔍 DoctorPanel: Doctor profile:', doctorProfile);
 
-    // First, let's check if there are any patients assigned to this doctor at all
+    // Query to get all patients with assigned doctors (not just current user)
     const testQuery = query(
       collection(db, 'patients'),
-      where('assignedDoctorId', '==', user.uid)
+      where('assignedDoctorId', '!=', null)
     );
 
     const testUnsubscribe = onSnapshot(testQuery, (testSnapshot) => {
-      console.log('🔍 DoctorPanel: Test query - Total patients assigned to this doctor:', testSnapshot.docs.length);
+      console.log('🔍 DoctorPanel: Test query - Total patients assigned to all doctors:', testSnapshot.docs.length);
       testSnapshot.docs.forEach(doc => {
         const data = doc.data();
         console.log('📋 Patient:', {
@@ -85,15 +97,16 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
           name: data.fullName,
           status: data.status,
           assignedDoctorId: data.assignedDoctorId,
+          assignedDoctorName: data.assignedDoctorName,
           assignedAt: data.assignedAt
         });
       });
     });
 
-    // Main query with status filter - Only show active patient (assigned_to_doctor or in_treatment)
+    // Main query with status filter - Show all active patients assigned to any doctor
     const patientsQuery = query(
       collection(db, 'patients'),
-      where('assignedDoctorId', '==', user.uid),
+      where('assignedDoctorId', '!=', null),
       where('status', 'in', ['assigned_to_doctor', 'in_treatment'])
     );
 
@@ -107,13 +120,10 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
 
       console.log('👥 DoctorPanel: Processed patients:', patients);
 
-      // For the new workflow, we should only have 0 or 1 active patient
-      const activePatient = patients.find(p => 
+      // Show all active patients assigned to any doctor
+      const displayPatients = patients.filter(p => 
         p.status === 'assigned_to_doctor' || p.status === 'in_treatment'
       );
-
-      // Only show the active patient
-      const displayPatients = activePatient ? [activePatient] : [];
       setAssignedPatients(displayPatients);
       
       const today = new Date().toDateString();
@@ -121,7 +131,7 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
       // Query completed patients separately for stats only
       const completedQuery = query(
         collection(db, 'patients'),
-        where('assignedDoctorId', '==', user.uid),
+        where('assignedDoctorId', '!=', null),
         where('status', '==', 'treatment_completed')
       );
       
@@ -132,7 +142,7 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
         ).length;
         
         const stats: PatientStats = {
-          totalAssigned: displayPatients.length, // Only current active patient
+          totalAssigned: displayPatients.length, // All active patients
           inTreatment: displayPatients.filter(p => p.status === 'in_treatment').length,
           completedToday: completedToday,
           pendingReview: displayPatients.filter(p => p.status === 'assigned_to_doctor').length
@@ -142,7 +152,7 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
       
       setLoading(false);
 
-      console.log('📊 DoctorPanel: Updated active patient:', activePatient ? activePatient.fullName : 'None');
+      console.log('📊 DoctorPanel: Updated active patients:', displayPatients.map(p => p.fullName));
       console.log('📊 DoctorPanel: Display patients count:', displayPatients.length);
     }, (error) => {
       console.error('❌ DoctorPanel: Error listening to patients:', error);
@@ -153,7 +163,36 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
       unsubscribe();
       testUnsubscribe();
     };
-  }, [user?.uid, doctorProfile]);
+  }, [doctorProfile]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    console.log('🔍 DoctorPanel: Setting up messages listener for doctor:', user.uid);
+    
+    const messagesQuery = query(
+      collection(db, 'doctorMessages'),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    );
+
+    const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
+      const fetchedMessages = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as DoctorMessage));
+
+      console.log('📨 DoctorPanel: Found messages:', fetchedMessages.length);
+      setMessages(fetchedMessages);
+      
+      // Count unread messages
+      const unread = fetchedMessages.filter(msg => !msg.isRead).length;
+      setUnreadCount(unread);
+      console.log('📨 DoctorPanel: Unread messages:', unread);
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid]);
 
   const handleViewAnamnez = (patient: AssignedPatient) => {
     setSelectedPatient(patient);
@@ -163,6 +202,44 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
   const handleOpenTreatmentModal = (patient: AssignedPatient) => {
     setTreatmentPatient(patient);
     setIsTreatmentModalOpen(true);
+  };
+
+  const markMessageAsRead = async (messageId: string) => {
+    try {
+      await updateDoc(doc(db, 'doctorMessages', messageId), {
+        isRead: true,
+        readAt: new Date().toISOString()
+      });
+      console.log('✅ Message marked as read:', messageId);
+    } catch (error) {
+      console.error('❌ Error marking message as read:', error);
+    }
+  };
+
+  const getMessageTypeColor = (type: string) => {
+    switch (type) {
+      case 'urgent': return 'bg-red-100 text-red-700 border-red-200';
+      case 'question': return 'bg-blue-100 text-blue-700 border-blue-200';
+      default: return 'bg-green-100 text-green-700 border-green-200';
+    }
+  };
+
+  const getMessageTypeLabel = (type: string) => {
+    switch (type) {
+      case 'urgent': return 'Acil';
+      case 'question': return 'Soru';
+      default: return 'Bilgi';
+    }
+  };
+
+  const formatMessageDate = (dateString: string) => {
+    return new Date(dateString).toLocaleString('tr-TR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   const handleStartTreatment = async (patient: AssignedPatient, treatmentOptions: TreatmentOptions) => {
@@ -283,7 +360,7 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
               Doktor Paneli
             </h1>
             <p className="text-white/70 text-lg">
-              Aktif hastanızı görüntüleyin ve tedavisini yönetin
+              Tüm doktor atamalarını görüntüleyin ve yönetin
             </p>
             {doctorProfile && (
               <div className="mt-4 p-4 bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl inline-block shadow-sm">
@@ -342,11 +419,75 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
           </div>
         </div>
 
+        {/* Messages Section */}
+        {messages.length > 0 && (
+          <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <span className="text-3xl">📨</span>
+                <h2 className="text-2xl font-bold text-white">
+                  Asistan Mesajları
+                  {unreadCount > 0 && (
+                    <span className="ml-2 px-2 py-1 bg-red-500 text-white text-sm rounded-full">
+                      {unreadCount} yeni
+                    </span>
+                  )}
+                </h2>
+              </div>
+            </div>
+
+            <div className="space-y-4 max-h-96 overflow-y-auto">
+              {messages.map((message) => (
+                <div 
+                  key={message.id}
+                  className={`p-4 rounded-xl border transition-all duration-200 ${
+                    message.isRead 
+                      ? 'bg-white/5 border-white/20' 
+                      : 'bg-blue-500/10 border-blue-500/30 shadow-lg'
+                  }`}
+                  onClick={() => !message.isRead && markMessageAsRead(message.id)}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">👨‍💼</span>
+                      <span className="text-white font-medium">Dr. {message.toDoctorName}</span>
+                      <span className={`text-xs px-2 py-1 rounded-full border ${getMessageTypeColor(message.messageType)}`}>
+                        {getMessageTypeLabel(message.messageType)}
+                      </span>
+                      {!message.isRead && (
+                        <span className="text-xs bg-red-500 text-white px-2 py-1 rounded-full">
+                          Yeni
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-white/50 text-xs">
+                      {formatMessageDate(message.createdAt)}
+                    </span>
+                  </div>
+
+                  {message.patientName && (
+                    <div className="mb-3 p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                      <div className="flex items-center gap-2 text-blue-300">
+                        <span className="text-sm">👤</span>
+                        <span className="text-sm font-medium">Hasta: {message.patientName}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <p className="text-white/80 text-sm leading-relaxed">
+                    {message.message}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-6">
             <span className="text-3xl">👤</span>
             <h2 className="text-2xl font-bold text-white">
-              Aktif Hasta {assignedPatients.length > 0 ? `(${assignedPatients[0].fullName})` : ''}
+              Tüm Doktor Atamaları {assignedPatients.length > 0 ? `(${assignedPatients.length} hasta)` : ''}
             </h2>
           </div>
 
@@ -370,6 +511,13 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
                             {formatTimeSince(patient.assignedAt)}
                           </span>
                         </div>
+                        {patient.assignedDoctorName && (
+                          <div className="mt-2">
+                            <span className="px-3 py-1 bg-gradient-to-r from-green-500/20 to-blue-500/20 border border-green-500/30 text-green-300 text-sm rounded-full font-medium">
+                              👨‍⚕️ Dr. {patient.assignedDoctorName}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                     
