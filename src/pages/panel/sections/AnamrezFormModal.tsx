@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, doc, updateDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
+import { DIAGNOSIS_SYSTEMS, DIAGNOSIS_SPECIFIC_QUESTIONS } from '../../../constants';
 
 interface Patient {
   id: string;
@@ -29,18 +30,6 @@ interface Doctor {
   role?: string;
   userType?: string;
 }
-
-const DIAGNOSIS_SYSTEMS = [
-  'Dermatolojik Sistem',
-  'Solunum Sistemi', 
-  'Kas – İskelet Sistemi',
-  'Santral Sinir Sistemi',
-  'Gastrointestinal Sistem',
-  'Kardiyovasküler Sistem',
-  'Pisikolojik Değerlendirme',
-  'Ürogental Sistem Hastalıkları',
-  'Endokrin Sistem'
-];
 
 interface AnamrezFormModalProps {
   isOpen: boolean;
@@ -101,6 +90,7 @@ const SYMPTOM_QUESTIONS: { key: SymptomKey; label: string; note?: string }[] = [
   { key: 'mideYanmasi', label: 'Mide Yanması' }
 ];
 
+/* Using shared constants from constants/diagnosisSystems.ts
 const DIAGNOSIS_SPECIFIC_QUESTIONS: Record<string, { label: string; questions: string[] }> = {
   'Dermatolojik Sistem': {
     label: 'Dermatolojik Sistem',
@@ -230,6 +220,7 @@ const DIAGNOSIS_SPECIFIC_QUESTIONS: Record<string, { label: string; questions: s
     ]
   }
 };
+*/
 
 type SymptomRatings = Record<SymptomKey, number>;
 

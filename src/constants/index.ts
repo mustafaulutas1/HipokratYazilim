@@ -218,6 +218,9 @@ import {
     },
   ];
   
+// Diagnosis Systems
+export { DIAGNOSIS_SYSTEMS, DIAGNOSIS_SPECIFIC_QUESTIONS } from './diagnosisSystems';
+
   export const clients = [
     {
       id: "client-1",
@@ -240,27 +243,3 @@ import {
       name: "Üniversite Hastaneleri"
     },
   ];
-
-// Treatment Protocols
-export {
-  DISEASES,
-  AGE_GROUPS,
-  TREATMENT_COURSES,
-  APPLICATION_METHODS,
-  DISEASE_PROTOCOLS,
-  COMBINED_PROTOCOLS,
-  DISEASE_CATEGORIES,
-  SEVERITY_LEVELS,
-  getDiseaseProtocols,
-  getCombinedProtocols,
-  getApplicationMethodsByCategory
-} from './treatmentProtocols';
-
-export type {
-  Disease,
-  AgeGroup,
-  TreatmentCourse,
-  ApplicationMethod,
-  DiseaseProtocol,
-  CombinedProtocol
-} from './treatmentProtocols';

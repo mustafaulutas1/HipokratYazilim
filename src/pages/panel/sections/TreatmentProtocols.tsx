@@ -1,657 +1,1005 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { collection, getDocs, query, orderBy, addDoc, updateDoc, doc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
+import { collection, addDoc, getDocs, query, orderBy, deleteDoc, doc, where } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
-import { 
-  DISEASE_CATEGORIES,
-  AGE_GROUPS,
-  TREATMENT_COURSES,
-  APPLICATION_METHODS
-} from '../../../constants';
-import CreateDiseaseModal from './CreateDiseaseModal';
-import CreateProtocolModal from './CreateProtocolModal';
-
-interface Disease {
-  id: string;
-  name: string;
-  nameEn: string;
-  category: string;
-  icd10Code: string;
-  description: string;
-  symptoms: string[];
-  riskFactors: string[];
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface DiseaseProtocol {
-  id: string;
-  diseaseId: string;
-  diseaseName: string;
-  ageGroupId: string;
-  ageGroupName: string;
-  treatmentCourseId: string;
-  treatmentCourseName: string;
-  applicationMethods: string[];
-  dosage: string;
-  frequency: string;
-  duration: string;
-  instructions: string;
-  precautions: string;
-  expectedResults: string;
-  followUpSchedule: string[];
-  isActive: boolean;
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface CombinedProtocol {
-  id: string;
-  name: string;
-  description: string;
-  primaryDiseaseId: string;
-  primaryDiseaseName: string;
-  secondaryConditions: string[];
-  ageGroupId: string;
-  ageGroupName: string;
-  treatmentCourseId: string;
-  treatmentCourseName: string;
-  applicationMethods: string[];
-  dosage: string;
-  frequency: string;
-  duration: string;
-  instructions: string;
-  precautions: string;
-  expectedResults: string;
-  followUpSchedule: string[];
-  isActive: boolean;
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
-}
+import { DIAGNOSIS_SYSTEMS } from '../../../constants';
+import TreatmentProtocolsModal from '../components/TreatmentProtocolsModal';
 
 interface TreatmentProtocolsProps {
   doctorProfile: any;
 }
 
+// Available symptoms from anamnesis
+const AVAILABLE_SYMPTOMS = [
+  { key: 'uykuHali', label: 'Uyku Hali' },
+  { key: 'gozdeUcusmalar', label: 'Gözde Uçuşmalar' },
+  { key: 'carpinti', label: 'Çarpıntı' },
+  { key: 'siskinlik', label: 'Şişkinlik' },
+  { key: 'adetDuzensizligi', label: 'Adet Düzensizliği' },
+  { key: 'dengeKaybi', label: 'Denge Kaybı' },
+  { key: 'yayginKasAgrisi', label: 'Yaygın Kas Ağrısı' },
+  { key: 'nefesAlmadaGucluk', label: 'Nefes Almada Güçlük' },
+  { key: 'ustume', label: 'Üşüme' },
+  { key: 'terleme', label: 'Terleme' },
+  { key: 'stres', label: 'Stres' },
+  { key: 'agriliAdet', label: 'Ağrılı Adet' },
+  { key: 'uykuDuzensizligi', label: 'Uyku Düzensizliği' },
+  { key: 'oksuruk', label: 'Öksürük' },
+  { key: 'balgam', label: 'Balgam' },
+  { key: 'kasilmaVeKramplar', label: 'Kasılma Ve Kramplar' },
+  { key: 'elAyakUyusmalari', label: 'El Ayak Uyuşmaları' },
+  { key: 'unutkanlik', label: 'Unutkanlık' },
+  { key: 'kasinti', label: 'Kaşıntı' },
+  { key: 'idrarKacirma', label: 'İdrar Kaçırma' },
+  { key: 'idrardaYanma', label: 'İdrarda Yanma' },
+  { key: 'geceIdraraKalkma', label: 'Gece İdrara Kalkma' },
+  { key: 'kesikKesikIdrar', label: 'Kesik Kesik İdrar' },
+  { key: 'kabizlik', label: 'Kabızlık' },
+  { key: 'karindaGaz', label: 'Karında Gaz' },
+  { key: 'belAgrisi', label: 'Bel Ağrısı' },
+  { key: 'ishal', label: 'İshal (Diare)' },
+  { key: 'boyunAgrisi', label: 'Boyun Ağrısı' },
+  { key: 'yayginOdem', label: 'Yaygın Ödem' },
+  { key: 'basur', label: 'Basur' },
+  { key: 'eklemAgrilari', label: 'Eklem Ağrıları' },
+  { key: 'algiBozuklugu', label: 'Algı Bozukluğu' },
+  { key: 'halsizlikYorgunluk', label: 'Halsizlik / Yorgunluk' },
+  { key: 'yorgunUyanma', label: 'Yorgun Uyanma' },
+  { key: 'basDonmesi', label: 'Baş Dönmesi' },
+  { key: 'basAgrisi', label: 'Baş Ağrısı' },
+  { key: 'mideAgisi', label: 'Mide Ağısı' },
+  { key: 'mideYanmasi', label: 'Mide Yanması' }
+];
+
+interface SymptomCondition {
+  symptomKey: string;
+  symptomLabel: string;
+  threshold: number;
+}
+
+interface SingleRowProtocol {
+  id?: string;
+  name: string;
+  diagnosisSystem: string;
+  ageGroup: '2-7' | '8-14' | 'adult';
+  
+  // Treatment phases for this single row
+  phases: {
+    remember: { treatment: string; dosage: string };
+    regeneration1: { treatment: string; dosage: string };
+    regeneration2: { treatment: string; dosage: string };
+    regeneration3?: { treatment: string; dosage: string };
+    regeneration4?: { treatment: string; dosage: string };
+    mainTreatments: { treatment: string; description: string }[]; // Multiple main treatments with descriptions
+  };
+  
+  frequency: string; // e.g., "Regülin"
+  
+  // Activation conditions - now dynamic and flexible
+  symptomConditions: SymptomCondition[]; // Multiple symptom requirements
+  toxicityRequired: boolean; // Special separate condition  
+  conditionsLogic: 'any' | 'all'; // OR vs AND logic for multiple conditions
+  
+  // Clinic association - protocols are clinic-specific
+  clinicId: string;
+  
+  priority: number;
+  control: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+interface SavedProtocol extends SingleRowProtocol {
+  id: string;
+}
+
 const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedDisease, setSelectedDisease] = useState<string>('');
-  const [selectedAgeGroup, setSelectedAgeGroup] = useState<string>('');
-  const [selectedSecondaryConditions, setSelectedSecondaryConditions] = useState<string[]>([]);
-  const [selectedProtocol, setSelectedProtocol] = useState<DiseaseProtocol | CombinedProtocol | null>(null);
+  const [selectedDiagnosisSystem, setSelectedDiagnosisSystem] = useState<string>('');
+  const [showCreationForm, setShowCreationForm] = useState(false);
+  const [showProtocolsModal, setShowProtocolsModal] = useState(false);
+  const [modalDiagnosisSystem, setModalDiagnosisSystem] = useState<string>('');
+  const [savedProtocols, setSavedProtocols] = useState<SavedProtocol[]>([]);
+  const [loading, setLoading] = useState(false);
   
-  // Modal states
-  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
-  const [isCreateDiseaseModalOpen, setIsCreateDiseaseModalOpen] = useState(false);
-  const [isCreateProtocolModalOpen, setIsCreateProtocolModalOpen] = useState(false);
-  const [isEditDiseaseModalOpen, setIsEditDiseaseModalOpen] = useState(false);
-  const [isEditProtocolModalOpen, setIsEditProtocolModalOpen] = useState(false);
-  
-  // Data states
-  const [diseases, setDiseases] = useState<Disease[]>([]);
-  const [diseaseProtocols, setDiseaseProtocols] = useState<DiseaseProtocol[]>([]);
-  const [combinedProtocols, setCombinedProtocols] = useState<CombinedProtocol[]>([]);
-  const [loading, setLoading] = useState(true);
-  
-  // Available secondary conditions
-  const secondaryConditions = ['Stres', 'Anksiyete', 'Depresyon', 'Uyku Problemi', 'Yorgunluk'];
+  const [formData, setFormData] = useState<SingleRowProtocol>({
+    name: '',
+    diagnosisSystem: '',
+    ageGroup: '2-7',
+    phases: {
+      remember: { treatment: 'ARD-REM', dosage: '' },
+      regeneration1: { treatment: 'DVD-REG', dosage: '' },
+      regeneration2: { treatment: 'ISY-REG', dosage: '' },
+      mainTreatments: [{ treatment: '', description: '' }]
+    },
+    frequency: 'Regülin',
+    symptomConditions: [],
+    toxicityRequired: false,
+    conditionsLogic: 'any',
+    clinicId: doctorProfile?.clinicId || 'default-clinic',
+    priority: 1,
+    control: '3 AYDA 1 KONTROL',
+    createdBy: doctorProfile?.fullName || '',
+    createdAt: new Date().toISOString()
+  });
 
-  // Fetch data from Firebase
-  const fetchDiseases = async () => {
-    try {
-      const diseasesRef = collection(db, 'diseases');
-      const q = query(diseasesRef, orderBy('createdAt', 'desc'));
-      const querySnapshot = await getDocs(q);
-      
-      const diseasesData: Disease[] = [];
-      querySnapshot.forEach((doc) => {
-        diseasesData.push({
-          id: doc.id,
-          ...doc.data()
-        } as Disease);
-      });
-      
-      setDiseases(diseasesData);
-    } catch (error) {
-      console.error('Error fetching diseases:', error);
-    }
-  };
 
-  const fetchDiseaseProtocols = async () => {
-    try {
-      const protocolsRef = collection(db, 'diseaseProtocols');
-      const q = query(protocolsRef, orderBy('createdAt', 'desc'));
-      const querySnapshot = await getDocs(q);
-      
-      const protocolsData: DiseaseProtocol[] = [];
-      querySnapshot.forEach((doc) => {
-        protocolsData.push({
-          id: doc.id,
-          ...doc.data()
-        } as DiseaseProtocol);
-      });
-      
-      setDiseaseProtocols(protocolsData);
-    } catch (error) {
-      console.error('Error fetching disease protocols:', error);
-    }
-  };
-
-  const fetchCombinedProtocols = async () => {
-    try {
-      const protocolsRef = collection(db, 'combinedProtocols');
-      const q = query(protocolsRef, orderBy('createdAt', 'desc'));
-      const querySnapshot = await getDocs(q);
-      
-      const protocolsData: CombinedProtocol[] = [];
-      querySnapshot.forEach((doc) => {
-        protocolsData.push({
-          id: doc.id,
-          ...doc.data()
-        } as CombinedProtocol);
-      });
-      
-      setCombinedProtocols(protocolsData);
-    } catch (error) {
-      console.error('Error fetching combined protocols:', error);
-    }
-  };
-
+  // Load saved protocols for this clinic
   useEffect(() => {
-    const fetchAllData = async () => {
-      setLoading(true);
-      await Promise.all([
-        fetchDiseases(),
-        fetchDiseaseProtocols(),
-        fetchCombinedProtocols()
-      ]);
-      setLoading(false);
-    };
-    
-    fetchAllData();
-  }, []);
+    fetchSavedProtocols();
+  }, [doctorProfile?.clinicId]);
 
-  // Filter diseases based on search and category
-  const filteredDiseases = useMemo(() => {
-    return diseases.filter(disease => {
-      const matchesSearch = 
-        disease.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        disease.nameEn.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        disease.icd10Code.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      const matchesCategory = selectedCategory === 'all' || disease.category === selectedCategory;
-      
-      return matchesSearch && matchesCategory;
-    });
-  }, [searchTerm, selectedCategory, diseases]);
-
-  // Get protocols for selected disease and age group
-  const availableProtocols = useMemo(() => {
-    if (!selectedDisease) return [];
-    
-    let protocols: (DiseaseProtocol | CombinedProtocol)[] = [];
-    
-    // Get basic disease protocols
-    const diseaseProtocolsFiltered = diseaseProtocols.filter(p => 
-      p.diseaseId === selectedDisease && 
-      (!selectedAgeGroup || p.ageGroupId === selectedAgeGroup)
-    );
-    protocols.push(...diseaseProtocolsFiltered);
-    
-    // Get combined protocols if secondary conditions are selected
-    if (selectedSecondaryConditions.length > 0) {
-      const combinedProtocolsFiltered = combinedProtocols.filter(p => 
-        p.primaryDiseaseId === selectedDisease && 
-        (!selectedAgeGroup || p.ageGroupId === selectedAgeGroup) &&
-        selectedSecondaryConditions.some(condition => 
-          p.secondaryConditions.includes(condition)
-        )
-      );
-      protocols.push(...combinedProtocolsFiltered);
+  const fetchSavedProtocols = async () => {
+    if (!doctorProfile?.clinicId) {
+      console.warn('❌ TreatmentProtocols: No clinicId found in doctorProfile:', doctorProfile);
+      return;
     }
     
-    return protocols;
-  }, [selectedDisease, selectedAgeGroup, selectedSecondaryConditions, diseaseProtocols, combinedProtocols]);
-
-  const openProtocolDetails = (protocol: DiseaseProtocol | CombinedProtocol) => {
-    setSelectedProtocol(protocol);
-    setIsDetailsModalOpen(true);
+    try {
+      console.log('🔍 TreatmentProtocols: Fetching protocols for clinicId:', doctorProfile.clinicId);
+      console.log('👨‍⚕️ TreatmentProtocols: Doctor profile:', doctorProfile);
+      
+      const protocolsRef = collection(db, 'treatmentProtocols');
+      
+      // First try without orderBy to check if compound index is the issue
+      console.log('🔍 TreatmentProtocols: Trying query without orderBy first...');
+      let q = query(
+        protocolsRef, 
+        where('clinicId', '==', doctorProfile.clinicId)
+      );
+      
+      let querySnapshot = await getDocs(q);
+      console.log('📊 TreatmentProtocols: Query without orderBy returned:', querySnapshot.size, 'documents');
+      
+      // If we get results, try with orderBy
+      if (querySnapshot.size > 0) {
+        console.log('✅ TreatmentProtocols: Found protocols, now trying with orderBy...');
+        try {
+          q = query(
+            protocolsRef, 
+            where('clinicId', '==', doctorProfile.clinicId),
+            orderBy('createdAt', 'desc')
+          );
+          querySnapshot = await getDocs(q);
+          console.log('📊 TreatmentProtocols: Query with orderBy returned:', querySnapshot.size, 'documents');
+        } catch (orderByError) {
+          console.warn('⚠️ TreatmentProtocols: orderBy failed, using results without ordering:', orderByError);
+          // Continue with the previous result without ordering
+        }
+      }
+      
+      const protocols: SavedProtocol[] = [];
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        console.log('📄 TreatmentProtocols: Processing document:', doc.id, data);
+        protocols.push({
+          id: doc.id,
+          ...data
+        } as SavedProtocol);
+      });
+      
+      // Manual sort by createdAt if orderBy didn't work
+      if (protocols.length > 0) {
+        protocols.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      }
+      
+      console.log('✅ TreatmentProtocols: Final protocols array:', protocols.length, 'protocols');
+      console.log('📋 TreatmentProtocols: Protocol details:', protocols);
+      setSavedProtocols(protocols);
+    } catch (error: any) {
+      console.error('❌ TreatmentProtocols: Error fetching protocols:', error);
+      console.error('❌ TreatmentProtocols: Error details:', {
+        message: error?.message || 'No message',
+        name: error?.name || 'Unknown',
+        code: error?.code || 'No code',
+        stack: error?.stack || 'No stack trace'
+      });
+    }
   };
 
-  const closeProtocolDetails = () => {
-    setIsDetailsModalOpen(false);
-    setSelectedProtocol(null);
+  const handleDiagnosisSystemSelect = (system: string) => {
+    setSelectedDiagnosisSystem(system);
+    setFormData(prev => ({
+      ...prev,
+      diagnosisSystem: system,
+      name: `${system} Protokolü`
+    }));
+    setShowCreationForm(true);
   };
 
-  const resetSelection = () => {
-    setSelectedDisease('');
-    setSelectedAgeGroup('');
-    setSelectedSecondaryConditions([]);
+  const handleViewCurrentTreatments = (system: string) => {
+    console.log('🔍 TreatmentProtocols: Opening modal for system:', system);
+    console.log('📊 TreatmentProtocols: Current savedProtocols count:', savedProtocols.length);
+    setModalDiagnosisSystem(system);
+    setShowProtocolsModal(true);
+    // Refresh protocols when modal opens to ensure fresh data
+    fetchSavedProtocols();
   };
 
-  const handleDiseaseSelect = (diseaseId: string) => {
-    setSelectedDisease(diseaseId);
-    setSelectedAgeGroup('');
-    setSelectedSecondaryConditions([]);
+  const updatePhase = (phaseName: keyof typeof formData.phases, field: 'treatment' | 'dosage', value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      phases: {
+        ...prev.phases,
+        [phaseName]: {
+          ...prev.phases[phaseName],
+          [field]: value
+        }
+      }
+    }));
   };
 
-  const handleAgeGroupSelect = (ageGroupId: string) => {
-    setSelectedAgeGroup(ageGroupId);
+  const addConditionalPhase = (phaseType: 'regeneration3' | 'regeneration4') => {
+    setFormData(prev => ({
+      ...prev,
+      phases: {
+        ...prev.phases,
+        [phaseType]: { treatment: '', dosage: '' }
+      }
+    }));
   };
 
-  const handleSecondaryConditionToggle = (condition: string) => {
-    setSelectedSecondaryConditions(prev => 
-      prev.includes(condition) 
-        ? prev.filter(c => c !== condition)
-        : [...prev, condition]
-    );
+  const removeConditionalPhase = (phaseType: 'regeneration3' | 'regeneration4') => {
+    const { [phaseType]: removed, ...restPhases } = formData.phases;
+    setFormData(prev => ({
+      ...prev,
+      phases: restPhases
+    }));
+  };
+
+  // Main treatment management
+  const addMainTreatment = () => {
+    setFormData(prev => ({
+      ...prev,
+      phases: {
+        ...prev.phases,
+        mainTreatments: [...prev.phases.mainTreatments, { treatment: '', description: '' }]
+      }
+    }));
+  };
+
+  const removeMainTreatment = (index: number) => {
+    if (formData.phases.mainTreatments.length <= 1) return; // Always keep at least one
+    setFormData(prev => ({
+      ...prev,
+      phases: {
+        ...prev.phases,
+        mainTreatments: prev.phases.mainTreatments.filter((_, i) => i !== index)
+      }
+    }));
+  };
+
+  const updateMainTreatment = (index: number, field: 'treatment' | 'description', value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      phases: {
+        ...prev.phases,
+        mainTreatments: prev.phases.mainTreatments.map((treatment, i) =>
+          i === index ? { ...treatment, [field]: value } : treatment
+        )
+      }
+    }));
+  };
+
+  // Symptom condition management
+  const addSymptomCondition = () => {
+    const newCondition: SymptomCondition = {
+      symptomKey: 'stres',
+      symptomLabel: 'Stres',
+      threshold: 7
+    };
+    setFormData(prev => ({
+      ...prev,
+      symptomConditions: [...prev.symptomConditions, newCondition]
+    }));
+  };
+
+  const removeSymptomCondition = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      symptomConditions: prev.symptomConditions.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateSymptomCondition = (index: number, field: keyof SymptomCondition, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      symptomConditions: prev.symptomConditions.map((condition, i) => 
+        i === index ? { ...condition, [field]: value } : condition
+      )
+    }));
+  };
+
+  const handleSymptomChange = (index: number, symptomKey: string) => {
+    const selectedSymptom = AVAILABLE_SYMPTOMS.find(s => s.key === symptomKey);
+    if (selectedSymptom) {
+      updateSymptomCondition(index, 'symptomKey', symptomKey);
+      updateSymptomCondition(index, 'symptomLabel', selectedSymptom.label);
+    }
+  };
+
+  const saveProtocol = async () => {
+    if (!doctorProfile?.clinicId) {
+      alert('Klinik bilgisi bulunamadı. Lütfen tekrar giriş yapın.');
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      console.log('💾 TreatmentProtocols: Saving protocol for clinicId:', doctorProfile.clinicId);
+      
+      const protocolsRef = collection(db, 'treatmentProtocols');
+      const protocolData = {
+        ...formData,
+        clinicId: doctorProfile.clinicId, // Ensure clinic ID is set
+        updatedAt: new Date().toISOString()
+      };
+      
+      await addDoc(protocolsRef, protocolData);
+      
+      alert('Tedavi protokolü başarıyla kaydedildi!');
+      setShowCreationForm(false);
+      setSelectedDiagnosisSystem('');
+      fetchSavedProtocols();
+      
+      // Reset form
+      setFormData({
+        name: '',
+        diagnosisSystem: '',
+        ageGroup: '2-7',
+      phases: {
+        remember: { treatment: 'ARD-REM', dosage: '' },
+        regeneration1: { treatment: 'DVD-REG', dosage: '' },
+        regeneration2: { treatment: 'ISY-REG', dosage: '' },
+        mainTreatments: [{ treatment: '', description: '' }]
+      },
+        frequency: 'Regülin',
+        symptomConditions: [],
+        toxicityRequired: false,
+        conditionsLogic: 'any',
+        clinicId: doctorProfile?.clinicId || 'default-clinic',
+        priority: 1,
+        control: '3 AYDA 1 KONTROL',
+        createdBy: doctorProfile?.fullName || '',
+        createdAt: new Date().toISOString()
+      });
+      
+    } catch (error) {
+      console.error('Error saving protocol:', error);
+      alert('Protokol kaydedilirken bir hata oluştu.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteProtocol = async (protocolId: string) => {
+    if (window.confirm('Bu protokolü silmek istediğinizden emin misiniz?')) {
+      try {
+        console.log('🗑️ TreatmentProtocols: Deleting protocol:', protocolId);
+        await deleteDoc(doc(db, 'treatmentProtocols', protocolId));
+        fetchSavedProtocols();
+        alert('Protokol başarıyla silindi!');
+      } catch (error) {
+        console.error('Error deleting protocol:', error);
+        alert('Protokol silinirken bir hata oluştu.');
+      }
+    }
   };
 
   return (
     <div className="space-y-6">
       {/* Header Section */}
       <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-white mb-2">
-              Tedavi Protokolleri 📋
-            </h1>
-            <p className="text-white/70 text-lg">
-              Hastalık bazlı filtreleme ile otomatik doz detayları
-            </p>
+        <div className="text-center">
+          <h1 className="text-3xl font-bold text-white mb-2">
+            Dinamik Tedavi Protokolleri 🔧
+          </h1>
+          <p className="text-white/70 text-lg">
+            Tanı sistemlerine göre özelleştirilmiş tedavi protokolleri oluşturun
+          </p>
+        </div>
+      </div>
+
+      {!showCreationForm ? (
+        <>
+          {/* Diagnosis System Selection */}
+          <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+            <div className="text-center mb-8">
+              <h2 className="text-2xl font-bold text-white mb-4">
+                Tanı Sistemi Seçin 🔍
+              </h2>
+              <p className="text-white/70 mb-6">
+                Hangi tanı sistemi için tedavi protokolü oluşturmak istiyorsunuz?
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {DIAGNOSIS_SYSTEMS.map((system) => (
+                <div
+                  key={system}
+                  className="p-6 bg-gradient-to-r from-blue-500/10 to-purple-500/10 backdrop-blur-sm border border-white/20 rounded-2xl hover:from-blue-500/20 hover:to-purple-500/20 transition-all duration-300 group"
+                >
+                  <div className="text-center">
+                    <div className="text-4xl mb-4 group-hover:scale-110 transition-transform duration-300">
+                      {system === 'Dermatolojik Sistem' ? '🧴' :
+                       system === 'Solunum Sistemi' ? '🫁' :
+                       system === 'Kas – İskelet Sistemi' ? '🦴' :
+                       system === 'Santral Sinir Sistemi' ? '🧠' :
+                       system === 'Gastrointestinal Sistem' ? '🫄' :
+                       system === 'Kardiyovasküler Sistem' ? '❤️' :
+                       system === 'Pisikolojik Değerlendirme' ? '🧘' :
+                       system === 'Ürogental Sistem Hastalıkları' ? '🫧' :
+                       system === 'Endokrin Sistem' ? '⚗️' : '🔬'
+                      }
+                    </div>
+                    <h3 className="text-lg font-semibold text-white mb-4">{system}</h3>
+                    <div className="space-y-3">
+                      <button
+                        onClick={() => handleDiagnosisSystemSelect(system)}
+                        className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg font-medium transition-all duration-200 shadow-md hover:shadow-lg text-sm"
+                      >
+                        Protokol Oluştur
+                      </button>
+                      <button
+                        onClick={() => handleViewCurrentTreatments(system)}
+                        className="w-full py-2 px-4 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white rounded-lg font-medium transition-all duration-200 shadow-md hover:shadow-lg text-sm"
+                      >
+                        Güncel Tedaviyi Görüntüle
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <div className="text-white/60 text-sm">Toplam Hastalık</div>
-              <div className="text-2xl font-bold text-white">
-                {diseases.length}
+
+          {/* Saved Protocols */}
+          {savedProtocols.length > 0 && (
+            <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+              <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+                📋 Kaydedilmiş Protokoller ({savedProtocols.length})
+              </h2>
+              
+              <div className="space-y-4">
+                {savedProtocols.map((protocol) => (
+                  <div key={protocol.id} className="bg-white/5 border border-white/20 rounded-xl p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-white mb-1">{protocol.name}</h3>
+                        
+                        {/* Activation Conditions */}
+                        {(protocol.symptomConditions.length > 0 || protocol.toxicityRequired) && (
+                          <div className="flex flex-wrap gap-2 mb-2">
+                            {protocol.symptomConditions.map((condition, idx) => (
+                              <span key={idx} className="px-2 py-1 bg-blue-500/20 text-blue-300 rounded text-xs flex items-center gap-1">
+                                📊 {condition.symptomLabel} ≥{condition.threshold}
+                              </span>
+                            ))}
+                            {protocol.toxicityRequired && (
+                              <span className="px-2 py-1 bg-red-500/20 text-red-300 rounded text-xs flex items-center gap-1">
+                                ☠️ Yüksek Toksisite
+                              </span>
+                            )}
+                            {(protocol.symptomConditions.length > 1 || (protocol.symptomConditions.length > 0 && protocol.toxicityRequired)) && (
+                              <span className="px-2 py-1 bg-purple-500/20 text-purple-300 rounded text-xs">
+                                {protocol.conditionsLogic === 'all' ? 'TÜMÜ' : 'BİRİ YETER'}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        
+                        <div className="flex items-center gap-4 text-sm text-white/60">
+                          <span>🏥 {protocol.diagnosisSystem}</span>
+                          <span>👤 {protocol.ageGroup === 'adult' ? 'Yetişkin' : `${protocol.ageGroup} Yaş`}</span>
+                          <span>⚡ {protocol.frequency}</span>
+                          <span>👨‍⚕️ {protocol.createdBy}</span>
+                          <span>📅 {new Date(protocol.createdAt).toLocaleDateString('tr-TR')}</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => deleteProtocol(protocol.id)}
+                        className="px-3 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-all duration-200"
+                      >
+                        🗑️ Sil
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
+          )}
+        </>
+      ) : (
+        <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold text-white">
+              🏥 {selectedDiagnosisSystem} - Tedavi Protokolü Oluştur
+            </h2>
             <button
-              onClick={() => setIsCreateDiseaseModalOpen(true)}
-              className="px-4 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-xl text-green-300 hover:text-green-200 transition-all duration-200"
+              onClick={() => {
+                setShowCreationForm(false);
+                setSelectedDiagnosisSystem('');
+              }}
+              className="px-4 py-2 bg-gray-500/20 hover:bg-gray-500/30 border border-gray-500/30 rounded-xl text-gray-300 hover:text-gray-200 transition-all duration-200"
             >
-              + Yeni Hastalık
+              ← Geri
             </button>
           </div>
-        </div>
-      </div>
 
-      {/* Search and Category Filter */}
-      <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Search */}
-          <div>
-            <label className="block text-white/70 text-sm font-medium mb-2">
-              Hastalık Arama
-            </label>
-            <input
-              type="text"
-              placeholder="Hastalık adı, ICD-10 kodu..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50"
-            />
-          </div>
-
-          {/* Category Filter */}
-          <div>
-            <label className="block text-white/70 text-sm font-medium mb-2">
-              Kategori
-            </label>
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50"
-            >
-              <option value="all" className="text-gray-900 bg-white">Tüm Kategoriler</option>
-              {DISEASE_CATEGORIES.map(category => (
-                <option key={category} value={category} className="text-gray-900 bg-white">{category}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Disease Selection */}
-      <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-        <h2 className="text-xl font-bold text-white mb-4">Hastalık Seçimi</h2>
-        
-        {filteredDiseases.length === 0 ? (
-          <div className="text-center py-8">
-            <div className="text-4xl mb-2">🔍</div>
-            <p className="text-white/70">Arama kriterlerinize uygun hastalık bulunamadı.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredDiseases.map((disease) => (
-              <div
-                key={disease.id}
-                className={`p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 ${
-                  selectedDisease === disease.id
-                    ? 'border-blue-500 bg-blue-500/20'
-                    : 'border-white/20 bg-white/5 hover:bg-white/10'
-                }`}
-                onClick={() => handleDiseaseSelect(disease.id)}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="text-lg font-bold text-white">{disease.name}</h3>
-                  <span className="px-2 py-1 bg-purple-500/20 text-purple-300 rounded text-xs">
-                    {disease.icd10Code}
-                  </span>
-                </div>
-                <p className="text-white/60 text-sm mb-3">{disease.nameEn}</p>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="px-2 py-1 bg-blue-500/20 text-blue-300 rounded text-xs">
-                    {disease.category}
-                  </span>
-                </div>
-                <p className="text-white/70 text-sm line-clamp-2">{disease.description}</p>
+          <div className="space-y-6">
+            {/* Basic Information */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <label className="block text-white/80 text-sm font-medium mb-2">
+                  Protokol Adı *
+                </label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  placeholder="Örn: Dermatolojik Sistem - Stres Protokolü"
+                />
               </div>
-            ))}
-          </div>
-        )}
-      </div>
 
-      {/* Protocol Configuration */}
-      {selectedDisease && (
-        <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-          <h2 className="text-xl font-bold text-white mb-4">Protokol Konfigürasyonu</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Age Group Selection */}
-            <div>
-              <h3 className="text-white font-medium mb-3">Yaş Grubu</h3>
-              <div className="space-y-2">
-                {AGE_GROUPS.map((ageGroup) => (
-                  <label key={ageGroup.id} className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="ageGroup"
-                      value={ageGroup.id}
-                      checked={selectedAgeGroup === ageGroup.id}
-                      onChange={() => handleAgeGroupSelect(ageGroup.id)}
-                      className="w-4 h-4 text-blue-600 bg-white/10 border-white/20 focus:ring-blue-500"
-                    />
-                    <span className="text-white/80">{ageGroup.name}</span>
-                  </label>
-                ))}
+              <div>
+                <label className="block text-white/80 text-sm font-medium mb-2">
+                  Yaş Grubu *
+                </label>
+                <select
+                  value={formData.ageGroup}
+                  onChange={(e) => setFormData(prev => ({ ...prev, ageGroup: e.target.value as '2-7' | '8-14' | 'adult' }))}
+                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                >
+                  <option value="2-7" className="text-gray-900 bg-white">2-7 Yaş</option>
+                  <option value="8-14" className="text-gray-900 bg-white">8-14 Yaş</option>
+                  <option value="adult" className="text-gray-900 bg-white">Yetişkin</option>
+                </select>
+              </div>
+
+            </div>
+
+            {/* Activation Conditions */}
+            <div className="bg-white/5 border border-white/20 rounded-xl p-6">
+              <h3 className="text-xl font-bold text-white mb-4">⚠️ Ne Zaman Uygulanacak?</h3>
+              <p className="text-white/70 text-sm mb-6">
+                Bu protokol hangi hasta durumunda uygulanacağını belirleyin (anamnez sonuçlarına göre)
+              </p>
+              
+              {/* Toxicity Requirement */}
+              <div className="mb-6">
+                <label className="flex items-center gap-3 cursor-pointer p-4 border-2 border-white/20 rounded-lg hover:border-red-500/50 transition-all duration-200">
+                  <input
+                    type="checkbox"
+                    checked={formData.toxicityRequired}
+                    onChange={(e) => setFormData(prev => ({ ...prev, toxicityRequired: e.target.checked }))}
+                    className="w-5 h-5 text-red-600 bg-white/10 border-white/20 rounded focus:ring-red-500"
+                  />
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">☠️</span>
+                    <div>
+                      <span className="text-white font-medium">Yüksek Toksisite Gerekli</span>
+                      <p className="text-white/60 text-sm">Bu protokol sadece anamnez sonucunda "Yüksek Toksisite" tespit edilen hastalara uygulanır</p>
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              {/* Dynamic Symptom Conditions */}
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-white font-semibold flex items-center gap-2">
+                    📊 Semptom Koşulları
+                  </h4>
+                  <button
+                    onClick={addSymptomCondition}
+                    type="button"
+                    className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-blue-300 hover:text-blue-200 transition-all duration-200 text-sm"
+                  >
+                    + Semptom Koşulu Ekle
+                  </button>
+                </div>
+
+                {formData.symptomConditions.length === 0 && (
+                  <div className="p-4 border-2 border-dashed border-white/20 rounded-lg text-center">
+                    <span className="text-white/50 text-sm">
+                      Henüz semptom koşulu eklenmemiş. Bu protokol her zaman uygulanabilir olacak.
+                    </span>
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  {formData.symptomConditions.map((condition, index) => (
+                    <div key={index} className="p-4 bg-white/5 border border-white/20 rounded-lg">
+                      <div className="flex items-center gap-4">
+                        <div className="flex-1">
+                          <label className="block text-white/70 text-xs font-medium mb-1">
+                            Semptom
+                          </label>
+                          <select
+                            value={condition.symptomKey}
+                            onChange={(e) => handleSymptomChange(index, e.target.value)}
+                            className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                          >
+                            {AVAILABLE_SYMPTOMS.map((symptom) => (
+                              <option key={symptom.key} value={symptom.key} className="text-gray-900 bg-white">
+                                {symptom.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="w-32">
+                          <label className="block text-white/70 text-xs font-medium mb-1">
+                            Minimum Değer
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="1"
+                              max="10"
+                              value={condition.threshold}
+                              onChange={(e) => updateSymptomCondition(index, 'threshold', parseInt(e.target.value))}
+                              className="flex-1 h-2 bg-white/20 rounded-lg appearance-none cursor-pointer"
+                            />
+                            <div className="w-8 h-8 bg-white/10 border border-white/20 rounded flex items-center justify-center">
+                              <span className="text-white text-xs font-semibold">{condition.threshold}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => removeSymptomCondition(index)}
+                          type="button"
+                          className="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded text-red-300 hover:text-red-200 text-sm transition-all duration-200"
+                        >
+                          Kaldır
+                        </button>
+                      </div>
+                      <p className="text-white/50 text-xs mt-2">
+                        Bu semptom {condition.threshold} ve üzeri değere sahip hastalara uygulanır
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Logic for Multiple Conditions */}
+                {(formData.symptomConditions.length > 1 || (formData.symptomConditions.length > 0 && formData.toxicityRequired)) && (
+                  <div className="mt-4 p-4 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+                    <h5 className="text-purple-300 font-medium mb-3">🔗 Koşullar Arası Mantık</h5>
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="conditionsLogic"
+                          value="any"
+                          checked={formData.conditionsLogic === 'any'}
+                          onChange={(e) => setFormData(prev => ({ ...prev, conditionsLogic: e.target.value as 'any' | 'all' }))}
+                          className="w-4 h-4 text-purple-600"
+                        />
+                        <span className="text-purple-200">
+                          <strong>VEYA</strong> - Koşullardan herhangi biri karşılanırsa uygula
+                        </span>
+                      </label>
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="conditionsLogic"
+                          value="all"
+                          checked={formData.conditionsLogic === 'all'}
+                          onChange={(e) => setFormData(prev => ({ ...prev, conditionsLogic: e.target.value as 'any' | 'all' }))}
+                          className="w-4 h-4 text-purple-600"
+                        />
+                        <span className="text-purple-200">
+                          <strong>VE</strong> - Tüm koşullar aynı anda karşılanmalı
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Secondary Conditions */}
-            <div>
-              <h3 className="text-white font-medium mb-3">Ek Koşullar</h3>
-              <div className="space-y-2">
-                {secondaryConditions.map((condition) => (
-                  <label key={condition} className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={selectedSecondaryConditions.includes(condition)}
-                      onChange={() => handleSecondaryConditionToggle(condition)}
-                      className="w-4 h-4 text-green-600 bg-white/10 border-white/20 focus:ring-green-500"
-                    />
-                    <span className="text-white/80">{condition}</span>
-                  </label>
-                ))}
+            {/* Treatment Row Configuration */}
+            <div className="bg-white/5 border border-white/20 rounded-xl p-6">
+              <h3 className="text-xl font-bold text-white mb-4">💊 Tedavi Sırası - {formData.ageGroup === 'adult' ? 'Yetişkin' : `${formData.ageGroup} Yaş`}</h3>
+              <p className="text-white/70 text-sm mb-6">
+                Bu yaş grubu için tedavi sırasını ve dozajları belirleyin (tablodaki bir satıra denk gelir)
+              </p>
+              
+              <div className="space-y-6">
+                {/* Core Treatment Phases */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Remember */}
+                  <div className="bg-white/5 border border-green-500/30 rounded-lg p-4">
+                    <h4 className="text-green-300 font-medium mb-3 flex items-center gap-2">
+                      🔄 Remember
+                    </h4>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-white/70 text-xs font-medium mb-1">İlaç Adı</label>
+                        <input
+                          type="text"
+                          value={formData.phases.remember.treatment}
+                          onChange={(e) => updatePhase('remember', 'treatment', e.target.value)}
+                          className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-green-500/50"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-white/70 text-xs font-medium mb-1">Dozaj</label>
+                        <input
+                          type="text"
+                          value={formData.phases.remember.dosage}
+                          onChange={(e) => updatePhase('remember', 'dosage', e.target.value)}
+                          placeholder="Örn: 2X1/2 T"
+                          className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-green-500/50"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 1 Regeneration */}
+                  <div className="bg-white/5 border border-green-500/30 rounded-lg p-4">
+                    <h4 className="text-green-300 font-medium mb-3 flex items-center gap-2">
+                      🔄 1 Regeneration
+                    </h4>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-white/70 text-xs font-medium mb-1">İlaç Adı</label>
+                        <input
+                          type="text"
+                          value={formData.phases.regeneration1.treatment}
+                          onChange={(e) => updatePhase('regeneration1', 'treatment', e.target.value)}
+                          className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-green-500/50"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-white/70 text-xs font-medium mb-1">Dozaj</label>
+                        <input
+                          type="text"
+                          value={formData.phases.regeneration1.dosage}
+                          onChange={(e) => updatePhase('regeneration1', 'dosage', e.target.value)}
+                          placeholder="Örn: 3X1 A"
+                          className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-green-500/50"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2 Regeneration */}
+                  <div className="bg-white/5 border border-green-500/30 rounded-lg p-4">
+                    <h4 className="text-green-300 font-medium mb-3 flex items-center gap-2">
+                      🔄 2 Regeneration
+                    </h4>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-white/70 text-xs font-medium mb-1">İlaç Adı</label>
+                        <input
+                          type="text"
+                          value={formData.phases.regeneration2.treatment}
+                          onChange={(e) => updatePhase('regeneration2', 'treatment', e.target.value)}
+                          className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-green-500/50"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-white/70 text-xs font-medium mb-1">Dozaj</label>
+                        <input
+                          type="text"
+                          value={formData.phases.regeneration2.dosage}
+                          onChange={(e) => updatePhase('regeneration2', 'dosage', e.target.value)}
+                          placeholder="Örn: 2X2 T"
+                          className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-green-500/50"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Main Treatments */}
+                  <div className="bg-white/5 border border-blue-500/30 rounded-lg p-4 col-span-2">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-blue-300 font-medium flex items-center gap-2">
+                        ⭐ Uygulama
+                      </h4>
+                      <button
+                        onClick={addMainTreatment}
+                        type="button"
+                        className="px-3 py-1 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded text-blue-300 text-xs transition-all duration-200"
+                      >
+                        + Uygulama Ekle
+                      </button>
+                    </div>
+                    <div className="space-y-4">
+                      {formData.phases.mainTreatments.map((mainTreatment, index) => (
+                        <div key={index} className="bg-white/5 border border-white/10 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-blue-200 text-xs font-medium">
+                              Uygulama {index + 1}
+                            </span>
+                            {formData.phases.mainTreatments.length > 1 && (
+                              <button
+                                onClick={() => removeMainTreatment(index)}
+                                type="button"
+                                className="px-2 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded text-red-300 text-xs"
+                              >
+                                Kaldır
+                              </button>
+                            )}
+                          </div>
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-white/70 text-xs font-medium mb-1">
+                                Uygulama Adı {index === 0 ? '*' : ''}
+                              </label>
+                              <input
+                                type="text"
+                                value={mainTreatment.treatment}
+                                onChange={(e) => updateMainTreatment(index, 'treatment', e.target.value)}
+                                placeholder="Örn: HACAMAT, MINOR OZON"
+                                className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-white/70 text-xs font-medium mb-1">
+                                Açıklama
+                              </label>
+                              <textarea
+                                value={mainTreatment.description}
+                                onChange={(e) => updateMainTreatment(index, 'description', e.target.value)}
+                                rows={2}
+                                placeholder="Bu uygulamanın özelliklerini kısaca açıklayın..."
+                                className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Conditional Phases */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-white font-medium">Koşullu Ek Fazlar</h4>
+                    <div className="flex gap-2">
+                      {!formData.phases.regeneration3 && (
+                        <button
+                          onClick={() => addConditionalPhase('regeneration3')}
+                          className="px-3 py-1 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded text-blue-300 text-sm transition-all duration-200"
+                        >
+                          + 3 Regeneration Ekle
+                        </button>
+                      )}
+                      {!formData.phases.regeneration4 && (
+                        <button
+                          onClick={() => addConditionalPhase('regeneration4')}
+                          className="px-3 py-1 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded text-purple-300 text-sm transition-all duration-200"
+                        >
+                          + 4 Regeneration Ekle
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* 3 Regeneration (Optional) */}
+                    {formData.phases.regeneration3 && (
+                      <div className="bg-white/5 border border-orange-500/30 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-orange-300 font-medium flex items-center gap-2">
+                            🔄 3 Regeneration (Koşullu)
+                          </h4>
+                          <button
+                            onClick={() => removeConditionalPhase('regeneration3')}
+                            className="px-2 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded text-red-300 text-xs"
+                          >
+                            Kaldır
+                          </button>
+                        </div>
+                        <div className="space-y-3">
+                          <div>
+                            <input
+                              type="text"
+                              value={formData.phases.regeneration3.treatment}
+                              onChange={(e) => updatePhase('regeneration3', 'treatment', e.target.value)}
+                              placeholder="İlaç adı (örn: SDS-X, DTX-19)"
+                              className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-orange-500/50"
+                            />
+                          </div>
+                          <div>
+                            <input
+                              type="text"
+                              value={formData.phases.regeneration3.dosage}
+                              onChange={(e) => updatePhase('regeneration3', 'dosage', e.target.value)}
+                              placeholder="Dozaj (örn: 2X1/2 T)"
+                              className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-orange-500/50"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 4 Regeneration (Optional) */}
+                    {formData.phases.regeneration4 && (
+                      <div className="bg-white/5 border border-purple-500/30 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-purple-300 font-medium flex items-center gap-2">
+                            🔄 4 Regeneration (Koşullu)
+                          </h4>
+                          <button
+                            onClick={() => removeConditionalPhase('regeneration4')}
+                            className="px-2 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded text-red-300 text-xs"
+                          >
+                            Kaldır
+                          </button>
+                        </div>
+                        <div className="space-y-3">
+                          <div>
+                            <input
+                              type="text"
+                              value={formData.phases.regeneration4.treatment}
+                              onChange={(e) => updatePhase('regeneration4', 'treatment', e.target.value)}
+                              placeholder="İlaç adı (örn: SDS-X)"
+                              className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-purple-500/50"
+                            />
+                          </div>
+                          <div>
+                            <input
+                              type="text"
+                              value={formData.phases.regeneration4.dosage}
+                              onChange={(e) => updatePhase('regeneration4', 'dosage', e.target.value)}
+                              placeholder="Dozaj (örn: 3X1/2 T)"
+                              className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-purple-500/50"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Reset Button */}
-            <div className="flex items-end">
+            {/* Save Button */}
+            <div className="flex justify-end">
               <button
-                onClick={resetSelection}
-                className="w-full px-4 py-3 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-xl text-red-300 hover:text-red-200 transition-all duration-200"
+                onClick={saveProtocol}
+                disabled={
+                  !formData.name || 
+                  !formData.phases.mainTreatments.some(mt => mt.treatment) || 
+                  loading
+                }
+                className="px-8 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-xl font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
               >
-                Seçimi Sıfırla
+                {loading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white inline-block mr-2"></div>
+                    Kaydediliyor...
+                  </>
+                ) : (
+                  '💾 Protokolü Kaydet'
+                )}
               </button>
             </div>
           </div>
         </div>
       )}
-
-      {/* Available Protocols */}
-      {availableProtocols.length > 0 && (
-        <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-white">Mevcut Protokoller</h2>
-            <button
-              onClick={() => setIsCreateProtocolModalOpen(true)}
-              className="px-4 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-xl text-green-300 hover:text-green-200 transition-all duration-200"
-            >
-              + Yeni Protokol
-            </button>
-          </div>
-          
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {availableProtocols.map((protocol) => (
-              <div
-                key={protocol.id}
-                className="bg-white/5 border border-white/20 rounded-xl p-6 hover:bg-white/10 transition-all duration-200 cursor-pointer"
-                onClick={() => openProtocolDetails(protocol)}
-              >
-                {/* Protocol Header */}
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 className="text-lg font-bold text-white mb-1">
-                      {'diseaseName' in protocol ? protocol.diseaseName : protocol.primaryDiseaseName}
-                    </h3>
-                    <p className="text-white/60 text-sm">
-                      {protocol.ageGroupName} • {protocol.treatmentCourseName}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <div className="px-3 py-1 bg-green-500/20 text-green-300 rounded-full text-xs font-medium">
-                      {protocol.duration}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Application Methods */}
-                <div className="mb-4">
-                  <h4 className="text-white/80 text-sm font-medium mb-2">Uygulama Yöntemleri:</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {protocol.applicationMethods.map((methodId) => {
-                      const method = APPLICATION_METHODS.find(m => m.id === methodId);
-                      return method ? (
-                        <span
-                          key={method.id}
-                          className="px-2 py-1 bg-blue-500/20 text-blue-300 rounded text-xs"
-                        >
-                          {method.name}
-                        </span>
-                      ) : null;
-                    })}
-                  </div>
-                </div>
-
-                {/* Dosage and Frequency */}
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <span className="text-white/60 text-xs">Doz:</span>
-                    <div className="text-white/80 text-sm font-medium">{protocol.dosage}</div>
-                  </div>
-                  <div>
-                    <span className="text-white/60 text-xs">Sıklık:</span>
-                    <div className="text-white/80 text-sm font-medium">{protocol.frequency}</div>
-                  </div>
-                </div>
-
-                {/* Expected Results */}
-                <div className="pt-4 border-t border-white/10">
-                  <span className="text-white/60 text-xs">Beklenen Sonuç:</span>
-                  <div className="text-white/80 text-sm font-medium line-clamp-2">
-                    {protocol.expectedResults}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* No Protocols Available */}
-      {selectedDisease && selectedAgeGroup && availableProtocols.length === 0 && (
-        <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-12 text-center">
-          <div className="text-6xl mb-4">📝</div>
-          <h3 className="text-xl font-bold text-white mb-2">Protokol Bulunamadı</h3>
-          <p className="text-white/70 mb-4">
-            Seçilen kriterler için henüz protokol tanımlanmamış.
-          </p>
-          <button
-            onClick={() => setIsCreateProtocolModalOpen(true)}
-            className="px-6 py-3 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-xl text-green-300 hover:text-green-200 transition-all duration-200"
-          >
-            Yeni Protokol Oluştur
-          </button>
-        </div>
-      )}
-
-      {/* Protocol Details Modal */}
-      {isDetailsModalOpen && selectedProtocol && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-white/20 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
-            <div className="p-6 border-b border-white/20">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold text-white">
-                    {('diseaseName' in selectedProtocol ? selectedProtocol.diseaseName : selectedProtocol.primaryDiseaseName)} Protokolü
-                  </h2>
-                  <p className="text-white/70">
-                    {selectedProtocol.ageGroupName} • {selectedProtocol.treatmentCourseName}
-                  </p>
-                </div>
-                <button
-                  onClick={closeProtocolDetails}
-                  className="p-2 hover:bg-white/10 rounded-xl transition-colors"
-                >
-                  <span className="text-white text-xl">✕</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Modal Content */}
-            <div className="p-6 space-y-6">
-              {/* Basic Info */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white/5 rounded-xl p-4">
-                  <h4 className="text-white/80 font-medium mb-2">Yaş Grubu</h4>
-                  <p className="text-white">{selectedProtocol.ageGroupName}</p>
-                </div>
-                <div className="bg-white/5 rounded-xl p-4">
-                  <h4 className="text-white/80 font-medium mb-2">Tedavi Kürü</h4>
-                  <p className="text-white">{selectedProtocol.treatmentCourseName}</p>
-                </div>
-                <div className="bg-white/5 rounded-xl p-4">
-                  <h4 className="text-white/80 font-medium mb-2">Süre</h4>
-                  <p className="text-white">{selectedProtocol.duration}</p>
-                </div>
-              </div>
-
-              {/* Application Methods */}
-              <div className="bg-white/5 rounded-xl p-4">
-                <h4 className="text-white font-medium mb-3">Uygulama Yöntemleri</h4>
-                <div className="space-y-4">
-                  {selectedProtocol.applicationMethods.map((methodId) => {
-                    const method = APPLICATION_METHODS.find(m => m.id === methodId);
-                    return method ? (
-                      <div key={method.id} className="border-l-2 border-blue-500 pl-4">
-                        <h5 className="text-white font-medium mb-2">{method.name}</h5>
-                        <p className="text-white/70 text-sm mb-2">{method.description}</p>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
-                          <div>
-                            <span className="text-white/60">Süre:</span>
-                            <span className="text-white ml-2">{method.duration}</span>
-                          </div>
-                          <div>
-                            <span className="text-white/60">Sıklık:</span>
-                            <span className="text-white ml-2">{method.frequency}</span>
-                          </div>
-                          <div>
-                            <span className="text-white/60">Başarı Oranı:</span>
-                            <span className="text-white ml-2">{method.successRate}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ) : null;
-                  })}
-                </div>
-              </div>
-
-              {/* Dosage and Instructions */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-white/5 rounded-xl p-4">
-                  <h4 className="text-white font-medium mb-3">Doz ve Sıklık</h4>
-                  <div className="space-y-2">
-                    <div>
-                      <span className="text-white/60">Doz:</span>
-                      <p className="text-white">{selectedProtocol.dosage}</p>
-                    </div>
-                    <div>
-                      <span className="text-white/60">Sıklık:</span>
-                      <p className="text-white">{selectedProtocol.frequency}</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-white/5 rounded-xl p-4">
-                  <h4 className="text-white font-medium mb-3">Talimatlar</h4>
-                  <p className="text-white/80">{selectedProtocol.instructions}</p>
-                </div>
-              </div>
-
-              {/* Precautions and Expected Results */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-white/5 rounded-xl p-4">
-                  <h4 className="text-white font-medium mb-3">Dikkat Edilecekler</h4>
-                  <p className="text-white/80">{selectedProtocol.precautions}</p>
-                </div>
-                <div className="bg-white/5 rounded-xl p-4">
-                  <h4 className="text-white font-medium mb-3">Beklenen Sonuçlar</h4>
-                  <p className="text-white/80">{selectedProtocol.expectedResults}</p>
-                </div>
-              </div>
-
-              {/* Follow-up Schedule */}
-              <div className="bg-white/5 rounded-xl p-4">
-                <h4 className="text-white font-medium mb-3">Takip Programı</h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                  {selectedProtocol.followUpSchedule.map((item, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                      <span className="text-white/80 text-sm">{item}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Create Disease Modal */}
-      <CreateDiseaseModal
-        isOpen={isCreateDiseaseModalOpen}
-        onClose={() => setIsCreateDiseaseModalOpen(false)}
-        onDiseaseAdded={() => {
-          fetchDiseases();
-          setIsCreateDiseaseModalOpen(false);
+      
+      {/* Treatment Protocols Modal */}
+      <TreatmentProtocolsModal
+        isOpen={showProtocolsModal}
+        onClose={() => setShowProtocolsModal(false)}
+        diagnosisSystem={modalDiagnosisSystem}
+        savedProtocols={savedProtocols}
+        onCreateProtocol={(system) => {
+          setSelectedDiagnosisSystem(system);
+          setFormData(prev => ({
+            ...prev,
+            diagnosisSystem: system,
+            name: `${system} Protokolü`
+          }));
+          setShowCreationForm(true);
+          setShowProtocolsModal(false); // Close modal when creating new protocol
         }}
-      />
-
-      <CreateProtocolModal
-        isOpen={isCreateProtocolModalOpen}
-        onClose={() => setIsCreateProtocolModalOpen(false)}
-        onProtocolAdded={() => {
-          fetchDiseaseProtocols();
-          fetchCombinedProtocols();
-          setIsCreateProtocolModalOpen(false);
-        }}
-        selectedDiseaseId={selectedDisease}
-        selectedAgeGroupId={selectedAgeGroup}
+        doctorProfile={doctorProfile} // Pass doctor profile for clinic validation
       />
     </div>
   );
