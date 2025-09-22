@@ -3,9 +3,14 @@ import { collection, addDoc, getDocs, query, orderBy, deleteDoc, doc, where } fr
 import { db } from '../../../firebase/config';
 import { DIAGNOSIS_SYSTEMS } from '../../../constants';
 import TreatmentProtocolsModal from '../components/TreatmentProtocolsModal';
+import ApplicationManagementModal from '../components/ApplicationManagementModal';
+import ApplicationSelector from '../components/ApplicationSelector';
 
 interface TreatmentProtocolsProps {
-  doctorProfile: any;
+  doctorProfile: {
+    clinicId: string;
+    fullName: string;
+  } | null;
 }
 
 // Available symptoms from anamnesis
@@ -100,6 +105,10 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
   const [savedProtocols, setSavedProtocols] = useState<SavedProtocol[]>([]);
   const [loading, setLoading] = useState(false);
   
+  // Application management state
+  const [showApplicationModal, setShowApplicationModal] = useState(false);
+  const [refreshApplications, setRefreshApplications] = useState(0);
+  
   const [formData, setFormData] = useState<SingleRowProtocol>({
     name: '',
     diagnosisSystem: '',
@@ -108,7 +117,7 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
       remember: { treatment: 'ARD-REM', dosage: '' },
       regeneration1: { treatment: 'DVD-REG', dosage: '' },
       regeneration2: { treatment: 'ISY-REG', dosage: '' },
-      mainTreatments: [{ treatment: '', description: '' }]
+      mainTreatments: [] // Start with empty array
     },
     frequency: 'Regülin',
     symptomConditions: [],
@@ -124,8 +133,74 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
 
   // Load saved protocols for this clinic
   useEffect(() => {
-    fetchSavedProtocols();
-  }, [doctorProfile?.clinicId]);
+    const fetchData = async () => {
+      if (!doctorProfile?.clinicId) {
+        console.warn('❌ TreatmentProtocols: No clinicId found in doctorProfile:', doctorProfile);
+        return;
+      }
+      
+      try {
+        console.log('🔍 TreatmentProtocols: Fetching protocols for clinicId:', doctorProfile.clinicId);
+        console.log('👨‍⚕️ TreatmentProtocols: Doctor profile:', doctorProfile);
+        
+        const protocolsRef = collection(db, 'treatmentProtocols');
+        
+        // First try without orderBy to check if compound index is the issue
+        console.log('🔍 TreatmentProtocols: Trying query without orderBy first...');
+        let q = query(
+          protocolsRef, 
+          where('clinicId', '==', doctorProfile.clinicId)
+        );
+        
+        let querySnapshot = await getDocs(q);
+        console.log('📊 TreatmentProtocols: Query without orderBy returned:', querySnapshot.size, 'documents');
+        
+        // If we get results, try with orderBy
+        if (querySnapshot.size > 0) {
+          console.log('✅ TreatmentProtocols: Found protocols, now trying with orderBy...');
+          try {
+            q = query(
+              protocolsRef, 
+              where('clinicId', '==', doctorProfile.clinicId),
+              orderBy('createdAt', 'desc')
+            );
+            querySnapshot = await getDocs(q);
+            console.log('📊 TreatmentProtocols: Query with orderBy returned:', querySnapshot.size, 'documents');
+          } catch {
+            console.warn('⚠️ TreatmentProtocols: orderBy failed, using results without ordering');
+            // Continue with the previous result without ordering
+          }
+        }
+        
+        const protocols: SavedProtocol[] = [];
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          console.log('📄 TreatmentProtocols: Processing document:', doc.id, data);
+          protocols.push({
+            id: doc.id,
+            ...data
+          } as SavedProtocol);
+        });
+        
+        // Manual sort by createdAt if orderBy didn't work
+        if (protocols.length > 0) {
+          protocols.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        }
+        
+        console.log('✅ TreatmentProtocols: Final protocols array:', protocols.length, 'protocols');
+        console.log('📋 TreatmentProtocols: Protocol details:', protocols);
+        setSavedProtocols(protocols);
+      } catch (error) {
+        console.error('❌ TreatmentProtocols: Error fetching protocols:', error);
+        console.error('❌ TreatmentProtocols: Error details:', {
+          message: (error as Error)?.message || 'No message',
+          name: (error as Error)?.name || 'Unknown'
+        });
+      }
+    };
+
+    fetchData();
+  }, [doctorProfile]);
 
   const fetchSavedProtocols = async () => {
     if (!doctorProfile?.clinicId) {
@@ -134,64 +209,33 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
     }
     
     try {
-      console.log('🔍 TreatmentProtocols: Fetching protocols for clinicId:', doctorProfile.clinicId);
-      console.log('👨‍⚕️ TreatmentProtocols: Doctor profile:', doctorProfile);
+      console.log('🔍 TreatmentProtocols: Refetching protocols for clinicId:', doctorProfile.clinicId);
       
       const protocolsRef = collection(db, 'treatmentProtocols');
-      
-      // First try without orderBy to check if compound index is the issue
-      console.log('🔍 TreatmentProtocols: Trying query without orderBy first...');
-      let q = query(
+      // Simple query without orderBy to avoid compound index requirement
+      const q = query(
         protocolsRef, 
         where('clinicId', '==', doctorProfile.clinicId)
       );
       
-      let querySnapshot = await getDocs(q);
-      console.log('📊 TreatmentProtocols: Query without orderBy returned:', querySnapshot.size, 'documents');
-      
-      // If we get results, try with orderBy
-      if (querySnapshot.size > 0) {
-        console.log('✅ TreatmentProtocols: Found protocols, now trying with orderBy...');
-        try {
-          q = query(
-            protocolsRef, 
-            where('clinicId', '==', doctorProfile.clinicId),
-            orderBy('createdAt', 'desc')
-          );
-          querySnapshot = await getDocs(q);
-          console.log('📊 TreatmentProtocols: Query with orderBy returned:', querySnapshot.size, 'documents');
-        } catch (orderByError) {
-          console.warn('⚠️ TreatmentProtocols: orderBy failed, using results without ordering:', orderByError);
-          // Continue with the previous result without ordering
-        }
-      }
-      
+      const querySnapshot = await getDocs(q);
       const protocols: SavedProtocol[] = [];
+      
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        console.log('📄 TreatmentProtocols: Processing document:', doc.id, data);
         protocols.push({
           id: doc.id,
           ...data
         } as SavedProtocol);
       });
       
-      // Manual sort by createdAt if orderBy didn't work
-      if (protocols.length > 0) {
-        protocols.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      }
+      // Client-side sort by createdAt (newest first)
+      protocols.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       
-      console.log('✅ TreatmentProtocols: Final protocols array:', protocols.length, 'protocols');
-      console.log('📋 TreatmentProtocols: Protocol details:', protocols);
+      console.log('✅ TreatmentProtocols: Refetched', protocols.length, 'protocols');
       setSavedProtocols(protocols);
-    } catch (error: any) {
-      console.error('❌ TreatmentProtocols: Error fetching protocols:', error);
-      console.error('❌ TreatmentProtocols: Error details:', {
-        message: error?.message || 'No message',
-        name: error?.name || 'Unknown',
-        code: error?.code || 'No code',
-        stack: error?.stack || 'No stack trace'
-      });
+    } catch (error) {
+      console.error('❌ TreatmentProtocols: Error refetching protocols:', error);
     }
   };
 
@@ -238,7 +282,8 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
   };
 
   const removeConditionalPhase = (phaseType: 'regeneration3' | 'regeneration4') => {
-    const { [phaseType]: removed, ...restPhases } = formData.phases;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { [phaseType]: _, ...restPhases } = formData.phases;
     setFormData(prev => ({
       ...prev,
       phases: restPhases
@@ -246,35 +291,12 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
   };
 
   // Main treatment management
-  const addMainTreatment = () => {
-    setFormData(prev => ({
-      ...prev,
-      phases: {
-        ...prev.phases,
-        mainTreatments: [...prev.phases.mainTreatments, { treatment: '', description: '' }]
-      }
-    }));
-  };
-
   const removeMainTreatment = (index: number) => {
-    if (formData.phases.mainTreatments.length <= 1) return; // Always keep at least one
     setFormData(prev => ({
       ...prev,
       phases: {
         ...prev.phases,
         mainTreatments: prev.phases.mainTreatments.filter((_, i) => i !== index)
-      }
-    }));
-  };
-
-  const updateMainTreatment = (index: number, field: 'treatment' | 'description', value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      phases: {
-        ...prev.phases,
-        mainTreatments: prev.phases.mainTreatments.map((treatment, i) =>
-          i === index ? { ...treatment, [field]: value } : treatment
-        )
       }
     }));
   };
@@ -299,7 +321,7 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
     }));
   };
 
-  const updateSymptomCondition = (index: number, field: keyof SymptomCondition, value: any) => {
+  const updateSymptomCondition = (index: number, field: keyof SymptomCondition, value: string | number) => {
     setFormData(prev => ({
       ...prev,
       symptomConditions: prev.symptomConditions.map((condition, i) => 
@@ -349,7 +371,7 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
         remember: { treatment: 'ARD-REM', dosage: '' },
         regeneration1: { treatment: 'DVD-REG', dosage: '' },
         regeneration2: { treatment: 'ISY-REG', dosage: '' },
-        mainTreatments: [{ treatment: '', description: '' }]
+        mainTreatments: [] // Reset to empty array
       },
         frequency: 'Regülin',
         symptomConditions: [],
@@ -388,13 +410,23 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
     <div className="space-y-6">
       {/* Header Section */}
       <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold text-white mb-2">
-            Dinamik Tedavi Protokolleri 🔧
-          </h1>
-          <p className="text-white/70 text-lg">
-            Tanı sistemlerine göre özelleştirilmiş tedavi protokolleri oluşturun
-          </p>
+        <div className="flex items-center justify-between">
+          <div className="text-center flex-1">
+            <h1 className="text-3xl font-bold text-white mb-2">
+              Dinamik Tedavi Protokolleri 🔧
+            </h1>
+            <p className="text-white/70 text-lg">
+              Tanı sistemlerine göre özelleştirilmiş tedavi protokolleri oluşturun
+            </p>
+          </div>
+          <div className="ml-6">
+            <button
+              onClick={() => setShowApplicationModal(true)}
+              className="px-6 py-3 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white rounded-xl font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center gap-2"
+            >
+              🏥 Uygulama Yönetimi
+            </button>
+          </div>
         </div>
       </div>
 
@@ -798,22 +830,48 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
                       <h4 className="text-blue-300 font-medium flex items-center gap-2">
                         ⭐ Uygulama
                       </h4>
-                      <button
-                        onClick={addMainTreatment}
-                        type="button"
-                        className="px-3 py-1 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded text-blue-300 text-xs transition-all duration-200"
-                      >
-                        + Uygulama Ekle
-                      </button>
                     </div>
-                    <div className="space-y-4">
-                      {formData.phases.mainTreatments.map((mainTreatment, index) => (
-                        <div key={index} className="bg-white/5 border border-white/10 rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-blue-200 text-xs font-medium">
-                              Uygulama {index + 1}
-                            </span>
-                            {formData.phases.mainTreatments.length > 1 && (
+
+                    {/* Application Selector */}
+                    <div className="mb-4 p-3 bg-white/5 border border-green-500/30 rounded-lg">
+                      <h5 className="text-green-300 font-medium mb-3 flex items-center gap-2">
+                        📋 Kayıtlı Uygulamalardan Seç
+                      </h5>
+                      <div className="border border-white/10 rounded-lg p-2 bg-white/5">
+                        <ApplicationSelector
+                          clinicId={doctorProfile?.clinicId || ''}
+                          onApplicationSelect={(application) => {
+                            // Add selected application to main treatments
+                            const newTreatment = {
+                              treatment: application.name,
+                              description: application.description || application.name
+                            };
+                            setFormData(prev => ({
+                              ...prev,
+                              phases: {
+                                ...prev.phases,
+                                mainTreatments: [...prev.phases.mainTreatments, newTreatment]
+                              }
+                            }));
+                          }}
+                          selectedApplications={formData.phases.mainTreatments.map(mt => mt.treatment)}
+                          refreshTrigger={refreshApplications}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Selected Applications Display */}
+                    {formData.phases.mainTreatments.length > 0 && (
+                      <div className="space-y-3">
+                        <h5 className="text-blue-300 font-medium flex items-center gap-2">
+                          ✅ Seçilen Uygulamalar
+                        </h5>
+                        {formData.phases.mainTreatments.map((mainTreatment, index) => (
+                          <div key={index} className="bg-white/5 border border-white/10 rounded-lg p-3">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-blue-200 text-sm font-medium">
+                                {mainTreatment.treatment}
+                              </span>
                               <button
                                 onClick={() => removeMainTreatment(index)}
                                 type="button"
@@ -821,37 +879,16 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
                               >
                                 Kaldır
                               </button>
+                            </div>
+                            {mainTreatment.description && (
+                              <p className="text-white/60 text-xs">
+                                {mainTreatment.description}
+                              </p>
                             )}
                           </div>
-                          <div className="space-y-3">
-                            <div>
-                              <label className="block text-white/70 text-xs font-medium mb-1">
-                                Uygulama Adı {index === 0 ? '*' : ''}
-                              </label>
-                              <input
-                                type="text"
-                                value={mainTreatment.treatment}
-                                onChange={(e) => updateMainTreatment(index, 'treatment', e.target.value)}
-                                placeholder="Örn: HACAMAT, MINOR OZON"
-                                className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/50"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-white/70 text-xs font-medium mb-1">
-                                Açıklama
-                              </label>
-                              <textarea
-                                value={mainTreatment.description}
-                                onChange={(e) => updateMainTreatment(index, 'description', e.target.value)}
-                                rows={2}
-                                placeholder="Bu uygulamanın özelliklerini kısaca açıklayın..."
-                                className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/50"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -964,7 +1001,7 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
                 onClick={saveProtocol}
                 disabled={
                   !formData.name || 
-                  !formData.phases.mainTreatments.some(mt => mt.treatment) || 
+                  formData.phases.mainTreatments.length === 0 || 
                   loading
                 }
                 className="px-8 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-xl font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
@@ -1000,6 +1037,17 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
           setShowProtocolsModal(false); // Close modal when creating new protocol
         }}
         doctorProfile={doctorProfile} // Pass doctor profile for clinic validation
+      />
+      
+      {/* Application Management Modal */}
+      <ApplicationManagementModal
+        isOpen={showApplicationModal}
+        onClose={() => setShowApplicationModal(false)}
+        doctorProfile={doctorProfile}
+        onApplicationsUpdate={() => {
+          // Trigger refresh of applications in selector
+          setRefreshApplications(prev => prev + 1);
+        }}
       />
     </div>
   );
