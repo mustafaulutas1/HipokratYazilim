@@ -48,6 +48,7 @@ interface TreatmentProtocolsModalProps {
   diagnosisSystem: string;
   savedProtocols: SavedProtocol[];
   onCreateProtocol: (system: string) => void;
+  onEditProtocol: (protocol: SavedProtocol) => void;
   doctorProfile?: any; // Add doctor profile for clinic validation
 }
 
@@ -57,6 +58,7 @@ const TreatmentProtocolsModal: React.FC<TreatmentProtocolsModalProps> = ({
   diagnosisSystem,
   savedProtocols,
   onCreateProtocol,
+  onEditProtocol,
   doctorProfile
 }) => {
   // Prevent body scroll when modal is open
@@ -166,6 +168,7 @@ const TreatmentProtocolsModal: React.FC<TreatmentProtocolsModalProps> = ({
                               <th className="text-left text-white/70 font-medium p-3 bg-purple-500/10 min-w-[140px]">Uygulamalar</th>
                               <th className="text-left text-white/70 font-medium p-3 bg-gray-500/10 min-w-[100px]">Hastalık</th>
                               <th className="text-left text-white/70 font-medium p-3 bg-indigo-500/10 min-w-[150px]">Koşullar</th>
+                              <th className="text-left text-white/70 font-medium p-3 bg-blue-600/10 min-w-[80px]">İşlem</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -257,6 +260,19 @@ const TreatmentProtocolsModal: React.FC<TreatmentProtocolsModalProps> = ({
                                       </div>
                                     )}
                                   </div>
+                                </td>
+                                
+                                {/* Actions */}
+                                <td className="p-3 text-white">
+                                  <button
+                                    onClick={() => {
+                                      onEditProtocol(protocol);
+                                      onClose();
+                                    }}
+                                    className="px-3 py-1 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-blue-300 hover:text-blue-200 transition-all duration-200 text-xs"
+                                  >
+                                    ✏️ Düzenle
+                                  </button>
                                 </td>
                               </tr>
                             ))}

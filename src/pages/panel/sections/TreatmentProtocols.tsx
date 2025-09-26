@@ -1125,6 +1125,7 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
           setShowCreationForm(true);
           setShowProtocolsModal(false); // Close modal when creating new protocol
         }}
+        onEditProtocol={handleEditProtocol}
         doctorProfile={doctorProfile} // Pass doctor profile for clinic validation
       />
       
