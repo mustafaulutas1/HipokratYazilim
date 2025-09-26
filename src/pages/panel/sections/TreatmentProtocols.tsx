@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, query, orderBy, deleteDoc, doc, where } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, orderBy, deleteDoc, doc, where, updateDoc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { DIAGNOSIS_SYSTEMS } from '../../../constants';
 import TreatmentProtocolsModal from '../components/TreatmentProtocolsModal';
@@ -104,6 +104,7 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
   const [modalDiagnosisSystem, setModalDiagnosisSystem] = useState<string>('');
   const [savedProtocols, setSavedProtocols] = useState<SavedProtocol[]>([]);
   const [loading, setLoading] = useState(false);
+  const [editingProtocol, setEditingProtocol] = useState<SavedProtocol | null>(null);
   
   // Application management state
   const [showApplicationModal, setShowApplicationModal] = useState(false);
@@ -346,20 +347,59 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
     
     try {
       setLoading(true);
-      console.log('💾 TreatmentProtocols: Saving protocol for clinicId:', doctorProfile.clinicId);
       
-      const protocolsRef = collection(db, 'treatmentProtocols');
-      const protocolData = {
-        ...formData,
-        clinicId: doctorProfile.clinicId, // Ensure clinic ID is set
+      // Clean the data to remove undefined values
+      const cleanProtocolData = {
+        name: formData.name,
+        diagnosisSystem: formData.diagnosisSystem,
+        ageGroup: formData.ageGroup,
+        phases: {
+          remember: formData.phases.remember,
+          regeneration1: formData.phases.regeneration1,
+          regeneration2: formData.phases.regeneration2,
+          mainTreatments: formData.phases.mainTreatments || []
+        },
+        frequency: formData.frequency,
+        symptomConditions: formData.symptomConditions || [],
+        toxicityRequired: formData.toxicityRequired || false,
+        conditionsLogic: formData.conditionsLogic || 'any',
+        clinicId: doctorProfile.clinicId,
+        priority: formData.priority || 1,
+        control: formData.control || '3 AYDA 1 KONTROL',
+        createdBy: formData.createdBy || doctorProfile?.fullName || '',
+        createdAt: formData.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
       
-      await addDoc(protocolsRef, protocolData);
+      // Add optional regeneration phases only if they exist and have treatment values
+      if (formData.phases.regeneration3 && 
+          formData.phases.regeneration3.treatment && 
+          formData.phases.regeneration3.treatment.trim() !== '') {
+        (cleanProtocolData.phases as any).regeneration3 = formData.phases.regeneration3;
+      }
       
-      alert('Tedavi protokolü başarıyla kaydedildi!');
+      if (formData.phases.regeneration4 && 
+          formData.phases.regeneration4.treatment && 
+          formData.phases.regeneration4.treatment.trim() !== '') {
+        (cleanProtocolData.phases as any).regeneration4 = formData.phases.regeneration4;
+      }
+      
+      if (editingProtocol) {
+        // Updating existing protocol
+        console.log('✏️ TreatmentProtocols: Updating protocol:', editingProtocol.id);
+        await updateDoc(doc(db, 'treatmentProtocols', editingProtocol.id), cleanProtocolData);
+        alert('Tedavi protokolü başarıyla güncellendi!');
+      } else {
+        // Creating new protocol
+        console.log('💾 TreatmentProtocols: Creating new protocol for clinicId:', doctorProfile.clinicId);
+        const protocolsRef = collection(db, 'treatmentProtocols');
+        await addDoc(protocolsRef, cleanProtocolData);
+        alert('Tedavi protokolü başarıyla kaydedildi!');
+      }
+      
       setShowCreationForm(false);
       setSelectedDiagnosisSystem('');
+      setEditingProtocol(null);
       fetchSavedProtocols();
       
       // Reset form
@@ -367,12 +407,12 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
         name: '',
         diagnosisSystem: '',
         ageGroup: '2-7',
-      phases: {
-        remember: { treatment: 'ARD-REM', dosage: '' },
-        regeneration1: { treatment: 'DVD-REG', dosage: '' },
-        regeneration2: { treatment: 'ISY-REG', dosage: '' },
-        mainTreatments: [] // Reset to empty array
-      },
+        phases: {
+          remember: { treatment: 'ARD-REM', dosage: '' },
+          regeneration1: { treatment: 'DVD-REG', dosage: '' },
+          regeneration2: { treatment: 'ISY-REG', dosage: '' },
+          mainTreatments: []
+        },
         frequency: 'Regülin',
         symptomConditions: [],
         toxicityRequired: false,
@@ -390,6 +430,46 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleEditProtocol = (protocol: SavedProtocol) => {
+    console.log('✏️ TreatmentProtocols: Editing protocol:', protocol);
+    setEditingProtocol(protocol);
+    
+    // Build phases object with proper default values
+    const newFormData = {
+      name: protocol.name,
+      diagnosisSystem: protocol.diagnosisSystem,
+      ageGroup: protocol.ageGroup,
+      phases: {
+        remember: protocol.phases.remember || { treatment: 'ARD-REM', dosage: '' },
+        regeneration1: protocol.phases.regeneration1 || { treatment: 'DVD-REG', dosage: '' },
+        regeneration2: protocol.phases.regeneration2 || { treatment: 'ISY-REG', dosage: '' },
+        mainTreatments: protocol.phases.mainTreatments || []
+      } as any, // Temporary any type for flexibility
+      frequency: protocol.frequency || 'Regülin',
+      symptomConditions: protocol.symptomConditions || [],
+      toxicityRequired: protocol.toxicityRequired || false,
+      conditionsLogic: protocol.conditionsLogic || 'any',
+      clinicId: protocol.clinicId,
+      priority: protocol.priority || 1,
+      control: protocol.control || '3 AYDA 1 KONTROL',
+      createdBy: protocol.createdBy || doctorProfile?.fullName || '',
+      createdAt: protocol.createdAt
+    };
+    
+    // Add optional phases only if they have valid treatment values
+    if (protocol.phases.regeneration3 && protocol.phases.regeneration3.treatment) {
+      newFormData.phases.regeneration3 = protocol.phases.regeneration3;
+    }
+    
+    if (protocol.phases.regeneration4 && protocol.phases.regeneration4.treatment) {
+      newFormData.phases.regeneration4 = protocol.phases.regeneration4;
+    }
+    
+    setFormData(newFormData);
+    setSelectedDiagnosisSystem(protocol.diagnosisSystem);
+    setShowCreationForm(true);
   };
 
   const deleteProtocol = async (protocolId: string) => {
@@ -526,12 +606,20 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
                           <span>📅 {new Date(protocol.createdAt).toLocaleDateString('tr-TR')}</span>
                         </div>
                       </div>
-                      <button
-                        onClick={() => deleteProtocol(protocol.id)}
-                        className="px-3 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-all duration-200"
-                      >
-                        🗑️ Sil
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleEditProtocol(protocol)}
+                          className="px-3 py-1 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-blue-300 hover:text-blue-200 transition-all duration-200"
+                        >
+                          ✏️ Düzenle
+                        </button>
+                        <button
+                          onClick={() => deleteProtocol(protocol.id)}
+                          className="px-3 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-all duration-200"
+                        >
+                          🗑️ Sil
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -543,12 +631,13 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
         <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-bold text-white">
-              🏥 {selectedDiagnosisSystem} - Tedavi Protokolü Oluştur
+              {editingProtocol ? '✏️' : '🏥'} {selectedDiagnosisSystem} - {editingProtocol ? 'Tedavi Protokolü Düzenle' : 'Tedavi Protokolü Oluştur'}
             </h2>
             <button
               onClick={() => {
                 setShowCreationForm(false);
                 setSelectedDiagnosisSystem('');
+                setEditingProtocol(null);
               }}
               className="px-4 py-2 bg-gray-500/20 hover:bg-gray-500/30 border border-gray-500/30 rounded-xl text-gray-300 hover:text-gray-200 transition-all duration-200"
             >
@@ -1012,7 +1101,7 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
                     Kaydediliyor...
                   </>
                 ) : (
-                  '💾 Protokolü Kaydet'
+                  editingProtocol ? '💾 Protokolü Güncelle' : '💾 Protokolü Kaydet'
                 )}
               </button>
             </div>
