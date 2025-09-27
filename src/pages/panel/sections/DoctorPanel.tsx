@@ -42,6 +42,13 @@ interface PatientStats {
 interface TreatmentOptions {
   protocol?: string;
   notes?: string;
+  protocolId?: string;
+  protocolName?: string;
+  isCustomized?: boolean;
+  originalProtocolId?: string;
+  selectedProtocol?: any; // SavedProtocol type
+  customizedProtocol?: any; // SavedProtocol type
+  selectedMainApplications?: string[];
 }
 
 interface DoctorMessage {

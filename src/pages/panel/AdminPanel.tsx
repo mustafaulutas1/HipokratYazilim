@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../../firebase/config';
@@ -13,6 +13,7 @@ import Users from './sections/Users';
 import Anamnez from './sections/Anamnez';
 import AssistantPanel from './sections/AssistantPanel';
 import DoctorPanel from './sections/DoctorPanel';
+import AccountingScreen from './sections/AccountingScreen';
 import { getUserPermissions } from '../../constants/permissions';
 
 type PanelSection = 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel' | 'doctor-panel';
@@ -23,6 +24,7 @@ interface DoctorProfile {
   specialization: string;
   hospital: string;
   department: string;
+  clinicId: string;
   userType?: string;
   role?: string;
   permissions?: string[];
@@ -135,6 +137,8 @@ export default function AdminPanel() {
         return <AssistantPanel doctorProfile={doctorProfile} />;
       case 'doctor-panel':
         return <DoctorPanel doctorProfile={doctorProfile} />;
+      case 'accounting':
+        return <AccountingScreen doctorProfile={doctorProfile} />;
       default:
         return <Dashboard doctorProfile={doctorProfile} />;
     }
