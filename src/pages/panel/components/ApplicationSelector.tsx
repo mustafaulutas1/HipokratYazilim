@@ -81,6 +81,11 @@ const ApplicationSelector: React.FC<ApplicationSelectorProps> = ({
     return matchesSearch && notAlreadySelected;
   });
 
+  // Get selected applications with full details
+  const selectedApplicationsWithDetails = applications.filter(app => 
+    selectedApplications.includes(app.name)
+  );
+
   if (loading) {
     return (
       <div className={`flex items-center justify-center py-8 ${className}`}>
@@ -106,6 +111,27 @@ const ApplicationSelector: React.FC<ApplicationSelectorProps> = ({
 
   return (
     <div className={className}>
+      {/* Selected Applications */}
+      {selectedApplicationsWithDetails.length > 0 && (
+        <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+          <h5 className="text-green-300 font-medium mb-2 flex items-center gap-2">
+            ✅ Seçilen Uygulamalar ({selectedApplicationsWithDetails.length})
+          </h5>
+          <div className="space-y-2">
+            {selectedApplicationsWithDetails.map((app) => (
+              <div key={app.id} className="bg-white/5 border border-white/10 rounded p-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-green-300 text-sm font-medium">{app.name}</span>
+                  {app.description && (
+                    <span className="text-white/60 text-xs">- {app.description}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Search Controls */}
       <div className="mb-4 space-y-3">
         <div className="flex gap-3">

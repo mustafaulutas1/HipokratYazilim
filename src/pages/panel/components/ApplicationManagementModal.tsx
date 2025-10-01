@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, query, deleteDoc, doc, where } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, deleteDoc, doc, where, updateDoc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { DIAGNOSIS_SYSTEMS } from '../../../constants';
 
@@ -37,6 +37,7 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
 }) => {
   const [savedApplications, setSavedApplications] = useState<SavedApplication[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingApplication, setEditingApplication] = useState<SavedApplication | null>(null);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState<Application>({
     name: '',
@@ -134,16 +135,29 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
 
     try {
       setLoading(true);
-      const applicationsRef = collection(db, 'medicalApplications');
       
-      await addDoc(applicationsRef, {
-        ...formData,
-        clinicId: doctorProfile?.clinicId || '',
-        createdAt: new Date().toISOString()
-      });
+      if (editingApplication) {
+        // Update existing application
+        const applicationRef = doc(db, 'medicalApplications', editingApplication.id);
+        await updateDoc(applicationRef, {
+          name: formData.name,
+          description: formData.description,
+          updatedAt: new Date().toISOString()
+        });
+        alert('Uygulama başarıyla güncellendi!');
+      } else {
+        // Create new application
+        const applicationsRef = collection(db, 'medicalApplications');
+        await addDoc(applicationsRef, {
+          ...formData,
+          clinicId: doctorProfile?.clinicId || '',
+          createdAt: new Date().toISOString()
+        });
+        alert('Uygulama başarıyla kaydedildi!');
+      }
 
-      alert('Uygulama başarıyla kaydedildi!');
       setShowAddForm(false);
+      setEditingApplication(null);
       resetForm();
       fetchApplications();
       onApplicationsUpdate?.();
@@ -154,6 +168,18 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
     } finally {
       setLoading(false);
     }
+  };
+
+  const editApplication = (application: SavedApplication) => {
+    setEditingApplication(application);
+    setFormData({
+      name: application.name,
+      description: application.description,
+      clinicId: application.clinicId,
+      createdBy: application.createdBy,
+      createdAt: application.createdAt
+    });
+    setShowAddForm(true);
   };
 
   const deleteApplication = async (applicationId: string) => {
@@ -178,6 +204,7 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
       createdBy: doctorProfile?.fullName || '',
       createdAt: new Date().toISOString()
     });
+    setEditingApplication(null);
   };
 
   if (!isOpen) return null;
@@ -255,12 +282,20 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
                           </div>
                         </div>
                         
-                        <button
-                          onClick={() => deleteApplication(application.id)}
-                          className="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-all duration-200 text-sm"
-                        >
-                          🗑️ Sil
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => editApplication(application)}
+                            className="px-3 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-blue-300 hover:text-blue-200 transition-all duration-200 text-sm"
+                          >
+                            ✏️ Düzenle
+                          </button>
+                          <button
+                            onClick={() => deleteApplication(application.id)}
+                            className="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-all duration-200 text-sm"
+                          >
+                            🗑️ Sil
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -268,10 +303,12 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
               )}
             </>
           ) : (
-            /* Add Application Form */
+            /* Add/Edit Application Form */
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <h3 className="text-xl font-bold text-white">➕ Yeni Uygulama Ekle</h3>
+                <h3 className="text-xl font-bold text-white">
+                  {editingApplication ? '✏️ Uygulama Düzenle' : '➕ Yeni Uygulama Ekle'}
+                </h3>
                 <button
                   onClick={() => {
                     setShowAddForm(false);
@@ -326,7 +363,7 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
                       Kaydediliyor...
                     </>
                   ) : (
-                    '💾 Uygulamayı Kaydet'
+                    editingApplication ? '💾 Uygulamayı Güncelle' : '💾 Uygulamayı Kaydet'
                   )}
                 </button>
               </div>
