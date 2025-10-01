@@ -362,8 +362,10 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
   };
 
   const handlePatientAssigned = () => {
-    // Refresh the patient list after assignment
-    fetchDoctorData();
+    // Refresh the patient list after assignment with a small delay to ensure database update
+    setTimeout(() => {
+      fetchDoctorData();
+    }, 500);
   };
 
   const fetchDoctorData = async () => {

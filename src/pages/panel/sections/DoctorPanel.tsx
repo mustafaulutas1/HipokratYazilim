@@ -110,11 +110,10 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
       });
     });
 
-    // Main query with status filter - Show all active patients assigned to any doctor
+    // Main query - Show all patients assigned to any doctor (including those without status)
     const patientsQuery = query(
       collection(db, 'patients'),
-      where('assignedDoctorId', '!=', null),
-      where('status', 'in', ['assigned_to_doctor', 'in_treatment'])
+      where('assignedDoctorId', '!=', null)
     );
 
     const unsubscribe = onSnapshot(patientsQuery, (snapshot) => {
@@ -126,11 +125,26 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
       } as AssignedPatient));
 
       console.log('👥 DoctorPanel: Processed patients:', patients);
+      console.log('🔍 DoctorPanel: Patient details:', patients.map(p => ({
+        id: p.id,
+        name: p.fullName,
+        assignedDoctorId: p.assignedDoctorId,
+        assignedDoctorName: p.assignedDoctorName,
+        status: p.status,
+        assignedAt: p.assignedAt
+      })));
 
-      // Show all active patients assigned to any doctor
-      const displayPatients = patients.filter(p =>
-        p.status === 'assigned_to_doctor' || p.status === 'in_treatment'
-      );
+      // Show all patients assigned to any doctor, prioritizing active ones
+      const displayPatients = patients.filter(p => {
+        // Include patients with assigned doctor ID
+        if (!p.assignedDoctorId) return false;
+        
+        // Show all assigned patients, but prioritize active ones
+        return p.status === 'assigned_to_doctor' || 
+               p.status === 'in_treatment' || 
+               p.status === 'treatment_decided' ||
+               !p.status; // Include patients without status (newly assigned)
+      });
       setAssignedPatients(displayPatients);
       
       const today = new Date().toDateString();

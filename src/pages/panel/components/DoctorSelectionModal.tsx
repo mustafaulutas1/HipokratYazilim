@@ -253,13 +253,17 @@ const DoctorSelectionModal: React.FC<DoctorSelectionModalProps> = ({
 
       // Update patient record with assigned doctor
       const patientRef = doc(db, 'patients', patient.id);
-      await updateDoc(patientRef, {
+      const updateData = {
         assignedDoctorId: selectedDoctor.id,
         assignedDoctorName: selectedDoctor.fullName,
         assignedAt: new Date().toISOString(),
         status: 'assigned_to_doctor',
         updatedAt: new Date().toISOString()
-      });
+      };
+      
+      console.log('🔄 DoctorSelectionModal: Updating patient with data:', updateData);
+      await updateDoc(patientRef, updateData);
+      console.log('✅ DoctorSelectionModal: Patient updated successfully');
 
       // Create a notification/assignment record
       await addDoc(collection(db, 'patientAssignments'), {
