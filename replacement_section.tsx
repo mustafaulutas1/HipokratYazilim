@@ -59,7 +59,9 @@
                                     <div className="text-2xl font-bold text-green-600">
                                       {treatment.ageGroupData?.sessions}
                                     </div>
-                                    <div className="text-sm text-gray-600 font-medium">{treatment.ageGroupData?.frequency}</div>
+                                    {treatment.ageGroupData?.frequency && (
+                                      <div className="text-sm text-gray-600 font-medium">📅 {treatment.ageGroupData?.frequency}</div>
+                                    )}
                                   </div>
                                 </div>
 

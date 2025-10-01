@@ -35,7 +35,7 @@ Each illness type follows this structure in the `TREATMENT_PROTOCOLS` object:
 ### 2. Age Group Dosage Structure
 Each age group contains:
 - `sessions`: Main treatment frequency (e.g., '2X1 T', '3X2 T')
-- `frequency`: Treatment frequency (usually 'Regülin')
+- `frequency`: Treatment frequency (e.g., 'Günlük', 'Haftalık', 'Aylık')
 - `treatmentSequence`: Array of treatment phases
 
 ### 3. Treatment Sequence Phases

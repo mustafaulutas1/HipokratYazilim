@@ -77,7 +77,7 @@ interface SingleRowProtocol {
     mainTreatments: { treatment: string; description: string }[]; // Multiple main treatments with descriptions
   };
   
-  frequency: string; // e.g., "Regülin"
+  frequency: string; // e.g., "Günlük", "Haftalık", "Aylık"
   
   // Activation conditions - now dynamic and flexible
   symptomConditions: SymptomCondition[]; // Multiple symptom requirements
@@ -120,7 +120,7 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
       regeneration2: { treatment: 'ISY-REG', dosage: '' },
       mainTreatments: [] // Start with empty array
     },
-    frequency: 'Regülin',
+    frequency: '',
     symptomConditions: [],
     toxicityRequired: false,
     conditionsLogic: 'any',
@@ -413,7 +413,7 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
           regeneration2: { treatment: 'ISY-REG', dosage: '' },
           mainTreatments: []
         },
-        frequency: 'Regülin',
+        frequency: '',
         symptomConditions: [],
         toxicityRequired: false,
         conditionsLogic: 'any',
@@ -447,7 +447,7 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
         regeneration2: protocol.phases.regeneration2 || { treatment: 'ISY-REG', dosage: '' },
         mainTreatments: protocol.phases.mainTreatments || []
       } as any, // Temporary any type for flexibility
-      frequency: protocol.frequency || 'Regülin',
+      frequency: protocol.frequency || '',
       symptomConditions: protocol.symptomConditions || [],
       toxicityRequired: protocol.toxicityRequired || false,
       conditionsLogic: protocol.conditionsLogic || 'any',
@@ -601,7 +601,7 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
                         <div className="flex items-center gap-4 text-sm text-white/60">
                           <span>🏥 {protocol.diagnosisSystem}</span>
                           <span>👤 {protocol.ageGroup === 'adult' ? 'Yetişkin' : `${protocol.ageGroup} Yaş`}</span>
-                          <span>⚡ {protocol.frequency}</span>
+                          {protocol.frequency && <span>📅 {protocol.frequency}</span>}
                           <span>👨‍⚕️ {protocol.createdBy}</span>
                           <span>📅 {new Date(protocol.createdAt).toLocaleDateString('tr-TR')}</span>
                         </div>
@@ -647,7 +647,7 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
 
           <div className="space-y-6">
             {/* Basic Information */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <div>
                 <label className="block text-white/80 text-sm font-medium mb-2">
                   Protokol Adı *
@@ -674,6 +674,19 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
                   <option value="8-14" className="text-gray-900 bg-white">8-14 Yaş</option>
                   <option value="adult" className="text-gray-900 bg-white">Yetişkin</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-white/80 text-sm font-medium mb-2">
+                  Tedavi Sıklığı
+                </label>
+                <input
+                  type="text"
+                  value={formData.frequency}
+                  onChange={(e) => setFormData(prev => ({ ...prev, frequency: e.target.value }))}
+                  placeholder="Örn: Günlük, Haftalık, Aylık"
+                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                />
               </div>
 
             </div>

@@ -11,7 +11,7 @@ const TREATMENT_PROTOCOLS = {
       ageGroups: {
         '2-7': {
           sessions: '2X1 T',
-          frequency: 'Regülin',
+          frequency: '',
           treatmentSequence: [
             { phase: 'Remember', treatment: 'ARD-REM', dosage: '2X1/2 T', order: 1 },
             { phase: '1 Regeneration', treatment: 'DVD-REG', dosage: '3X1 A', order: 2 },
@@ -21,7 +21,7 @@ const TREATMENT_PROTOCOLS = {
         },
         '8-14': {
           sessions: '3X1 T',
-          frequency: 'Regülin',
+          frequency: '',
           treatmentSequence: [
             { phase: 'Remember', treatment: 'ARD-REM', dosage: '3X1/2 T', order: 1 },
             { phase: '1 Regeneration', treatment: 'DVD-REG', dosage: '3X2 A', order: 2 },
@@ -31,7 +31,7 @@ const TREATMENT_PROTOCOLS = {
         },
         'adult': {
           sessions: '3X2 T',
-          frequency: 'Regülin',
+          frequency: '',
           treatmentSequence: [
             { phase: 'Remember', treatment: 'ARD-REM', dosage: '3X1 T', order: 1 },
             { phase: '1 Regeneration', treatment: 'DVD-REG', dosage: '3X4 A', order: 2 },
@@ -53,7 +53,7 @@ const TREATMENT_PROTOCOLS = {
       ageGroups: {
         '2-7': {
           sessions: '2X1 T',
-          frequency: 'Regülin',
+          frequency: '',
           treatmentSequence: [
             { phase: 'Remember', treatment: 'ARD-REM', dosage: '2X1/2 T', order: 1 },
             { phase: '1 Regeneration', treatment: 'DVD-REG', dosage: '3X1 A', order: 2 },
@@ -65,7 +65,7 @@ const TREATMENT_PROTOCOLS = {
         },
         '8-14': {
           sessions: '3X1 T',
-          frequency: 'Regülin',
+          frequency: '',
           treatmentSequence: [
             { phase: 'Remember', treatment: 'ARD-REM', dosage: '3X1/2 T', order: 1 },
             { phase: '1 Regeneration', treatment: 'DVD-REG', dosage: '3X2 A', order: 2 },
@@ -77,7 +77,7 @@ const TREATMENT_PROTOCOLS = {
         },
         'adult': {
           sessions: '3X2 T',
-          frequency: 'Regülin',
+          frequency: '',
           treatmentSequence: [
             { phase: 'Remember', treatment: 'ARD-REM', dosage: '3X1 T', order: 1 },
             { phase: '1 Regeneration', treatment: 'DVD-REG', dosage: '3X4 A', order: 2 },
@@ -109,7 +109,7 @@ const TREATMENT_PROTOCOLS = {
       ageGroups: {
         '2-7': {
           sessions: '2X1 T',
-          frequency: 'Regülin',
+          frequency: '',
           treatmentSequence: [
             { phase: 'Remember', treatment: 'ARD-REM', dosage: '2X1/2 T', order: 1 },
             { phase: '1 Regeneration', treatment: 'DVD-REG', dosage: '3X2 A', order: 2 },
@@ -120,7 +120,7 @@ const TREATMENT_PROTOCOLS = {
         },
         '8-14': {
           sessions: '2X4 T',
-          frequency: 'Regülin',
+          frequency: '',
           treatmentSequence: [
             { phase: 'Remember', treatment: 'ARD-REM', dosage: '3X1/2 T', order: 1 },
             { phase: '1 Regeneration', treatment: 'DVD-REG', dosage: '3X4 A', order: 2 },
@@ -131,7 +131,7 @@ const TREATMENT_PROTOCOLS = {
         },
         'adult': {
           sessions: '3X4 T',
-          frequency: 'Regülin',
+          frequency: '',
           treatmentSequence: [
             { phase: 'Remember', treatment: 'ARD-REM', dosage: '3X1 T', order: 1 },
             { phase: '1 Regeneration', treatment: 'DVD-REG', dosage: '3X4 A', order: 2 },
@@ -154,7 +154,7 @@ const TREATMENT_PROTOCOLS = {
       ageGroups: {
         '2-7': {
           sessions: '2X1 T',
-          frequency: 'Regülin',
+          frequency: '',
           treatmentSequence: [
             { phase: 'Remember', treatment: 'ARD-REM', dosage: '2X1/2 T', order: 1 },
             { phase: '1 Regeneration', treatment: 'DVD-REG', dosage: '3X2 A', order: 2 },
@@ -167,7 +167,7 @@ const TREATMENT_PROTOCOLS = {
         },
         '8-14': {
           sessions: '2X4 T',
-          frequency: 'Regülin',
+          frequency: '',
           treatmentSequence: [
             { phase: 'Remember', treatment: 'ARD-REM', dosage: '3X1/2 T', order: 1 },
             { phase: '1 Regeneration', treatment: 'DVD-REG', dosage: '3X4 A', order: 2 },
@@ -180,7 +180,7 @@ const TREATMENT_PROTOCOLS = {
         },
         'adult': {
           sessions: '3X4 T',
-          frequency: 'Regülin',
+          frequency: '',
           treatmentSequence: [
             { phase: 'Remember', treatment: 'ARD-REM', dosage: '3X1 T', order: 1 },
             { phase: '1 Regeneration', treatment: 'DVD-REG', dosage: '3X4 A', order: 2 },
@@ -716,7 +716,9 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                 <div className="text-2xl font-bold text-green-600">
                                   {bestTreatment.ageGroupData?.sessions}
                                 </div>
-                                <div className="text-sm text-gray-600 font-medium">{bestTreatment.ageGroupData?.frequency}</div>
+                                {bestTreatment.ageGroupData?.frequency && (
+                                  <div className="text-sm text-gray-600 font-medium">📅 {bestTreatment.ageGroupData?.frequency}</div>
+                                )}
                               </div>
                             </div>
 
@@ -758,9 +760,11 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                     </div>
                                     <div className="text-right">
                                       <div className="text-sm font-bold text-green-600">{step.dosage}</div>
-                                      <div className="text-xs text-gray-500">
-                                        {bestTreatment.ageGroupData?.frequency}
-                                      </div>
+                                      {bestTreatment.ageGroupData?.frequency && (
+                                        <div className="text-xs text-gray-500">
+                                          📅 {bestTreatment.ageGroupData?.frequency}
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                 ))}

@@ -309,7 +309,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
       sequence.push({
         phase: 'Main Treatment',
         treatment: mainTreatment.treatment,
-        dosage: protocol.frequency, // Use protocol frequency as dosage
+        dosage: '', // Main treatments don't need dosage, use empty string
         description: mainTreatment.description,
         order: order++
       });
@@ -422,7 +422,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
             isCustomized: protocol.isCustomized || false, // Ensure isCustomized is explicitly set
             // Format for compatibility with existing UI
             ageGroupData: {
-              sessions: protocol.frequency,
+              sessions: '', // Sessions should be empty for main treatments
               frequency: protocol.frequency,
               treatmentSequence: treatmentSequence
             }
@@ -1160,9 +1160,11 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                     <span className="px-4 py-2 bg-white/20 text-white rounded-full font-medium">
                                       ⚡ Öncelik: {bestTreatment.priority}
                                     </span>
-                                    <span className="px-4 py-2 bg-white/20 text-white rounded-full font-medium">
-                                      📅 {bestTreatment.frequency}
-                                    </span>
+                                    {bestTreatment.frequency && (
+                                      <span className="px-4 py-2 bg-white/20 text-white rounded-full font-medium">
+                                        📅 {bestTreatment.frequency}
+                                      </span>
+                                    )}
                                     <button
                                       onClick={() => handleEditProtocol(bestTreatment)}
                                       className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-full font-medium transition-all duration-200 flex items-center gap-2"
@@ -1273,11 +1275,13 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                       {mainTreatment.description && (
                                         <p className="text-sm text-gray-600 mt-2">{mainTreatment.description}</p>
                                       )}
-                                      <div className={`text-sm font-medium mt-2 transition-all ${
-                                        isSelected ? 'text-purple-700' : 'text-purple-600'
-                                      }`}>
-                                        {bestTreatment.frequency}
-                                      </div>
+                                      {bestTreatment.frequency && (
+                                        <div className={`text-sm font-medium mt-2 transition-all ${
+                                          isSelected ? 'text-purple-700' : 'text-purple-600'
+                                        }`}>
+                                          📅 {bestTreatment.frequency}
+                                        </div>
+                                      )}
                                       {isSelected && (
                                         <div className="mt-2 text-xs text-purple-700 font-medium">
                                           ✓ Seçildi
