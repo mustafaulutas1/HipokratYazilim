@@ -305,9 +305,9 @@ const DoctorSelectionModal: React.FC<DoctorSelectionModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4 text-white">
+        <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4 text-white flex-shrink-0">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl font-bold">Doktor Seçimi</h2>
@@ -328,7 +328,7 @@ const DoctorSelectionModal: React.FC<DoctorSelectionModalProps> = ({
 
         {/* Patient Info */}
         {patient && (
-          <div className="p-4 bg-blue-50 border-b border-blue-200">
+          <div className="p-4 bg-blue-50 border-b border-blue-200 flex-shrink-0">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
                 <span className="text-white text-lg">👤</span>
@@ -364,7 +364,7 @@ const DoctorSelectionModal: React.FC<DoctorSelectionModalProps> = ({
         )}
 
         {/* Doctors List */}
-        <div className="p-6 max-h-96 overflow-y-auto">
+        <div className="flex-1 p-6 overflow-y-auto">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">
             Mevcut Doktorlar ({doctors.length})
           </h3>
@@ -446,7 +446,7 @@ const DoctorSelectionModal: React.FC<DoctorSelectionModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
+        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-600">
               {selectedDoctor ? (
@@ -469,10 +469,10 @@ const DoctorSelectionModal: React.FC<DoctorSelectionModalProps> = ({
               <button
                 onClick={handleAssignPatient}
                 disabled={!selectedDoctor || assigning || selectedDoctor?.hasActivePatient}
-                className={`px-6 py-2 text-white rounded-lg transition-colors flex items-center gap-2 ${
+                className={`px-6 py-2 text-white rounded-lg transition-all duration-200 flex items-center gap-2 border-2 font-medium ${
                   !selectedDoctor || assigning || selectedDoctor?.hasActivePatient
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : 'bg-blue-600 hover:bg-blue-700'
+                    ? 'bg-gray-600 border-gray-500 cursor-not-allowed'
+                    : 'bg-blue-600 border-blue-500 hover:bg-blue-700 hover:border-blue-600 shadow-md hover:shadow-lg transform hover:scale-105'
                 }`}
               >
                 {assigning ? (
