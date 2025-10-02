@@ -139,10 +139,9 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
         // Include patients with assigned doctor ID
         if (!p.assignedDoctorId) return false;
         
-        // Show all assigned patients, but prioritize active ones
+        // Show only patients that need doctor attention (exclude treatment_decided)
         return p.status === 'assigned_to_doctor' || 
                p.status === 'in_treatment' || 
-               p.status === 'treatment_decided' ||
                !p.status; // Include patients without status (newly assigned)
       });
       setAssignedPatients(displayPatients);

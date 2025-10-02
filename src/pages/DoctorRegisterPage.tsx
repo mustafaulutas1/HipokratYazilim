@@ -98,12 +98,13 @@ export default function DoctorRegisterPage() {
     } else if (name === 'licenseNumber') {
       value = value.replace(/\D/g, '').slice(0, 10);
     }
+
+    setProfile({ ...profile, [name]: value });
+  };
+
   const handlePhoneChange = (fieldName: string, e164Value: string) => {
     if (!profile) return;
     setProfile({ ...profile, [fieldName]: e164Value });
-  };
-
-    setProfile({ ...profile, [name]: value });
   };
 
   const handleSave = async (e: React.FormEvent) => {
