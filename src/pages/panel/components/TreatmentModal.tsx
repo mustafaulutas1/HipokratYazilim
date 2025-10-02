@@ -116,6 +116,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [editedProtocol, setEditedProtocol] = useState<SavedProtocol | null>(null);
   const [selectedMainApplications, setSelectedMainApplications] = useState<string[]>([]);
+  const [selectedApplicationsBySystem, setSelectedApplicationsBySystem] = useState<{[key: string]: string[]}>({});
 
   // Helper function to get patient age group
   const getPatientAgeGroup = (birthDate: string): string => {
@@ -488,16 +489,48 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
       setAnamrezData(null);
       setSavedProtocols([]);
       setSelectedMainApplications([]);
+      setSelectedApplicationsBySystem({});
     }
   }, [isOpen]);
 
-  // Handle main application selection
-  const handleMainApplicationToggle = (applicationName: string) => {
+  // Handle main application selection with system tracking
+  const handleMainApplicationToggle = (applicationName: string, systemName: string) => {
+    // Update global selection for backwards compatibility
     setSelectedMainApplications(prev =>
       prev.includes(applicationName)
         ? prev.filter(name => name !== applicationName)
         : [...prev, applicationName]
     );
+
+    // Update system-specific selection
+    setSelectedApplicationsBySystem(prev => {
+      const currentSystemSelections = prev[systemName] || [];
+      const newSystemSelections = currentSystemSelections.includes(applicationName)
+        ? currentSystemSelections.filter(name => name !== applicationName)
+        : [...currentSystemSelections, applicationName];
+      
+      return {
+        ...prev,
+        [systemName]: newSystemSelections
+      };
+    });
+  };
+
+  // Check if all diseases have at least one treatment method selected
+  const areAllDiseasesValidated = () => {
+    const allTreatments = getTreatmentsForAllSystems();
+    if (allTreatments.length === 0) return false;
+
+    // If there's only one disease, use the existing validation
+    if (allTreatments.length === 1) {
+      return selectedMainApplications.length > 0;
+    }
+
+    // For multiple diseases, check each system has at least one selection
+    return allTreatments.every(treatment => {
+      const systemSelections = selectedApplicationsBySystem[treatment.system] || [];
+      return systemSelections.length > 0;
+    });
   };
 
   if (!isOpen || !patient) return null;
@@ -1243,15 +1276,21 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                 🏥 Ana Uygulamalar
                               </h4>
                               <p className="text-sm text-gray-600 mb-4">
-                                Tedaviye başlamak için en az bir ana uygulama seçmelisiniz
+                                {(() => {
+                                  const allTreatments = getTreatmentsForAllSystems();
+                                  return allTreatments.length > 1 
+                                    ? `${bestTreatment.system} hastalığı için en az bir ana uygulama seçmelisiniz`
+                                    : "Tedaviye başlamak için en az bir ana uygulama seçmelisiniz";
+                                })()}
                               </p>
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                                 {bestTreatment.phases.mainTreatments.map((mainTreatment, mtIndex) => {
-                                  const isSelected = selectedMainApplications.includes(mainTreatment.treatment);
+                                  const systemSelections = selectedApplicationsBySystem[bestTreatment.system] || [];
+                                  const isSelected = systemSelections.includes(mainTreatment.treatment);
                                   return (
                                     <div
                                       key={mtIndex}
-                                      onClick={() => handleMainApplicationToggle(mainTreatment.treatment)}
+                                      onClick={() => handleMainApplicationToggle(mainTreatment.treatment, bestTreatment.system)}
                                       className={`border-2 rounded-xl p-4 cursor-pointer transition-all duration-200 ${
                                         isSelected
                                           ? 'bg-purple-100 border-purple-500 shadow-md'
@@ -1381,7 +1420,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
             </button>
             <button
               onClick={handleStartTreatment}
-              disabled={loading || selectedMainApplications.length === 0}
+              disabled={loading || !areAllDiseasesValidated()}
               className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
             >
               {loading ? (
@@ -1392,8 +1431,15 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
               ) : (
                 <>
                   🏥 Tedaviye Başla
-                  {selectedMainApplications.length === 0 && (
-                    <span className="ml-2 text-xs opacity-75">(Ana uygulama seçin)</span>
+                  {!areAllDiseasesValidated() && (
+                    <span className="ml-2 text-xs opacity-75">
+                      {(() => {
+                        const allTreatments = getTreatmentsForAllSystems();
+                        return allTreatments.length > 1 
+                          ? "(Her hastalık için tedavi seçin)" 
+                          : "(Ana uygulama seçin)";
+                      })()}
+                    </span>
                   )}
                 </>
               )}
