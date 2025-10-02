@@ -1106,6 +1106,109 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                 )}
                               </div>
 
+                              {/* Editable Main Applications */}
+                              <div className="mt-6 pt-6 border-t border-gray-200">
+                                <h4 className="text-lg font-bold text-gray-900 mb-2 flex items-center gap-2">
+                                  🏥 Ana Uygulamalar (Düzenlenebilir)
+                                </h4>
+                                <p className="text-sm text-gray-600 mb-4">
+                                  Ana uygulamaları düzenleyebilir, ekleyebilir veya silebilirsiniz
+                                </p>
+                                <div className="space-y-3">
+                                  {editedProtocol?.phases?.mainTreatments?.map((mainTreatment, mtIndex) => (
+                                    <div key={mtIndex} className="p-4 bg-purple-50 border border-purple-200 rounded-lg space-y-3">
+                                      <div className="flex items-center justify-between">
+                                        <h5 className="text-sm font-semibold text-purple-800">Ana Uygulama #{mtIndex + 1}</h5>
+                                        <button
+                                          onClick={() => {
+                                            const updatedMainTreatments = editedProtocol.phases.mainTreatments.filter((_, index) => index !== mtIndex);
+                                            setEditedProtocol({
+                                              ...editedProtocol,
+                                              phases: {
+                                                ...editedProtocol.phases,
+                                                mainTreatments: updatedMainTreatments
+                                              }
+                                            });
+                                          }}
+                                          className="w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs transition-all"
+                                          title="Ana uygulamayı sil"
+                                        >
+                                          ×
+                                        </button>
+                                      </div>
+                                      
+                                      <div className="space-y-2">
+                                        <label className="block text-xs font-medium text-gray-700">Uygulama Adı</label>
+                                        <input
+                                          type="text"
+                                          value={mainTreatment.treatment}
+                                          onChange={(e) => {
+                                            const updatedMainTreatments = [...editedProtocol.phases.mainTreatments];
+                                            updatedMainTreatments[mtIndex] = {
+                                              ...updatedMainTreatments[mtIndex],
+                                              treatment: e.target.value
+                                            };
+                                            setEditedProtocol({
+                                              ...editedProtocol,
+                                              phases: {
+                                                ...editedProtocol.phases,
+                                                mainTreatments: updatedMainTreatments
+                                              }
+                                            });
+                                          }}
+                                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-semibold focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                          placeholder="Ana uygulama adını girin"
+                                        />
+                                      </div>
+                                      
+                                      <div className="space-y-2">
+                                        <label className="block text-xs font-medium text-gray-700">Açıklama</label>
+                                        <textarea
+                                          value={mainTreatment.description || ''}
+                                          onChange={(e) => {
+                                            const updatedMainTreatments = [...editedProtocol.phases.mainTreatments];
+                                            updatedMainTreatments[mtIndex] = {
+                                              ...updatedMainTreatments[mtIndex],
+                                              description: e.target.value
+                                            };
+                                            setEditedProtocol({
+                                              ...editedProtocol,
+                                              phases: {
+                                                ...editedProtocol.phases,
+                                                mainTreatments: updatedMainTreatments
+                                              }
+                                            });
+                                          }}
+                                          rows={3}
+                                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+                                          placeholder="Ana uygulama açıklamasını girin (opsiyonel)"
+                                        />
+                                      </div>
+                                    </div>
+                                  ))}
+                                  
+                                  {/* Add New Main Application Button */}
+                                  <button
+                                    onClick={() => {
+                                      const newMainTreatment = {
+                                        treatment: 'Yeni Ana Uygulama',
+                                        description: ''
+                                      };
+                                      setEditedProtocol({
+                                        ...editedProtocol,
+                                        phases: {
+                                          ...editedProtocol.phases,
+                                          mainTreatments: [...editedProtocol.phases.mainTreatments, newMainTreatment]
+                                        }
+                                      });
+                                    }}
+                                    className="w-full px-4 py-3 bg-purple-100 hover:bg-purple-200 border-2 border-dashed border-purple-300 rounded-lg text-purple-700 font-medium transition-all duration-200 flex items-center justify-center gap-2"
+                                  >
+                                    + Yeni Ana Uygulama Ekle
+                                  </button>
+                                </div>
+                              </div>
+
                               {/* Edit Action Buttons */}
                               <div className="flex items-center justify-between pt-6 border-t border-gray-200">
                                 <button
