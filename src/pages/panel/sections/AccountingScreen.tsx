@@ -29,6 +29,8 @@ interface PaymentPatient {
   paymentDate?: string;
   paymentMethod?: string;
   updatedAt?: string;
+  indirim_check?: boolean;
+  indirim_orani?: number;
 }
 
 interface PaymentStats {
@@ -397,6 +399,13 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                     {patient.treatmentOptions.selectedMainApplications && (
                       <p>Uygulamalar: {patient.treatmentOptions.selectedMainApplications.join(', ')}</p>
                     )}
+                    {patient.indirim_check && (
+                      <div className="mt-2 p-2 bg-green-500/20 border border-green-400/30 rounded-lg">
+                        <p className="text-green-200 font-medium text-xs">
+                          🎯 İndirim Aktif: %{patient.indirim_orani || 20} indirim uygulanacak
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -510,6 +519,13 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   <p>Telefon: {selectedPatient.phone}</p>
                   <p>Tedavi Tarihi: {formatDate(selectedPatient.treatmentStartedAt)}</p>
                   <p>Doktor: {selectedPatient.assignedDoctorName || 'Belirtilmemiş'}</p>
+                  {selectedPatient.indirim_check && (
+                    <div className="mt-2 p-2 bg-green-100 border border-green-300 rounded-lg">
+                      <p className="text-green-800 font-medium">
+                        🎯 İndirim Aktif: %{selectedPatient.indirim_orani || 20} indirim uygulanacak
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
