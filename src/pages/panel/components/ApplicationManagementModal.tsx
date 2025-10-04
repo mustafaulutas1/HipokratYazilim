@@ -7,6 +7,7 @@ interface Application {
   id?: string;
   name: string;
   description: string;
+  price: number;
   clinicId: string;
   createdBy: string;
   createdAt: string;
@@ -42,6 +43,7 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
   const [formData, setFormData] = useState<Application>({
     name: '',
     description: '',
+    price: 0,
     clinicId: doctorProfile?.clinicId || '',
     createdBy: doctorProfile?.fullName || '',
     createdAt: new Date().toISOString()
@@ -132,6 +134,11 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
       alert('Lütfen uygulama adı girin.');
       return;
     }
+    
+    if (formData.price <= 0) {
+      alert('Lütfen geçerli bir fiyat girin.');
+      return;
+    }
 
     try {
       setLoading(true);
@@ -142,6 +149,7 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
         await updateDoc(applicationRef, {
           name: formData.name,
           description: formData.description,
+          price: formData.price,
           updatedAt: new Date().toISOString()
         });
         alert('Uygulama başarıyla güncellendi!');
@@ -175,6 +183,7 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
     setFormData({
       name: application.name,
       description: application.description,
+      price: application.price || 0,
       clinicId: application.clinicId,
       createdBy: application.createdBy,
       createdAt: application.createdAt
@@ -200,6 +209,7 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
     setFormData({
       name: '',
       description: '',
+      price: 0,
       clinicId: doctorProfile?.clinicId || '',
       createdBy: doctorProfile?.fullName || '',
       createdAt: new Date().toISOString()
@@ -270,6 +280,9 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
                         <div className="flex-1">
                           <div className="flex items-center gap-3 mb-2">
                             <h4 className="text-lg font-semibold text-white">{application.name}</h4>
+                            <span className="px-3 py-1 bg-green-500/20 border border-green-400/30 rounded-full text-green-300 text-sm font-medium">
+                              💰 {application.price || 0} TL
+                            </span>
                           </div>
                           
                           {application.description && (
@@ -320,7 +333,7 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Application Name */}
                 <div>
                   <label className="block text-white/80 text-sm font-medium mb-2">
@@ -331,6 +344,22 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
                     value={formData.name}
                     onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                     placeholder="Örn: HACAMAT, MINOR OZON, AKUPUNKTUR"
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  />
+                </div>
+
+                {/* Price */}
+                <div>
+                  <label className="block text-white/80 text-sm font-medium mb-2">
+                    Fiyat (TL) *
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.price}
+                    onChange={(e) => setFormData(prev => ({ ...prev, price: parseFloat(e.target.value) || 0 }))}
+                    placeholder="Örn: 1000"
+                    min="0"
+                    step="0.01"
                     className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                   />
                 </div>
@@ -354,7 +383,7 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
               <div className="flex justify-end">
                 <button
                   onClick={saveApplication}
-                  disabled={!formData.name.trim() || loading}
+                  disabled={!formData.name.trim() || formData.price <= 0 || loading}
                   className="px-8 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-xl font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
                 >
                   {loading ? (
