@@ -83,19 +83,25 @@ export const AVAILABLE_PERMISSIONS: Permission[] = [
     name: 'Doktor Ekranı',
     description: 'Doktor özel işlemleri ve hasta yönetimi',
     icon: '🩺'
+  },
+  {
+    id: 'treatment-panel',
+    name: 'Tedavi Ekranı',
+    description: 'Tedavi uygulamaları ve takibi',
+    icon: '🏥'
   }
 ];
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
-  admin: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'prescriptions', 'reports', 'assistant-panel', 'doctor-panel'],
-  doctor: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'settings', 'assistant-panel', 'doctor-panel'],
+  admin: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'prescriptions', 'reports', 'assistant-panel', 'doctor-panel', 'treatment-panel'],
+  doctor: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'doctor-panel'],
   nurse: ['dashboard', 'patients', 'appointments', 'anamnez'],
   assistant: ['dashboard', 'patients', 'appointments', 'assistant-panel'],
   desk: ['dashboard', 'patients', 'appointments'],
   anamnez: ['dashboard', 'patients', 'anamnez'],
   accounting: ['dashboard', 'patients', 'accounting', 'reports'],
   pharmacy: ['dashboard', 'patients', 'pharmacy', 'prescriptions'],
-  treatment: ['dashboard', 'patients', 'appointments', 'treatment-protocols', 'anamnez']
+  treatment: ['dashboard', 'patients', 'appointments', 'treatment-protocols', 'anamnez', 'treatment-panel']
 };
 
 export const ROLE_TRANSLATIONS: Record<string, string> = {
@@ -123,7 +129,7 @@ export const getUserPermissions = (userRole: string, customPermissions?: string[
 };
 
 // This function will be updated to work with dynamic roles from Firestore
-export const getUserPermissionsFromRole = async (userRole: string, customPermissions?: string[], _clinicId?: string): Promise<string[]> => {
+export const getUserPermissionsFromRole = async (userRole: string, customPermissions?: string[]): Promise<string[]> => {
   if (customPermissions && customPermissions.length > 0) {
     return customPermissions;
   }

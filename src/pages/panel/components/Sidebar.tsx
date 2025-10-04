@@ -6,9 +6,19 @@ import { getRoleDisplayName } from '../../../constants/permissions';
 import { useUserPermissions } from '../../../hooks/useUserPermissions';
 
 interface SidebarProps {
-  currentSection: 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel' | 'doctor-panel';
-  onSectionChange: (section: 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel' | 'doctor-panel') => void;
-  doctorProfile: any;
+  currentSection: 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
+  onSectionChange: (section: 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel') => void;
+  doctorProfile: {
+    clinicId?: string;
+    fullName?: string;
+    role?: string;
+    userType?: string;
+    specialization?: string;
+    department?: string;
+    hospital?: string;
+    email?: string;
+    permissions?: string[];
+  } | null;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doctorProfile }) => {
@@ -153,6 +163,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
       description: 'Sistem raporları ve analizler'
     },
     {
+      id: 'treatment-panel',
+      label: 'Tedavi Ekranı',
+      icon: '🏥',
+      description: 'Tedavi uygulamaları ve takibi'
+    },
+    {
       id: 'settings',
       label: 'Ayarlar',
       icon: '⚙️',
@@ -162,7 +178,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
 
   return (
     <div className="w-80 bg-white/10 backdrop-blur-xl border-r border-white/20 flex flex-col h-screen">
-      {/* Logo and Brand */}
       <div className="px-6 border-b border-white/20">
         <div className="flex items-center gap-4">
           <img 
@@ -181,11 +196,11 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
       <div className="p-6 border-b border-white/20">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center shadow-lg">
-            <span className="text-white text-lg">{getUserIcon(doctorProfile?.role || doctorProfile?.userType)}</span>
+            <span className="text-white text-lg">{getUserIcon(doctorProfile?.role || doctorProfile?.userType || 'doctor')}</span>
           </div>
           <div className="flex-1">
             <h3 className="text-white font-semibold">{doctorProfile?.fullName || 'Kullanıcı'}</h3>
-            <p className="text-white/70 text-sm">{getRoleDisplayName(doctorProfile?.role || doctorProfile?.userType)}</p>
+            <p className="text-white/70 text-sm">{getRoleDisplayName(doctorProfile?.role || doctorProfile?.userType || 'doctor')}</p>
             <p className="text-white/60 text-xs">
               {doctorProfile?.specialization || doctorProfile?.department || doctorProfile?.hospital || 'Klinik Personeli'}
             </p>
@@ -207,7 +222,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
               .map((item) => (
             <li key={item.id}>
               <button
-                onClick={() => onSectionChange(item.id as any)}
+                onClick={() => onSectionChange(item.id as typeof currentSection)}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all duration-200 group ${
                   currentSection === item.id
                     ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg'
