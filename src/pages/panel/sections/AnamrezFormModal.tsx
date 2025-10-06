@@ -234,6 +234,20 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [loadingDoctors, setLoadingDoctors] = useState(false);
+  // Keep toxicity ratings isolated so they don't inherit values from other sections
+  const initialToxicityRatings: Record<string, number> = {
+    halsizlikYorgunluk: 0,
+    dengeKaybi: 0,
+    unutkanlik: 0,
+    kasinti: 0,
+    carpinti: 0,
+    uykuDuzensizligi: 0,
+    gozdeUcusmalar: 0,
+    oksuruk: 0,
+    yorgunUyanma: 0,
+    kabizlik: 0
+  };
+  const [toxicityRatings, setToxicityRatings] = useState<Record<string, number>>(initialToxicityRatings);
   const [formData, setFormData] = useState({
     // Ana Şikayetler - Now array for multiple selections
     selectedDiagnosisSystems: [] as string[],
@@ -552,6 +566,13 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
     }));
   };
 
+  const handleToxicityRatingChange = (key: string, rating: number) => {
+    setToxicityRatings(prev => ({
+      ...prev,
+      [key]: rating
+    }));
+  };
+
   const handleAddCustomQuestion = () => {
     const newQuestion = {
       id: Date.now().toString(),
@@ -734,7 +755,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
           const toxicityScores: Record<string, number> = {};
           
           Object.keys(toxicityMapping).forEach(key => {
-            const rating = formData.symptomRatings[key as keyof SymptomRatings] || 0;
+            const rating = toxicityRatings[key] || 0;
             totalScore += rating;
             toxicityScores[key] = rating;
             if (rating > 0) {
@@ -888,6 +909,8 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   React.useEffect(() => {
     if (isOpen) {
       setCurrentPage(1);
+      // Reset toxicity ratings to avoid carrying over from previous patients/sessions
+      setToxicityRatings(initialToxicityRatings);
     }
   }, [isOpen]);
 
@@ -1679,7 +1702,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                   let totalScore = 0;
                   let ratedSymptomsCount = 0;
                   Object.keys(toxicityMapping).forEach(key => {
-                    const rating = formData.symptomRatings[key as keyof SymptomRatings] || 0;
+                    const rating = toxicityRatings[key] || 0;
                     totalScore += rating;
                     if (rating > 0) {
                       ratedSymptomsCount++;
@@ -1698,7 +1721,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                         
                         <div className="space-y-4 p-6">
                           {Object.entries(toxicityMapping).map(([key, label], index) => {
-                            const rating = formData.symptomRatings[key as keyof SymptomRatings] || 0;
+                            const rating = toxicityRatings[key] || 0;
                             return (
                               <div key={key} className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
                                 <div className="flex items-start justify-between mb-3">
@@ -1731,7 +1754,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                                         onClick={() => {
                                           // Toggle: if same rating clicked, unselect (set to 0), otherwise set new rating
                                           const newRating = rating === ratingValue ? 0 : ratingValue;
-                                          handleSymptomRatingChange(key as keyof SymptomRatings, newRating);
+                                          handleToxicityRatingChange(key, newRating);
                                         }}
                                         className={`w-8 h-8 rounded-full text-xs font-semibold transition-all duration-200 ${
                                           rating === ratingValue
