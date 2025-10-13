@@ -334,7 +334,6 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                   </div>
                 ) : (
                   filteredPatients.map((patient) => {
-                    const recordCount = getPatientAnamrezRecords(patient.id).length;
                     return (
                       <div
                         key={patient.id}
@@ -390,7 +389,6 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                   </div>
                 ) : (
                   filteredCompletedPatients.map((patient) => {
-                    const recordCount = getPatientAnamrezRecords(patient.id).length;
                     return (
                       <div
                         key={patient.id}

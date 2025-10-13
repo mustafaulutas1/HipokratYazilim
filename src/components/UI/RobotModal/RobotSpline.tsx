@@ -3,7 +3,7 @@ import { useInView } from 'framer-motion';
 import SplineScene from './SplineScene';
 
 const RobotSpline: React.FC = () => {
-  const [mousePosition, setMousePosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [, setMousePosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const ref = useRef<HTMLDivElement>(null);
   const isInView = useInView(ref, { once: false, amount: 0.1 });
 

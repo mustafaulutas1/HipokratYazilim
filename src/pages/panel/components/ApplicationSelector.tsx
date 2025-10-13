@@ -9,6 +9,7 @@ interface Application {
   clinicId: string;
   createdBy: string;
   createdAt: string;
+  price?: number;
 }
 
 interface ApplicationSelectorProps {

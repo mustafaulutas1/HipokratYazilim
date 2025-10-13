@@ -3,13 +3,6 @@ import { features } from '../../constants'
 import styles, { layout } from '../../style'
 import DiscoverButton from '../UI/DiscoverButton'
 
-type Feature = {
-  id: string;
-  icon: string;
-  title: string;
-  content: string;
-}
-
 type FeatureCardProps = {
   icon: string;
   title: string;
@@ -17,7 +10,7 @@ type FeatureCardProps = {
   index: number;
 }
 
-const FeatureCard: React.FC<FeatureCardProps> = ({ icon, title, content, index }) => {
+const FeatureCard: React.FC<FeatureCardProps> = ({ title, content, index }) => {
   const [isHovered, setIsHovered] = useState<boolean>(false);
   const [isVisible, setIsVisible] = useState<boolean>(false);
   const cardRef = useRef<HTMLDivElement | null>(null);
@@ -61,14 +54,7 @@ const FeatureCard: React.FC<FeatureCardProps> = ({ icon, title, content, index }
     }
   };
 
-  const getAccentColor = () => {
-    switch (index) {
-      case 0: return 'blue';
-      case 1: return 'emerald';
-      case 2: return 'rose';
-      default: return 'blue';
-    }
-  };
+
 
   return (
     <div
@@ -172,8 +158,6 @@ const FeatureCard: React.FC<FeatureCardProps> = ({ icon, title, content, index }
 };
 
 const FeaturesSection = () => {
-  const [activeFeature, setActiveFeature] = useState(0);
-  const sectionRef = useRef(null);
 
   const benefits = [
     { icon: '✅', text: 'KVKK Uyumlu', color: 'text-green-600' },

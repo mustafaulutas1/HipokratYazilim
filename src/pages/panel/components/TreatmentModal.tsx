@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, addDoc, updateDoc, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, updateDoc, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 
 // Define interfaces to match TreatmentProtocols structure
@@ -107,7 +107,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
   patient,
   onStartTreatment
 }) => {
-  const [selectedTreatmentOptions] = useState<TreatmentOptions>({});
+  const [,] = useState<TreatmentOptions>({});
   const [loading, setLoading] = useState(false);
   const [anamrezData, setAnamrezData] = useState<AnamrezData | null>(null);
   const [fetchingAnamnez, setFetchingAnamnez] = useState(false);
@@ -402,7 +402,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
       // Use patient-specific if available, otherwise use general
       const systemProtocols = patientSpecificProtocols.length > 0 ? patientSpecificProtocols : generalProtocols;
 
-      const applicableProtocols = [];
+      const applicableProtocols: any[] = [];
 
       systemProtocols.forEach(protocol => {
         // Check if protocol requirements are met
@@ -657,6 +657,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
   };
 
   // Start treatment with saved customized protocol
+  /*
   const handleStartTreatmentWithCustomProtocol = async () => {
     if (!editedProtocol || !patient) return;
 
@@ -682,6 +683,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
       setLoading(false);
     }
   };
+  */
 
   const handleStartTreatment = async () => {
     const allTreatments = getTreatmentsForAllSystems();
@@ -847,7 +849,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                             {anamrezData?.symptomRatings?.stres && (
                               <p>Stres değeri: {anamrezData.symptomRatings.stres}/10</p>
                             )}
-                            {anamrezData?.selectedDiagnosisSystems?.length > 0 && (
+                            {anamrezData?.selectedDiagnosisSystems?.length && anamrezData.selectedDiagnosisSystems.length > 0 && (
                               <p>Tanı sistemleri: {anamrezData.selectedDiagnosisSystems.join(', ')}</p>
                             )}
                           </div>
@@ -1051,7 +1053,10 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                         ...editedProtocol,
                                         phases: {
                                           ...editedProtocol.phases,
-                                          regeneration3: { ...editedProtocol.phases.regeneration3, treatment: e.target.value }
+                                          regeneration3: { 
+                                            treatment: e.target.value, 
+                                            dosage: editedProtocol.phases.regeneration3?.dosage || '' 
+                                          }
                                         }
                                       })}
                                       className="w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2"
@@ -1064,7 +1069,10 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                         ...editedProtocol,
                                         phases: {
                                           ...editedProtocol.phases,
-                                          regeneration3: { ...editedProtocol.phases.regeneration3, dosage: e.target.value }
+                                          regeneration3: { 
+                                            treatment: editedProtocol.phases.regeneration3?.treatment || '',
+                                            dosage: e.target.value 
+                                          }
                                         }
                                       })}
                                       className="w-full border border-gray-300 rounded px-2 py-1 text-xs text-gray-600"
@@ -1105,7 +1113,10 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                         ...editedProtocol,
                                         phases: {
                                           ...editedProtocol.phases,
-                                          regeneration4: { ...editedProtocol.phases.regeneration4, treatment: e.target.value }
+                                          regeneration4: { 
+                                            treatment: e.target.value,
+                                            dosage: editedProtocol.phases.regeneration4?.dosage || '' 
+                                          }
                                         }
                                       })}
                                       className="w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2"
@@ -1118,7 +1129,10 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                         ...editedProtocol,
                                         phases: {
                                           ...editedProtocol.phases,
-                                          regeneration4: { ...editedProtocol.phases.regeneration4, dosage: e.target.value }
+                                          regeneration4: { 
+                                            treatment: editedProtocol.phases.regeneration4?.treatment || '',
+                                            dosage: e.target.value 
+                                          }
                                         }
                                       })}
                                       className="w-full border border-gray-300 rounded px-2 py-1 text-xs text-gray-600"
@@ -1387,7 +1401,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                 })()}
                               </p>
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                                {bestTreatment.phases.mainTreatments.map((mainTreatment, mtIndex) => {
+                                {bestTreatment.phases.mainTreatments.map((mainTreatment: any, mtIndex: number) => {
                                   const systemSelections = selectedApplicationsBySystem[bestTreatment.system] || [];
                                   const isSelected = systemSelections.includes(mainTreatment.treatment);
                                   return (
@@ -1470,7 +1484,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                       ☠️ Yüksek Toksisite {anamrezData?.toxicityAssessment?.hasToxicity ? '✓' : '✗'}
                                     </div>
                                   )}
-                                  {bestTreatment.symptomConditions.map((condition, idx) => {
+                                  {bestTreatment.symptomConditions.map((condition: any, idx: number) => {
                                     const patientRating = anamrezData?.symptomRatings?.[condition.symptomKey] || 0;
                                     const meetsRequirement = patientRating >= condition.threshold;
                                     return (

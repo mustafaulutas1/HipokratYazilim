@@ -38,8 +38,8 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedPatient, setSelectedPatient] = useState<string>('');
   const [selectedType, setSelectedType] = useState<string>('');
-  const [hourOpen, setHourOpen] = useState(false);
-  const [minuteOpen, setMinuteOpen] = useState(false);
+  const [, setHourOpen] = useState(false);
+  const [, setMinuteOpen] = useState(false);
   const [startHour, setStartHour] = useState<number>(9);
   const [startMinute, setStartMinute] = useState<number>(0);
   const [loading, setLoading] = useState(false);
@@ -165,6 +165,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
   }, [startTime, endTime]);
 
   // Başlangıç dakikasının dolu olup olmadığını kontrol et (segment başı engelleme)
+  /*
   const isStartDisabled = (h: number, m: number) => {
     const startMin = h * 60 + m;
     // mesai sınırı
@@ -184,6 +185,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
     }
     return false;
   };
+  */
 
   const filteredPatients = useMemo(() => {
     const s = searchPatient.trim().toLowerCase();
@@ -238,9 +240,11 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
   }, [dayAppointments, minSelectableTimeToday]);
 
   // Keep backwards compatibility for availableSlots
+  /*
   const availableSlots = useMemo(() => {
     return allTimeSlots.filter(slot => slot.available).map(slot => slot.time);
   }, [allTimeSlots]);
+  */
 
   useEffect(() => {
     // Eğer bugün ise, startTime en az minSelectableTimeToday olsun
@@ -253,6 +257,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
     }
   }, [minSelectableTimeToday]);
 
+  /*
   const clampToWorkHours = (h: number, m: number) => {
     let total = h * 60 + m;
     const start = timeToMinutes(WORK_START);
@@ -266,12 +271,15 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
     }
     return { h: Math.floor(total/60), m: total%60 };
   };
+  */
 
+  /*
   const stepMinutes = (delta: number) => {
     const total = timeToMinutes(startTime) + delta;
     const { h, m } = clampToWorkHours(Math.floor(total/60), total%60);
     setStartHour(h); setStartMinute(m);
   };
+  */
 
   const checkOverlap = async () => {
     // fetch same-day appointments to check overlap
@@ -619,7 +627,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
                 <div className="bg-white/90 backdrop-blur-sm border border-green-300/50 rounded-2xl shadow-sm">
                   {allTimeSlots.length > 0 ? (
                     <div className="grid grid-cols-3 gap-2 p-4 max-h-80 overflow-y-auto">
-                      {allTimeSlots.map((slot, index) => (
+                      {allTimeSlots.map((slot) => (
                         <button
                           key={slot.time}
                           type="button"

@@ -39,7 +39,7 @@ const UserPermissionsModal: React.FC<UserPermissionsModalProps> = ({
     if (user) {
       const currentPermissions = getUserPermissions(user.role, user.permissions);
       setSelectedPermissions(currentPermissions);
-      setUseCustomPermissions(user.permissions && user.permissions.length > 0);
+      setUseCustomPermissions(Boolean(user.permissions && user.permissions.length > 0));
     }
   }, [user]);
 

@@ -914,6 +914,20 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         conventionalTreatment: {
           currentMedications: '',
           otherTreatments: ''
+        },
+        optionalScans: {
+          meridianScan: {
+            enabled: false,
+            fileUrl: ''
+          },
+          thermalScan: {
+            enabled: false,
+            fileUrl: ''
+          },
+          toxicityScan: {
+            enabled: false,
+            fileUrl: ''
+          }
         }
       });
     } catch (error) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import menu from '../../assets/menu.svg'
 import close from '../../assets/close.svg'
 import { rtmLogo } from '../../assets'

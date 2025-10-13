@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import type { FC } from 'react';
-import { Menu, X, Heart, ArrowRight, Shield, Clock, Users, Award, Brain, Eye, Stethoscope, Activity, Calendar, User, Send, MapPin, Phone, Mail, Facebook, Twitter, Instagram, Linkedin, Search, Star, Play, ChevronDown, Headphones } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Menu, X, Heart, ArrowRight, Shield, Clock, Users, Award, Brain, Eye, Stethoscope, Activity, MapPin, Phone, Mail, Facebook, Twitter, Instagram, Linkedin, Star, Play, ChevronDown } from 'lucide-react';
 import hipokratLogo from '../assets/hipokrat_logo.png';
 
 const Header = () => {
@@ -115,10 +114,7 @@ const Hero = () => {
   const [statsVisible, setStatsVisible] = useState(false);
   const [counters, setCounters] = useState({ doctors: 0, patients: 0, rating: 0 });
 
-  const quickActions = [
-    { icon: Calendar, title: 'RTMSoft', subtitle: 'Online ziyaretinizi planlayın', color: 'from-green-500 to-green-600' },
-    { icon: Headphones, title: '7/24 Destek', subtitle: 'Anında tıbbi tavsiye alın', color: 'from-purple-500 to-purple-600' }
-  ];
+
 
   const floatingElements = [
     { icon: Heart, color: 'text-red-400', delay: '0s', position: 'top-20 left-10', size: 'h-6 w-6' },
@@ -142,7 +138,7 @@ const Hero = () => {
     let currentStep = 0;
     const timer = setInterval(() => {
       currentStep++;
-      setCounters(prev => ({
+      setCounters(() => ({
         doctors: Math.min(Math.round(increment.doctors * currentStep), targetValues.doctors),
         patients: Math.min(Math.round(increment.patients * currentStep), targetValues.patients),
         rating: Math.min(Number((increment.rating * currentStep).toFixed(1)), targetValues.rating)

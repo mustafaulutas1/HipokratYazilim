@@ -4,14 +4,11 @@ import {
   getDocs,
   query,
   orderBy,
-  addDoc,
   updateDoc,
   doc,
   deleteDoc,
 } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../../../firebase/config';
 import AddUserModal from './AddUserModal';
 import EditUserModal from './EditUserModal';
 import UserPermissionsModal from './UserPermissionsModal';

@@ -3,7 +3,7 @@ import PhoneInput from "../components/UI/PhoneInput";
 import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { db } from "../firebase/config";
-import { TURKIYE_CITIES } from "../types/TurkiyeCities";
+
 import { useAuth } from "../context/AuthContext";
 
 interface DoctorProfile {

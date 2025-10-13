@@ -15,6 +15,7 @@ interface Patient {
   gender: string;
   address: string;
   emergencyPhone: string;
+  emergencyPhoneOwner: string;
   fatherName: string;
   birthPlace: string;
   registeredProvince: string;

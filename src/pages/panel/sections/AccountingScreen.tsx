@@ -31,6 +31,11 @@ interface PaymentPatient {
   updatedAt?: string;
   indirim_check?: boolean;
   indirim_orani?: number;
+  optionalScans?: {
+    meridianScan?: { enabled?: boolean };
+    thermalScan?: { enabled?: boolean };
+    toxicityScan?: { enabled?: boolean };
+  };
 }
 
 interface PaymentStats {

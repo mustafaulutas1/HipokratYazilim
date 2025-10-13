@@ -37,6 +37,8 @@ interface WaitingPatient {
   assignedDoctorName?: string;
   assignedAt?: string;
   status?: string;
+  paymentCompleted?: boolean;
+  priority?: 'normal' | 'urgent' | 'emergency';
 }
 
 interface AnamrezRecord {
