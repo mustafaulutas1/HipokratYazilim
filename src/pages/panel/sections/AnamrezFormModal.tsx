@@ -375,6 +375,22 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
     conventionalTreatment: {
       currentMedications: '',
       otherTreatments: ''
+    },
+
+    // Optional Scans
+    optionalScans: {
+      meridianScan: {
+        enabled: false,
+        fileUrl: ''
+      },
+      thermalScan: {
+        enabled: false,
+        fileUrl: ''
+      },
+      toxicityScan: {
+        enabled: false,
+        fileUrl: ''
+      }
     }
   });
 
@@ -734,7 +750,8 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         additionalQuestions: formData.additionalQuestions,
         customQuestions: formData.customQuestions,
         conventionalTreatment: formData.conventionalTreatment,
-        
+        optionalScans: formData.optionalScans,
+
         // Toxicity assessment calculation
         toxicityAssessment: (() => {
           const toxicityMapping = {
@@ -792,6 +809,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         isAnamnezCompleted: true,
         anamrezCompletedAt: new Date().toISOString(),
         anamrezCompletedBy: doctorProfile?.fullName || '',
+        optionalScans: formData.optionalScans,
         updatedAt: new Date().toISOString()
       });
 
@@ -989,6 +1007,12 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                 currentPage === 6 ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'
               }`}>
                 6
+              </div>
+              <div className="w-8 h-1 bg-gray-300 rounded"></div>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-semibold ${
+                currentPage === 7 ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'
+              }`}>
+                7
               </div>
             </div>
           </div>
@@ -1842,6 +1866,142 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
           {currentPage === 6 && (
             <>
+              {/* Optional Scans */}
+              <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-200">
+                <h3 className="text-xl font-bold text-purple-700 mb-6 flex items-center gap-2">
+                  📋 Opsiyonel Taramalar
+                </h3>
+
+                <div className="space-y-6">
+                  {/* Meridian Scan */}
+                  <div className="bg-white rounded-xl p-6 border border-gray-200">
+                    <div className="flex items-center gap-3 mb-4">
+                      <input
+                        type="checkbox"
+                        id="meridianScan"
+                        checked={formData.optionalScans.meridianScan.enabled}
+                        onChange={(e) => {
+                          setFormData(prev => ({
+                            ...prev,
+                            optionalScans: {
+                              ...prev.optionalScans,
+                              meridianScan: {
+                                ...prev.optionalScans.meridianScan,
+                                enabled: e.target.checked
+                              }
+                            }
+                          }));
+                        }}
+                        className="w-5 h-5 text-purple-600 bg-white border-gray-300 rounded focus:ring-purple-500 focus:ring-2"
+                      />
+                      <label htmlFor="meridianScan" className="text-lg font-semibold text-gray-800 cursor-pointer">
+                        Meridyen Tarama Tek Seans
+                      </label>
+                    </div>
+
+                    {formData.optionalScans.meridianScan.enabled && (
+                      <div className="ml-8 mt-4 p-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                        <div className="flex items-center justify-center gap-3">
+                          <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                          </svg>
+                          <div className="text-center">
+                            <p className="text-sm font-medium text-gray-700">Dosya yüklemek için tıklayın</p>
+                            <p className="text-xs text-gray-500 mt-1">PDF, PNG, JPG (Max 10MB)</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Thermal Scan */}
+                  <div className="bg-white rounded-xl p-6 border border-gray-200">
+                    <div className="flex items-center gap-3 mb-4">
+                      <input
+                        type="checkbox"
+                        id="thermalScan"
+                        checked={formData.optionalScans.thermalScan.enabled}
+                        onChange={(e) => {
+                          setFormData(prev => ({
+                            ...prev,
+                            optionalScans: {
+                              ...prev.optionalScans,
+                              thermalScan: {
+                                ...prev.optionalScans.thermalScan,
+                                enabled: e.target.checked
+                              }
+                            }
+                          }));
+                        }}
+                        className="w-5 h-5 text-purple-600 bg-white border-gray-300 rounded focus:ring-purple-500 focus:ring-2"
+                      />
+                      <label htmlFor="thermalScan" className="text-lg font-semibold text-gray-800 cursor-pointer">
+                        Termal Tarama (IRIS-XP)
+                      </label>
+                    </div>
+
+                    {formData.optionalScans.thermalScan.enabled && (
+                      <div className="ml-8 mt-4 p-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                        <div className="flex items-center justify-center gap-3">
+                          <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                          </svg>
+                          <div className="text-center">
+                            <p className="text-sm font-medium text-gray-700">Dosya yüklemek için tıklayın</p>
+                            <p className="text-xs text-gray-500 mt-1">PDF, PNG, JPG (Max 10MB)</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Toxicity Scan */}
+                  <div className="bg-white rounded-xl p-6 border border-gray-200">
+                    <div className="flex items-center gap-3 mb-4">
+                      <input
+                        type="checkbox"
+                        id="toxicityScan"
+                        checked={formData.optionalScans.toxicityScan.enabled}
+                        onChange={(e) => {
+                          setFormData(prev => ({
+                            ...prev,
+                            optionalScans: {
+                              ...prev.optionalScans,
+                              toxicityScan: {
+                                ...prev.optionalScans.toxicityScan,
+                                enabled: e.target.checked
+                              }
+                            }
+                          }));
+                        }}
+                        className="w-5 h-5 text-purple-600 bg-white border-gray-300 rounded focus:ring-purple-500 focus:ring-2"
+                      />
+                      <label htmlFor="toxicityScan" className="text-lg font-semibold text-gray-800 cursor-pointer">
+                        Toksisite Ölçümü (TEK SEANS)
+                      </label>
+                    </div>
+
+                    {formData.optionalScans.toxicityScan.enabled && (
+                      <div className="ml-8 mt-4 p-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                        <div className="flex items-center justify-center gap-3">
+                          <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                          </svg>
+                          <div className="text-center">
+                            <p className="text-sm font-medium text-gray-700">Dosya yüklemek için tıklayın</p>
+                            <p className="text-xs text-gray-500 mt-1">PDF, PNG, JPG (Max 10MB)</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {currentPage === 7 && (
+            <>
               {/* Conventional Medical Treatment */}
               <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl p-6 border border-indigo-200">
                 <h3 className="text-xl font-bold text-indigo-700 mb-6 flex items-center gap-2">
@@ -1968,6 +2128,16 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                   ← Geri
                 </button>
               )}
+
+              {currentPage === 7 && (
+                <button
+                  type="button"
+                  onClick={() => handlePrevPage(6)}
+                  className="px-6 py-3 bg-blue-100 hover:bg-blue-200 border border-blue-300 rounded-xl text-blue-700 font-semibold transition-all duration-200"
+                >
+                  ← Geri
+                </button>
+              )}
             </div>
 
             <div className="flex items-center gap-4">
@@ -2022,6 +2192,16 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
               )}
               
               {currentPage === 6 && (
+                <button
+                  type="button"
+                  onClick={handleNextPage}
+                  className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-semibold rounded-xl transition-all duration-200 shadow-lg"
+                >
+                  İleri →
+                </button>
+              )}
+
+              {currentPage === 7 && (
                 <button
                   type="submit"
                   disabled={loading}

@@ -88,11 +88,14 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
 
   const filteredPatients = patients.filter(patient => {
     const matchesSearch = patient.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         patient.tcNo.includes(searchTerm) ||
-                         patient.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = filterStatus === 'all' || 
-                         (filterStatus === 'active' && patient.registrationDate) ||
-                         (filterStatus === 'inactive' && !patient.registrationDate);
+                         (patient.tcNo && patient.tcNo.includes(searchTerm)) ||
+                         (patient.email && patient.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                         (patient.phone && patient.phone.includes(searchTerm));
+
+    const isIncomplete = (patient as any).registrationStatus === 'incomplete';
+    const matchesFilter = filterStatus === 'all' ||
+                         (filterStatus === 'active' && !isIncomplete) ||
+                         (filterStatus === 'inactive' && isIncomplete);
     return matchesSearch && matchesFilter;
   });
 
@@ -155,13 +158,13 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {[
           { title: 'Toplam Hasta', value: patients.length.toString(), icon: '👥', color: 'from-blue-500 to-cyan-500' },
-          { title: 'Kayıtlı Hasta', value: patients.filter(p => p.registrationDate).length.toString(), icon: '✅', color: 'from-green-500 to-emerald-500' },
+          { title: 'Kayıtlı Hasta', value: patients.filter(p => (p as any).registrationStatus !== 'incomplete').length.toString(), icon: '✅', color: 'from-green-500 to-emerald-500' },
           { title: 'Bu Ay Yeni', value: patients.filter(p => {
             const createdAt = new Date(p.createdAt);
             const now = new Date();
             return createdAt.getMonth() === now.getMonth() && createdAt.getFullYear() === now.getFullYear();
           }).length.toString(), icon: '🆕', color: 'from-yellow-500 to-orange-500' },
-          { title: 'Kayıtsız Hasta', value: patients.filter(p => !p.registrationDate).length.toString(), icon: '📅', color: 'from-purple-500 to-pink-500' }
+          { title: 'Kayıtsız Hasta', value: patients.filter(p => (p as any).registrationStatus === 'incomplete').length.toString(), icon: '📅', color: 'from-purple-500 to-pink-500' }
         ].map((stat, index) => (
           <div key={index} className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
             <div className="flex items-center gap-4">

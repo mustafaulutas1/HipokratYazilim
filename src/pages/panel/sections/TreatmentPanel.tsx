@@ -64,8 +64,12 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
   const [selectedPatient, setSelectedPatient] = useState<TreatmentPatient | null>(null);
   const [isTreatmentModalOpen, setIsTreatmentModalOpen] = useState(false);
   const [treatmentApplied, setTreatmentApplied] = useState<boolean>(true);
-  const [treatmentNotes, setTreatmentNotes] = useState<string>('');
+  const [treatmentNotes, setTreatmentNotes] = useState<string>('Tedavi Başarı İle Uygulandı');
   const [notAppliedReason, setNotAppliedReason] = useState<string>('');
+  const [isEmergencyModalOpen, setIsEmergencyModalOpen] = useState(false);
+  const [selectedEmergencyCause, setSelectedEmergencyCause] = useState<string>('');
+  const [customEmergencyCause, setCustomEmergencyCause] = useState<string>('');
+  const [emergencyPatient, setEmergencyPatient] = useState<TreatmentPatient | null>(null);
 
   useEffect(() => {
     const fetchTreatmentData = async () => {
@@ -139,13 +143,68 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
     fetchTreatmentData();
   }, [doctorProfile?.clinicId]);
 
+  const handleMarkAsEmergency = (patient: TreatmentPatient) => {
+    setEmergencyPatient(patient);
+    setSelectedEmergencyCause('');
+    setCustomEmergencyCause('');
+    setIsEmergencyModalOpen(true);
+  };
+
+  const handleConfirmEmergency = async () => {
+    if (!emergencyPatient) return;
+
+    const finalCause = selectedEmergencyCause === 'Diğer'
+      ? customEmergencyCause.trim()
+      : selectedEmergencyCause;
+
+    if (!finalCause) {
+      alert('Lütfen bir acil durum nedeni seçin veya yazın.');
+      return;
+    }
+
+    if (selectedEmergencyCause === 'Diğer' && customEmergencyCause.trim().length < 10) {
+      alert('Özel neden en az 10 karakter olmalıdır.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const patientRef = doc(db, 'patients', emergencyPatient.id);
+
+      await updateDoc(patientRef, {
+        isEmergency: true,
+        emergencyCause: finalCause,
+        emergencyMarkedAt: new Date().toISOString(),
+        emergencyMarkedBy: doctorProfile?.fullName || '',
+        updatedAt: new Date().toISOString()
+      });
+
+      console.log(`🚨 Patient marked as emergency: ${emergencyPatient.fullName}`);
+
+      // Close modal and reset
+      setIsEmergencyModalOpen(false);
+      setEmergencyPatient(null);
+      setSelectedEmergencyCause('');
+      setCustomEmergencyCause('');
+
+      // Refetch data
+      window.location.reload();
+
+    } catch (error) {
+      console.error('❌ Error marking patient as emergency:', error);
+      alert('Acil durum işaretlenirken bir hata oluştu. Lütfen tekrar deneyin.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleProcessTreatment = async () => {
     if (!selectedPatient) return;
 
     try {
       setLoading(true);
       const patientRef = doc(db, 'patients', selectedPatient.id);
-      
+
       const updateData: Record<string, string | boolean> = {
         updatedAt: new Date().toISOString()
       };
@@ -169,14 +228,14 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
       await updateDoc(patientRef, updateData);
 
       console.log(`✅ Treatment processed for patient: ${selectedPatient.fullName}, Applied: ${treatmentApplied}`);
-      
+
       // Reset modal state
       setIsTreatmentModalOpen(false);
       setSelectedPatient(null);
       setTreatmentApplied(true);
-      setTreatmentNotes('');
+      setTreatmentNotes('Tedavi Başarı İle Uygulandı');
       setNotAppliedReason('');
-      
+
       // Refetch data
       window.location.reload(); // Simple refresh for now
 
@@ -396,12 +455,23 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
                     <button
                       onClick={() => {
                         setSelectedPatient(patient);
+                        setTreatmentApplied(true);
+                        setTreatmentNotes('Tedavi Başarı İle Uygulandı');
+                        setNotAppliedReason('');
                         setIsTreatmentModalOpen(true);
                       }}
                       className="px-4 py-2 bg-green-500/20 border border-green-400 rounded-xl text-green-200 hover:bg-green-500/30 transition-all duration-200 flex items-center gap-2"
                     >
                       <span className="text-lg">🏥</span>
                       Tedavi Uygula
+                    </button>
+                    <button
+                      onClick={() => handleMarkAsEmergency(patient)}
+                      disabled={loading}
+                      className="px-4 py-2 bg-red-500/20 border border-red-400 rounded-xl text-red-200 hover:bg-red-500/30 transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <span className="text-lg">🚨</span>
+                      Acil Durum
                     </button>
                   </div>
                 )}
@@ -518,29 +588,45 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
               {!treatmentApplied && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Tedavi Uygulanmama Nedeni *
+                    Tedavi Uygulanmama Nedeni * (En az 20 karakter)
                   </label>
                   <textarea
                     value={notAppliedReason}
                     onChange={(e) => setNotAppliedReason(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Tedavi neden uygulanmadığını açıklayın..."
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      notAppliedReason.length > 0 && notAppliedReason.length < 20
+                        ? 'border-red-300 bg-red-50'
+                        : 'border-gray-300'
+                    }`}
+                    placeholder="Tedavi neden uygulanmadığını açıklayın... (En az 20 karakter)"
                     rows={3}
                     required
                   />
+                  <div className="flex items-center justify-between mt-1">
+                    <span className={`text-xs ${
+                      notAppliedReason.length < 20 ? 'text-red-600 font-medium' : 'text-green-600'
+                    }`}>
+                      {notAppliedReason.length < 20
+                        ? `${20 - notAppliedReason.length} karakter daha gerekli`
+                        : '✓ Yeterli açıklama'}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {notAppliedReason.length} / 20
+                    </span>
+                  </div>
                 </div>
               )}
 
               {/* Treatment Notes */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Tedavi Notları (İsteğe bağlı)
+                  Tedavi Açıklaması
                 </label>
                 <textarea
                   value={treatmentNotes}
                   onChange={(e) => setTreatmentNotes(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Tedavi ile ilgili ek notlar..."
+                  placeholder="Tedavi ile ilgili açıklama..."
                   rows={3}
                 />
               </div>
@@ -565,7 +651,7 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
                   setIsTreatmentModalOpen(false);
                   setSelectedPatient(null);
                   setTreatmentApplied(true);
-                  setTreatmentNotes('');
+                  setTreatmentNotes('Tedavi Başarı İle Uygulandı');
                   setNotAppliedReason('');
                 }}
                 className="px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg text-gray-700 hover:text-gray-900 font-medium transition-all duration-200"
@@ -574,7 +660,7 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
               </button>
               <button
                 onClick={handleProcessTreatment}
-                disabled={loading || (!treatmentApplied && !notAppliedReason.trim())}
+                disabled={loading || (!treatmentApplied && notAppliedReason.trim().length < 20)}
                 className="px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-lg font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
@@ -585,6 +671,139 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
                 ) : (
                   <>
                     🏥 Tedavi Kaydet
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Emergency Modal */}
+      {isEmergencyModalOpen && emergencyPatient && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl border border-gray-200">
+            <div className="p-6 border-b border-gray-200 bg-red-50">
+              <div className="flex items-center gap-3">
+                <span className="text-3xl">🚨</span>
+                <div>
+                  <h3 className="text-xl font-bold text-red-800">
+                    Acil Durum
+                  </h3>
+                  <p className="text-red-600 text-sm">
+                    {emergencyPatient.fullName}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  Acil Durum Nedeni Seçin
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { value: 'Yüksek Ateş', icon: '🌡️' },
+                    { value: 'Şiddetli Ağrı', icon: '⚠️' },
+                    { value: 'Nefes Darlığı', icon: '😮‍💨' },
+                    { value: 'Kalp Sorunu', icon: '❤️' },
+                    { value: 'Baş Dönmesi', icon: '😵' },
+                    { value: 'Alerji Reaksiyonu', icon: '🤧' },
+                    { value: 'Kanama', icon: '🩸' },
+                    { value: 'Bayılma', icon: '😴' },
+                    { value: 'Şok Belirtileri', icon: '⚡' },
+                    { value: 'Şiddetli Bulantı', icon: '🤢' },
+                    { value: 'Travma', icon: '🤕' },
+                    { value: 'Diğer', icon: '📝' }
+                  ].map((cause) => (
+                    <button
+                      key={cause.value}
+                      onClick={() => setSelectedEmergencyCause(cause.value)}
+                      className={`p-3 rounded-xl border-2 transition-all duration-200 text-left ${
+                        selectedEmergencyCause === cause.value
+                          ? 'bg-red-50 border-red-500 shadow-md scale-105'
+                          : 'bg-white border-gray-200 hover:border-red-300 hover:bg-red-50/50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl">{cause.icon}</span>
+                        <span className={`text-sm font-medium ${
+                          selectedEmergencyCause === cause.value
+                            ? 'text-red-700'
+                            : 'text-gray-700'
+                        }`}>
+                          {cause.value}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {selectedEmergencyCause === 'Diğer' && (
+                <div className="animate-fadeIn">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Özel Neden (En az 10 karakter)
+                  </label>
+                  <textarea
+                    value={customEmergencyCause}
+                    onChange={(e) => setCustomEmergencyCause(e.target.value)}
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent ${
+                      customEmergencyCause.length > 0 && customEmergencyCause.length < 10
+                        ? 'border-red-300 bg-red-50'
+                        : 'border-gray-300'
+                    }`}
+                    placeholder="Acil durum nedenini detaylı yazın..."
+                    rows={3}
+                  />
+                  <div className="flex items-center justify-between mt-1">
+                    <span className={`text-xs ${
+                      customEmergencyCause.length < 10 ? 'text-red-600 font-medium' : 'text-green-600'
+                    }`}>
+                      {customEmergencyCause.length < 10
+                        ? `${10 - customEmergencyCause.length} karakter daha gerekli`
+                        : '✓ Yeterli açıklama'}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {customEmergencyCause.length} / 10
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-4">
+                <p className="text-yellow-800 text-sm">
+                  <span className="font-semibold">⚠️ Uyarı:</span> Bu hasta acil durumlar listesine eklenecektir.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex items-center justify-end gap-3 bg-gray-50">
+              <button
+                onClick={() => {
+                  setIsEmergencyModalOpen(false);
+                  setEmergencyPatient(null);
+                  setSelectedEmergencyCause('');
+                  setCustomEmergencyCause('');
+                }}
+                className="px-4 py-2 bg-white hover:bg-gray-100 border border-gray-300 rounded-lg text-gray-700 hover:text-gray-900 font-medium transition-all duration-200"
+              >
+                İptal
+              </button>
+              <button
+                onClick={handleConfirmEmergency}
+                disabled={loading || !selectedEmergencyCause || (selectedEmergencyCause === 'Diğer' && customEmergencyCause.trim().length < 10)}
+                className="px-4 py-2 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-lg font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    İşleniyor...
+                  </>
+                ) : (
+                  <>
+                    🚨 Acil Durum Olarak İşaretle
                   </>
                 )}
               </button>

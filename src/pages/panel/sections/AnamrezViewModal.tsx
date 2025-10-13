@@ -70,6 +70,20 @@ interface AnamrezData {
     currentMedications: string;
     otherTreatments: string;
   };
+  optionalScans?: {
+    meridianScan?: {
+      enabled: boolean;
+      fileUrl: string;
+    };
+    thermalScan?: {
+      enabled: boolean;
+      fileUrl: string;
+    };
+    toxicityScan?: {
+      enabled: boolean;
+      fileUrl: string;
+    };
+  };
   toxicityAssessment: {
     totalScore: number;
     ratedSymptomsCount: number;
@@ -328,6 +342,24 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
       }
     }
 
+    // Optional Scans
+    if (anamrezData.optionalScans && (
+      anamrezData.optionalScans.meridianScan?.enabled ||
+      anamrezData.optionalScans.thermalScan?.enabled ||
+      anamrezData.optionalScans.toxicityScan?.enabled
+    )) {
+      addSectionHeader('OPSİYONEL TARAMALAR');
+      if (anamrezData.optionalScans.meridianScan?.enabled) {
+        addText('✓ Meridyen Tarama Tek Seans');
+      }
+      if (anamrezData.optionalScans.thermalScan?.enabled) {
+        addText('✓ Termal Tarama (IRIS-XP)');
+      }
+      if (anamrezData.optionalScans.toxicityScan?.enabled) {
+        addText('✓ Toksisite Ölçümü (TEK SEANS)');
+      }
+    }
+
     // Conventional Treatment
     addSectionHeader('KONVANSİYONEL TIP TEDAVİSİ');
     addText(`Kullandığı İlaçlar: ${anamrezData.conventionalTreatment?.currentMedications || 'Belirtilmemiş'}`);
@@ -394,6 +426,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
     { id: 'diagnosis-responses', label: 'Sistem Soruları', icon: '🩺' },
     { id: 'lifestyle', label: 'Yaşam Tarzı', icon: '🏃‍♂️' },
     { id: 'toxicity', label: 'Toksisite Değerlendirmesi', icon: '⚠️' },
+    { id: 'optional-scans', label: 'Opsiyonel Taramalar', icon: '📋' },
     { id: 'treatment', label: 'Konvansiyonel Tedavi', icon: '💊' }
   ];
 
@@ -928,6 +961,73 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                             </div>
                           )}
                         </div>
+                      </div>
+                    )}
+
+                    {/* Optional Scans Section */}
+                    {activeSection === 'optional-scans' && (
+                      <div className="space-y-6">
+                        <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                          📋 Opsiyonel Taramalar
+                        </h3>
+
+                        {anamrezData.optionalScans && (
+                          anamrezData.optionalScans.meridianScan?.enabled ||
+                          anamrezData.optionalScans.thermalScan?.enabled ||
+                          anamrezData.optionalScans.toxicityScan?.enabled
+                        ) ? (
+                          <div className="space-y-4">
+                            {anamrezData.optionalScans.meridianScan?.enabled && (
+                              <div className="bg-purple-50 border border-purple-200 rounded-xl p-6">
+                                <div className="flex items-center gap-3 mb-3">
+                                  <div className="w-10 h-10 bg-purple-500 text-white rounded-full flex items-center justify-center font-bold">
+                                    ✓
+                                  </div>
+                                  <div>
+                                    <h4 className="font-bold text-purple-900">Meridyen Tarama Tek Seans</h4>
+                                    <p className="text-sm text-purple-700">Seçilmiş</p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {anamrezData.optionalScans.thermalScan?.enabled && (
+                              <div className="bg-purple-50 border border-purple-200 rounded-xl p-6">
+                                <div className="flex items-center gap-3 mb-3">
+                                  <div className="w-10 h-10 bg-purple-500 text-white rounded-full flex items-center justify-center font-bold">
+                                    ✓
+                                  </div>
+                                  <div>
+                                    <h4 className="font-bold text-purple-900">Termal Tarama (IRIS-XP)</h4>
+                                    <p className="text-sm text-purple-700">Seçilmiş</p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {anamrezData.optionalScans.toxicityScan?.enabled && (
+                              <div className="bg-purple-50 border border-purple-200 rounded-xl p-6">
+                                <div className="flex items-center gap-3 mb-3">
+                                  <div className="w-10 h-10 bg-purple-500 text-white rounded-full flex items-center justify-center font-bold">
+                                    ✓
+                                  </div>
+                                  <div>
+                                    <h4 className="font-bold text-purple-900">Toksisite Ölçümü (TEK SEANS)</h4>
+                                    <p className="text-sm text-purple-700">Seçilmiş</p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="bg-gray-50 rounded-xl p-8 border border-gray-200">
+                            <div className="text-center text-gray-500">
+                              <div className="text-4xl mb-3">📋</div>
+                              <p className="font-medium">Opsiyonel tarama seçilmemiş</p>
+                              <p className="text-sm mt-1">Bu hasta için hiçbir opsiyonel tarama seçilmemiştir.</p>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 

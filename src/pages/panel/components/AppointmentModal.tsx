@@ -47,6 +47,11 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
   const [dayAppointments, setDayAppointments] = useState<any[]>([]);
   const [notes, setNotes] = useState<string>('');
 
+  // Quick reservation fields (for non-registered patients)
+  const [useQuickReservation, setUseQuickReservation] = useState<boolean>(false);
+  const [quickName, setQuickName] = useState<string>('');
+  const [quickPhone, setQuickPhone] = useState<string>('');
+
   // Refs for click-outside handling
   const patientRef = useRef<HTMLDivElement | null>(null);
   const typeRef = useRef<HTMLDivElement | null>(null);
@@ -118,13 +123,20 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
       setSelectedPatient('');
       setSelectedType('');
       setNotes('');
+      setUseQuickReservation(false);
+      setQuickName('');
+      setQuickPhone('');
     }
   }, [isOpen, editedAppointment]);
 
   // Gün randevularını çek (disable için). Edit modda mevcut id'yi hariç tut.
   useEffect(() => {
     if (!isOpen) return;
-    const dateISO = selectedDate.toISOString().slice(0,10);
+    // Use local date instead of UTC to avoid timezone issues
+    const year = selectedDate.getFullYear();
+    const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+    const day = String(selectedDate.getDate()).padStart(2, '0');
+    const dateISO = `${year}-${month}-${day}`;
     (async () => {
       const qDay = query(collection(db, 'appointments'), where('dateISO', '==', dateISO));
       const snap = await getDocs(qDay);
@@ -200,25 +212,20 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
     const slots = [];
     const startMinutes = timeToMinutes(WORK_START);
     const endMinutes = timeToMinutes(WORK_END);
-    const slotDuration = 30; // 30 dakikalık slotlar
-    
+    const slotDuration = 15; // 15 dakikalık slotlar
+
     for (let time = startMinutes; time < endMinutes; time += slotDuration) {
       const timeStr = minutesToTime(time);
-      const slotEnd = time + slotDuration;
-      
-      // Check if this slot conflicts with existing appointments
+
+      // Only block if an appointment STARTS in this exact time slot
       const hasConflict = dayAppointments.some(appointment => {
         const apptStart = timeToMinutes(appointment.start ?? appointment.time);
-        const apptDuration = appointment.durationMinutes ?? appointment.duration ?? 30;
-        const apptEnd = apptStart + apptDuration;
-        
-        // Check if slot overlaps with appointment
-        return (time < apptEnd && slotEnd > apptStart);
+        return apptStart >= time && apptStart < time + slotDuration;
       });
-      
+
       // Check if slot is in the past for today
       const isPast = minSelectableTimeToday && timeToMinutes(timeStr) < timeToMinutes(minSelectableTimeToday);
-      
+
       slots.push({
         time: timeStr,
         available: !hasConflict && !isPast,
@@ -226,7 +233,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
         hasConflict: hasConflict
       });
     }
-    
+
     return slots;
   }, [dayAppointments, minSelectableTimeToday]);
 
@@ -268,7 +275,11 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
 
   const checkOverlap = async () => {
     // fetch same-day appointments to check overlap
-    const dateISO = selectedDate.toISOString().slice(0, 10);
+    // Use local date instead of UTC
+    const year = selectedDate.getFullYear();
+    const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+    const day = String(selectedDate.getDate()).padStart(2, '0');
+    const dateISO = `${year}-${month}-${day}`;
     const qDay = query(collection(db, 'appointments'), where('dateISO', '==', dateISO));
     const snap = await getDocs(qDay);
     const start = timeToMinutes(startTime);
@@ -288,7 +299,15 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!selectedPatient) return setError('Lütfen hasta seçin.');
+
+    // Validation for quick reservation mode
+    if (useQuickReservation) {
+      if (!quickName.trim()) return setError('Lütfen ad soyad girin.');
+      if (!quickPhone.trim()) return setError('Lütfen telefon numarası girin.');
+    } else {
+      if (!selectedPatient) return setError('Lütfen hasta seçin.');
+    }
+
     if (!selectedTypeObj) return setError('Lütfen randevu tipi seçin.');
     if (!withinWorkHours) return setError('Seçilen saat mesai saatleri dışında.');
 
@@ -303,7 +322,11 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
       }
       try {
         setLoading(true);
-        const dateISO = selectedDate.toISOString().slice(0,10);
+        // Use local date instead of UTC
+        const year = selectedDate.getFullYear();
+        const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+        const day = String(selectedDate.getDate()).padStart(2, '0');
+        const dateISO = `${year}-${month}-${day}`;
         if (editedAppointment?.id) {
           // edit: hasta adı sabit, diğerleri güncellenebilir
           await updateDoc(doc(db, 'appointments', editedAppointment.id), {
@@ -317,9 +340,8 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
             notes: notes || '',
           });
         } else {
-          await addDoc(collection(db, 'appointments'), {
-            patientId: selectedPatient,
-            patientName: patients.find(p=>p.id===selectedPatient)?.fullName || 'Hasta',
+          // Quick reservation or regular appointment
+          const appointmentData: any = {
             typeId: selectedTypeObj.id,
             typeName: selectedTypeObj.name,
             durationMinutes: selectedTypeObj.durationMinutes,
@@ -328,7 +350,31 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
             status: 'confirmed',
             doctorId: doctorId || null,
             notes: notes || '',
-          });
+          };
+
+          if (useQuickReservation) {
+            // Quick reservation - create a patient record with incomplete data
+            const patientData = {
+              fullName: quickName.trim(),
+              phone: quickPhone.trim(),
+              registrationStatus: 'incomplete', // Mark as incomplete registration
+              createdAt: new Date().toISOString(),
+              createdVia: 'quick_reservation',
+            };
+
+            const patientDoc = await addDoc(collection(db, 'patients'), patientData);
+
+            appointmentData.patientId = patientDoc.id;
+            appointmentData.patientName = quickName.trim();
+            appointmentData.patientPhone = quickPhone.trim();
+            appointmentData.isQuickReservation = true;
+          } else {
+            // Regular appointment with registered patient
+            appointmentData.patientId = selectedPatient;
+            appointmentData.patientName = patients.find(p=>p.id===selectedPatient)?.fullName || 'Hasta';
+          }
+
+          await addDoc(collection(db, 'appointments'), appointmentData);
         }
         toast.success(editedAppointment ? 'Randevu başarıyla güncellendi!' : 'Randevu başarıyla eklendi!');
         onAdded();
@@ -399,19 +445,54 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Patient Selection */}
               <div ref={patientRef} className="space-y-3">
-                <label className="block text-sm font-bold text-gray-700 flex items-center gap-2">
-                  <span className="text-blue-500">👤</span>
-                  Hasta Seçimi
+                <label className="block text-sm font-bold text-gray-700 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-blue-500">👤</span>
+                    Hasta Seçimi
+                  </div>
+                  {!editedAppointment && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUseQuickReservation(!useQuickReservation);
+                        setSelectedPatient('');
+                        setQuickName('');
+                        setQuickPhone('');
+                      }}
+                      className="text-xs px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-all duration-200"
+                    >
+                      {useQuickReservation ? 'Kayıtlı Hasta' : 'Hızlı Rezervasyon'}
+                    </button>
+                  )}
                 </label>
-                <div className="relative">
-                  <button 
-                    type="button" 
-                    disabled={!!editedAppointment} 
-                    onClick={()=>setPatientOpen(v=>!v)} 
-                    className={`w-full px-4 py-3 bg-white/90 backdrop-blur-sm border border-gray-300/50 rounded-xl text-left focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all duration-200 shadow-sm hover:shadow-md font-medium ${editedAppointment?'opacity-60 cursor-not-allowed':'hover:border-blue-400'}`}
-                  >
-                    {patients.find(p=>p.id===selectedPatient)?.fullName || 'Hasta seçin...'}
-                  </button>
+
+                {useQuickReservation ? (
+                  <div className="space-y-3">
+                    <input
+                      type="text"
+                      value={quickName}
+                      onChange={(e) => setQuickName(e.target.value)}
+                      placeholder="Ad Soyad"
+                      className="w-full px-4 py-3 bg-white/90 backdrop-blur-sm border border-gray-300/50 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
+                    />
+                    <input
+                      type="tel"
+                      value={quickPhone}
+                      onChange={(e) => setQuickPhone(e.target.value)}
+                      placeholder="Telefon Numarası"
+                      className="w-full px-4 py-3 bg-white/90 backdrop-blur-sm border border-gray-300/50 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
+                    />
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      disabled={!!editedAppointment}
+                      onClick={()=>setPatientOpen(v=>!v)}
+                      className={`w-full px-4 py-3 bg-white/90 backdrop-blur-sm border border-gray-300/50 rounded-xl text-left focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all duration-200 shadow-sm hover:shadow-md font-medium ${editedAppointment?'opacity-60 cursor-not-allowed':'hover:border-blue-400'}`}
+                    >
+                      {patients.find(p=>p.id===selectedPatient)?.fullName || 'Hasta seçin...'}
+                    </button>
                   {patientOpen && (
                     <div className="absolute left-0 right-0 top-full mt-2 bg-white/95 backdrop-blur-xl border border-gray-200/50 rounded-2xl shadow-2xl p-4 z-50">
                       <input 
@@ -445,7 +526,8 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
                       </div>
                     </div>
                   )}
-                </div>
+                  </div>
+                )}
               </div>
 
               {/* Appointment Type Selection */}
@@ -536,7 +618,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
                 </label>
                 <div className="bg-white/90 backdrop-blur-sm border border-green-300/50 rounded-2xl shadow-sm">
                   {allTimeSlots.length > 0 ? (
-                    <div className="grid grid-cols-4 gap-2 p-4 max-h-64 overflow-y-auto">
+                    <div className="grid grid-cols-3 gap-2 p-4 max-h-80 overflow-y-auto">
                       {allTimeSlots.map((slot, index) => (
                         <button
                           key={slot.time}
