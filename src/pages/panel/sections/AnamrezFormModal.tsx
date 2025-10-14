@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, doc, updateDoc, getDocs, query, where } from 'firebase/firestore';
-import { db } from '../../../firebase/config';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../../../firebase/config';
 import { DIAGNOSIS_SYSTEMS, DIAGNOSIS_SPECIFIC_QUESTIONS } from '../../../constants';
+import FileUpload from '../../../components/UI/FileUpload';
 
 interface Patient {
   id: string;
@@ -248,6 +250,13 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
     kabizlik: 0
   };
   const [toxicityRatings, setToxicityRatings] = useState<Record<string, number>>(initialToxicityRatings);
+  
+  // File upload states for optional scans
+  const [meridianScanFile, setMeridianScanFile] = useState<File | null>(null);
+  const [thermalScanFile, setThermalScanFile] = useState<File | null>(null);
+  const [toxicityScanFile, setToxicityScanFile] = useState<File | null>(null);
+  const [deviceScanFile, setDeviceScanFile] = useState<File | null>(null);
+  
   const [formData, setFormData] = useState({
     // Ana Şikayetler - Now array for multiple selections
     selectedDiagnosisSystems: [] as string[],
@@ -374,7 +383,8 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
     // Conventional medical treatment
     conventionalTreatment: {
       currentMedications: '',
-      otherTreatments: ''
+      otherTreatments: '',
+      deviceScanFileUrl: ''
     },
 
     // Optional Scans
@@ -618,6 +628,122 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
     }));
   };
 
+  // File upload handlers for optional scans
+  const handleMeridianScanFileUpload = (file: File) => {
+    setMeridianScanFile(file);
+    // Update form data to indicate file is selected
+    setFormData(prev => ({
+      ...prev,
+      optionalScans: {
+        ...prev.optionalScans,
+        meridianScan: {
+          ...prev.optionalScans.meridianScan,
+          fileUrl: 'pending' // Temporary indicator
+        }
+      }
+    }));
+  };
+
+  const handleThermalScanFileUpload = (file: File) => {
+    setThermalScanFile(file);
+    // Update form data to indicate file is selected
+    setFormData(prev => ({
+      ...prev,
+      optionalScans: {
+        ...prev.optionalScans,
+        thermalScan: {
+          ...prev.optionalScans.thermalScan,
+          fileUrl: 'pending' // Temporary indicator
+        }
+      }
+    }));
+  };
+
+  const handleToxicityScanFileUpload = (file: File) => {
+    setToxicityScanFile(file);
+    // Update form data to indicate file is selected
+    setFormData(prev => ({
+      ...prev,
+      optionalScans: {
+        ...prev.optionalScans,
+        toxicityScan: {
+          ...prev.optionalScans.toxicityScan,
+          fileUrl: 'pending' // Temporary indicator
+        }
+      }
+    }));
+  };
+
+  const handleMeridianScanFileRemove = () => {
+    setMeridianScanFile(null);
+    // Update form data to indicate file is removed
+    setFormData(prev => ({
+      ...prev,
+      optionalScans: {
+        ...prev.optionalScans,
+        meridianScan: {
+          ...prev.optionalScans.meridianScan,
+          fileUrl: ''
+        }
+      }
+    }));
+  };
+
+  const handleThermalScanFileRemove = () => {
+    setThermalScanFile(null);
+    // Update form data to indicate file is removed
+    setFormData(prev => ({
+      ...prev,
+      optionalScans: {
+        ...prev.optionalScans,
+        thermalScan: {
+          ...prev.optionalScans.thermalScan,
+          fileUrl: ''
+        }
+      }
+    }));
+  };
+
+  const handleToxicityScanFileRemove = () => {
+    setToxicityScanFile(null);
+    // Update form data to indicate file is removed
+    setFormData(prev => ({
+      ...prev,
+      optionalScans: {
+        ...prev.optionalScans,
+        toxicityScan: {
+          ...prev.optionalScans.toxicityScan,
+          fileUrl: ''
+        }
+      }
+    }));
+  };
+
+  // File upload handlers for device scan
+  const handleDeviceScanFileUpload = (file: File) => {
+    setDeviceScanFile(file);
+    // For device scan, we'll store the file URL directly in formData.conventionalTreatment
+    setFormData(prev => ({
+      ...prev,
+      conventionalTreatment: {
+        ...prev.conventionalTreatment,
+        deviceScanFileUrl: 'pending' // Temporary indicator
+      }
+    }));
+  };
+
+  const handleDeviceScanFileRemove = () => {
+    setDeviceScanFile(null);
+    // Remove file URL from formData.conventionalTreatment
+    setFormData(prev => ({
+      ...prev,
+      conventionalTreatment: {
+        ...prev.conventionalTreatment,
+        deviceScanFileUrl: ''
+      }
+    }));
+  };
+
   const validateCurrentPage = () => {
     const newErrors: Record<string, string> = {};
 
@@ -707,6 +833,56 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
     }
 
     setLoading(true);
+    
+    // Upload files to Firebase Storage if any are selected
+    const updatedOptionalScans = { ...formData.optionalScans };
+    
+    let deviceScanFileUrl = '';
+    try {
+      // Upload Meridian Scan file if selected
+      if (meridianScanFile && updatedOptionalScans.meridianScan.enabled) {
+        const meridianScanRef = ref(storage, `scans/${patient.id}/meridian_${Date.now()}_${meridianScanFile.name}`);
+        await uploadBytes(meridianScanRef, meridianScanFile);
+        const meridianScanUrl = await getDownloadURL(meridianScanRef);
+        updatedOptionalScans.meridianScan.fileUrl = meridianScanUrl;
+      }
+      
+      // Upload Thermal Scan file if selected
+      if (thermalScanFile && updatedOptionalScans.thermalScan.enabled) {
+        const thermalScanRef = ref(storage, `scans/${patient.id}/thermal_${Date.now()}_${thermalScanFile.name}`);
+        await uploadBytes(thermalScanRef, thermalScanFile);
+        const thermalScanUrl = await getDownloadURL(thermalScanRef);
+        updatedOptionalScans.thermalScan.fileUrl = thermalScanUrl;
+      }
+      
+      // Upload Toxicity Scan file if selected
+      if (toxicityScanFile && updatedOptionalScans.toxicityScan.enabled) {
+        const toxicityScanRef = ref(storage, `scans/${patient.id}/toxicity_${Date.now()}_${toxicityScanFile.name}`);
+        await uploadBytes(toxicityScanRef, toxicityScanFile);
+        const toxicityScanUrl = await getDownloadURL(toxicityScanRef);
+        updatedOptionalScans.toxicityScan.fileUrl = toxicityScanUrl;
+      }
+      
+      // Upload Device Scan file if selected
+      if (deviceScanFile) {
+        const deviceScanRef = ref(storage, `scans/${patient.id}/device_${Date.now()}_${deviceScanFile.name}`);
+        await uploadBytes(deviceScanRef, deviceScanFile);
+        deviceScanFileUrl = await getDownloadURL(deviceScanRef);
+      }
+      
+      // Upload Device Scan file if selected
+      if (deviceScanFile) {
+        const deviceScanRef = ref(storage, `scans/${patient.id}/device_${Date.now()}_${deviceScanFile.name}`);
+        await uploadBytes(deviceScanRef, deviceScanFile);
+        deviceScanFileUrl = await getDownloadURL(deviceScanRef);
+      }
+    } catch (uploadError) {
+      console.error('File upload error:', uploadError);
+      alert('Dosya yükleme sırasında bir hata oluştu. Lütfen tekrar deneyin.');
+      setLoading(false);
+      return;
+    }
+    
     try {
       // Find selected doctor information
       const selectedDoctor = doctors.find(doc => doc.id === formData.selectedDoctorId);
@@ -749,8 +925,11 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         diagnosisResponses: formData.diagnosisResponses,
         additionalQuestions: formData.additionalQuestions,
         customQuestions: formData.customQuestions,
-        conventionalTreatment: formData.conventionalTreatment,
-        optionalScans: formData.optionalScans,
+        conventionalTreatment: {
+          ...formData.conventionalTreatment,
+          deviceScanFileUrl: deviceScanFileUrl || ''
+        },
+        optionalScans: updatedOptionalScans,
 
         // Toxicity assessment calculation
         toxicityAssessment: (() => {
@@ -809,7 +988,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         isAnamnezCompleted: true,
         anamrezCompletedAt: new Date().toISOString(),
         anamrezCompletedBy: doctorProfile?.fullName || '',
-        optionalScans: formData.optionalScans,
+        optionalScans: updatedOptionalScans,
         updatedAt: new Date().toISOString()
       });
 
@@ -824,6 +1003,12 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         setShowSuccessToast(false);
         onClose();
       }, 3000);
+      
+      // Reset file states
+      setMeridianScanFile(null);
+      setThermalScanFile(null);
+      setToxicityScanFile(null);
+      setDeviceScanFile(null);
       
       // Reset form
       setFormData({
@@ -913,7 +1098,8 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         customQuestions: [],
         conventionalTreatment: {
           currentMedications: '',
-          otherTreatments: ''
+          otherTreatments: '',
+          deviceScanFileUrl: ''
         },
         optionalScans: {
           meridianScan: {
@@ -1914,16 +2100,13 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                     </div>
 
                     {formData.optionalScans.meridianScan.enabled && (
-                      <div className="ml-8 mt-4 p-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                        <div className="flex items-center justify-center gap-3">
-                          <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                          </svg>
-                          <div className="text-center">
-                            <p className="text-sm font-medium text-gray-700">Dosya yüklemek için tıklayın</p>
-                            <p className="text-xs text-gray-500 mt-1">PDF, PNG, JPG (Max 10MB)</p>
-                          </div>
-                        </div>
+                      <div className="ml-8 mt-4">
+                        <FileUpload 
+                          onFileUpload={handleMeridianScanFileUpload}
+                          onFileRemove={handleMeridianScanFileRemove}
+                          uploadedFileUrl={formData.optionalScans.meridianScan.fileUrl}
+                          fileName={meridianScanFile ? meridianScanFile.name : ''}
+                        />
                       </div>
                     )}
                   </div>
@@ -1955,16 +2138,13 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                     </div>
 
                     {formData.optionalScans.thermalScan.enabled && (
-                      <div className="ml-8 mt-4 p-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                        <div className="flex items-center justify-center gap-3">
-                          <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                          </svg>
-                          <div className="text-center">
-                            <p className="text-sm font-medium text-gray-700">Dosya yüklemek için tıklayın</p>
-                            <p className="text-xs text-gray-500 mt-1">PDF, PNG, JPG (Max 10MB)</p>
-                          </div>
-                        </div>
+                      <div className="ml-8 mt-4">
+                        <FileUpload 
+                          onFileUpload={handleThermalScanFileUpload}
+                          onFileRemove={handleThermalScanFileRemove}
+                          uploadedFileUrl={formData.optionalScans.thermalScan.fileUrl}
+                          fileName={thermalScanFile ? thermalScanFile.name : ''}
+                        />
                       </div>
                     )}
                   </div>
@@ -1996,16 +2176,13 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                     </div>
 
                     {formData.optionalScans.toxicityScan.enabled && (
-                      <div className="ml-8 mt-4 p-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                        <div className="flex items-center justify-center gap-3">
-                          <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                          </svg>
-                          <div className="text-center">
-                            <p className="text-sm font-medium text-gray-700">Dosya yüklemek için tıklayın</p>
-                            <p className="text-xs text-gray-500 mt-1">PDF, PNG, JPG (Max 10MB)</p>
-                          </div>
-                        </div>
+                      <div className="ml-8 mt-4">
+                        <FileUpload 
+                          onFileUpload={handleToxicityScanFileUpload}
+                          onFileRemove={handleToxicityScanFileRemove}
+                          uploadedFileUrl={formData.optionalScans.toxicityScan.fileUrl}
+                          fileName={toxicityScanFile ? toxicityScanFile.name : ''}
+                        />
                       </div>
                     )}
                   </div>
@@ -2065,18 +2242,12 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                     Cihaz taraması her hasta için yapılacak ve tarama sonucu PDF olarak doğrudan veri tabanına yüklenecektir.
                   </p>
                   
-                  <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center bg-gray-50">
-                    <div className="text-gray-400 text-4xl mb-4">📋</div>
-                    <h5 className="text-lg font-semibold text-gray-700 mb-2">PDF Yükleme</h5>
-                    <p className="text-gray-500 mb-4">Dosya yükleme özelliği yakında...</p>
-                    <button
-                      type="button"
-                      disabled
-                      className="px-6 py-3 bg-gray-200 text-gray-500 rounded-xl cursor-not-allowed"
-                    >
-                      Dosya Seç (Yakında)
-                    </button>
-                  </div>
+                  <FileUpload 
+                    onFileUpload={handleDeviceScanFileUpload}
+                    onFileRemove={handleDeviceScanFileRemove}
+                    uploadedFileUrl={formData.conventionalTreatment.deviceScanFileUrl}
+                    fileName={deviceScanFile ? deviceScanFile.name : ''}
+                  />
                 </div>
               </div>
             </>
