@@ -9,6 +9,7 @@ import ProfilePage from './pages/ProfilePage';
 import DoctorRegisterPage from './pages/DoctorRegisterPage';
 import AdminPanel from './pages/panel/AdminPanel';
 import { AuthProvider } from './context/AuthContext';
+// deploy comment
 
 function App() {
   return (
