@@ -9,6 +9,7 @@ interface Application {
   clinicId: string;
   createdBy: string;
   createdAt: string;
+  price?: number;
 }
 
 interface ApplicationSelectorProps {
@@ -120,11 +121,16 @@ const ApplicationSelector: React.FC<ApplicationSelectorProps> = ({
           <div className="space-y-2">
             {selectedApplicationsWithDetails.map((app) => (
               <div key={app.id} className="bg-white/5 border border-white/10 rounded p-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-green-300 text-sm font-medium">{app.name}</span>
-                  {app.description && (
-                    <span className="text-white/60 text-xs">- {app.description}</span>
-                  )}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-green-300 text-sm font-medium">{app.name}</span>
+                    {app.description && (
+                      <span className="text-white/60 text-xs">- {app.description}</span>
+                    )}
+                  </div>
+                  <span className="px-2 py-1 bg-green-500/20 border border-green-400/30 rounded text-green-300 text-xs font-medium">
+                    💰 {app.price || 0} TL
+                  </span>
                 </div>
               </div>
             ))}
@@ -178,6 +184,9 @@ const ApplicationSelector: React.FC<ApplicationSelectorProps> = ({
                       <h4 className="text-white font-medium text-sm group-hover:text-blue-300 transition-colors truncate">
                         {application.name}
                       </h4>
+                      <span className="px-2 py-1 bg-green-500/20 border border-green-400/30 rounded text-green-300 text-xs font-medium">
+                        💰 {application.price || 0} TL
+                      </span>
                     </div>
                     
                     {application.description && (

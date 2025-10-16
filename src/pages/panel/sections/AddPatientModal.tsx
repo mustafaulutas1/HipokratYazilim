@@ -33,6 +33,7 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
     registrationDate: '',
     visitReason: '',
     indirim_check: false,
+    indirim_orani: 20,
   });
 
   const [loading, setLoading] = useState(false);
@@ -176,6 +177,7 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
         registrationDate: '',
         visitReason: '',
         indirim_check: false,
+        indirim_orani: 20,
       });
 
       setErrors({});
@@ -475,25 +477,46 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
           </div>
 
           {/* Discount Option */}
-          <div className="flex items-start gap-3 p-4 bg-green-50 border border-green-200 rounded-xl">
-            <input
-              id="indirim_check"
-              name="indirim_check"
-              type="checkbox"
-              checked={formData.indirim_check}
-              onChange={handleInputChange}
-              className="mt-1 h-5 w-5 rounded border-green-300 text-green-600 focus:ring-green-500"
-              aria-label="Her zaman yüzde 20 indirim uygula"
-            />
-            <label htmlFor="indirim_check" className="text-sm text-green-900">
-              <span className="font-semibold">
-                Her zaman %20 indirim uygula
-              </span>
-              <span className="block text-green-800/80">
-                Bu seçenek aktifken hastanın işlemlerinde otomatik olarak %20
-                indirim işaretlenecektir.
-              </span>
-            </label>
+          <div className="p-4 bg-green-50 border border-green-200 rounded-xl space-y-4">
+            <div className="flex items-start gap-3">
+              <input
+                id="indirim_check"
+                name="indirim_check"
+                type="checkbox"
+                checked={formData.indirim_check}
+                onChange={handleInputChange}
+                className="mt-1 h-5 w-5 rounded border-green-300 text-green-600 focus:ring-green-500"
+                aria-label="Her zaman indirim uygula"
+              />
+              <label htmlFor="indirim_check" className="text-sm text-green-900">
+                <span className="font-semibold">
+                  Her zaman indirim uygula
+                </span>
+                <span className="block text-green-800/80">
+                  Bu seçenek aktifken hastanın işlemlerinde otomatik olarak belirlenen oranda
+                  indirim işaretlenecektir.
+                </span>
+              </label>
+            </div>
+            
+            {formData.indirim_check && (
+              <div className="ml-8">
+                <label className="block text-sm font-medium text-green-800 mb-2">
+                  İndirim Oranı (%)
+                </label>
+                <input
+                  type="number"
+                  name="indirim_orani"
+                  value={formData.indirim_orani}
+                  onChange={handleInputChange}
+                  min="0"
+                  max="100"
+                  className="w-32 px-3 py-2 bg-white border border-green-300 rounded-lg text-green-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  placeholder="20"
+                />
+                <span className="ml-2 text-sm text-green-700">%</span>
+              </div>
+            )}
           </div>
 
           {/* Action Buttons */}

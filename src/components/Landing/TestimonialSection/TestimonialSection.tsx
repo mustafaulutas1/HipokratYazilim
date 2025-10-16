@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Feedback from './Feedback'
 import styles from '../../../style';
 import { feedback } from '../../../constants';

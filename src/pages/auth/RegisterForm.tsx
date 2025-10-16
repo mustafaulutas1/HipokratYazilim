@@ -7,7 +7,7 @@ type RegisterFormProps = {
   onSwitchTab: () => void;
 };
 
-const RegisterForm: React.FC<RegisterFormProps> = ({ onSwitchTab }) => {
+const RegisterForm: React.FC<RegisterFormProps> = ({ }) => {
   const { register } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');

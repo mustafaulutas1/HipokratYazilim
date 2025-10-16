@@ -29,6 +29,13 @@ interface PaymentPatient {
   paymentDate?: string;
   paymentMethod?: string;
   updatedAt?: string;
+  indirim_check?: boolean;
+  indirim_orani?: number;
+  optionalScans?: {
+    meridianScan?: { enabled?: boolean };
+    thermalScan?: { enabled?: boolean };
+    toxicityScan?: { enabled?: boolean };
+  };
 }
 
 interface PaymentStats {
@@ -397,6 +404,13 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                     {patient.treatmentOptions.selectedMainApplications && (
                       <p>Uygulamalar: {patient.treatmentOptions.selectedMainApplications.join(', ')}</p>
                     )}
+                    {patient.indirim_check && (
+                      <div className="mt-2 p-2 bg-green-500/20 border border-green-400/30 rounded-lg">
+                        <p className="text-green-200 font-medium text-xs">
+                          🎯 İndirim Aktif: %{patient.indirim_orani || 20} indirim uygulanacak
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -469,6 +483,58 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                 </div>
               )}
 
+              {/* Optional Scans Display */}
+              {selectedPatient.optionalScans && (
+                selectedPatient.optionalScans.meridianScan?.enabled ||
+                selectedPatient.optionalScans.thermalScan?.enabled ||
+                selectedPatient.optionalScans.toxicityScan?.enabled
+              ) && (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4">
+                  <h4 className="font-semibold text-purple-900 mb-3 flex items-center gap-2">
+                    <span className="text-lg">📋</span>
+                    Opsiyonel Taramalar
+                  </h4>
+                  <div className="space-y-2">
+                    {selectedPatient.optionalScans.meridianScan?.enabled && (
+                      <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-purple-200">
+                        <div className="w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">
+                          ✓
+                        </div>
+                        <span className="text-purple-900 font-medium">Meridyen Tarama Tek Seans</span>
+                        <span className="ml-auto text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded-full">
+                          Tarama
+                        </span>
+                      </div>
+                    )}
+                    {selectedPatient.optionalScans.thermalScan?.enabled && (
+                      <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-purple-200">
+                        <div className="w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">
+                          ✓
+                        </div>
+                        <span className="text-purple-900 font-medium">Termal Tarama (IRIS-XP)</span>
+                        <span className="ml-auto text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded-full">
+                          Tarama
+                        </span>
+                      </div>
+                    )}
+                    {selectedPatient.optionalScans.toxicityScan?.enabled && (
+                      <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-purple-200">
+                        <div className="w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">
+                          ✓
+                        </div>
+                        <span className="text-purple-900 font-medium">Toksisite Ölçümü (TEK SEANS)</span>
+                        <span className="ml-auto text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded-full">
+                          Tarama
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-3 p-2 bg-purple-100 border border-purple-300 rounded text-sm text-purple-800">
+                    <span className="font-medium">💡 Not:</span> Bu taramalar ayrı fiyatlandırılmalıdır.
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Ödeme Tutarı (TL)
@@ -510,6 +576,13 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   <p>Telefon: {selectedPatient.phone}</p>
                   <p>Tedavi Tarihi: {formatDate(selectedPatient.treatmentStartedAt)}</p>
                   <p>Doktor: {selectedPatient.assignedDoctorName || 'Belirtilmemiş'}</p>
+                  {selectedPatient.indirim_check && (
+                    <div className="mt-2 p-2 bg-green-100 border border-green-300 rounded-lg">
+                      <p className="text-green-800 font-medium">
+                        🎯 İndirim Aktif: %{selectedPatient.indirim_orani || 20} indirim uygulanacak
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

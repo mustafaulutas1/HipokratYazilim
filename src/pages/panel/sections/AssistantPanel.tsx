@@ -37,6 +37,8 @@ interface WaitingPatient {
   assignedDoctorName?: string;
   assignedAt?: string;
   status?: string;
+  paymentCompleted?: boolean;
+  priority?: 'normal' | 'urgent' | 'emergency';
 }
 
 interface AnamrezRecord {
@@ -193,6 +195,7 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
 
         // Fetch emergency patients (marked as emergency or urgent)
         const emergencyPatientsFiltered = allClinicPatients.filter(patient =>
+          (patient as any).isEmergency === true ||
           patient.priority === 'emergency' ||
           patient.priority === 'urgent' ||
           patient.visitReason?.toLowerCase().includes('acil') ||
@@ -480,6 +483,7 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
 
       // Fetch emergency patients (marked as emergency or urgent)
       const emergencyPatientsFiltered = allClinicPatients.filter(patient =>
+        (patient as any).isEmergency === true ||
         patient.priority === 'emergency' ||
         patient.priority === 'urgent' ||
         patient.visitReason?.toLowerCase().includes('acil') ||
@@ -903,6 +907,17 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
                         )}
                       </div>
                     </div>
+                    {activeListType === 'emergency' && (patient as any).emergencyCause && (
+                      <div className="mt-2 bg-red-500/20 border border-red-500/30 rounded-lg p-3">
+                        <p className="text-red-200 text-xs font-semibold mb-1">🚨 Acil Durum Nedeni:</p>
+                        <p className="text-red-100 text-sm font-medium">{(patient as any).emergencyCause}</p>
+                        {(patient as any).emergencyMarkedBy && (
+                          <p className="text-red-200/70 text-xs mt-1">
+                            İşaretleyen: {(patient as any).emergencyMarkedBy} • {formatDate((patient as any).emergencyMarkedAt)}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     <p className="text-white/50 text-xs mt-1">
                       {activeListType === 'anamnez_completed' && `Anamnez Tamamlanma: ${formatDate(patient.anamrezCompletedAt || patient.createdAt)}`}
                       {activeListType === 'waiting_accounting' && `Tedavi Kararı: ${formatDate(patient.createdAt)}`}

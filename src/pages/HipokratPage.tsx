@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Heart, Shield, Brain, Users, Star, ChevronRight, Menu, X, Activity, Database, Cloud, Lock, ArrowRight, Phone, Mail, MapPin, Check } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Heart, Shield, Brain, Star, ChevronRight, Menu, X, Activity, Database, Cloud, Lock, ArrowRight, Phone, Mail, MapPin, Check } from 'lucide-react';
 
 const HipokratPage = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);

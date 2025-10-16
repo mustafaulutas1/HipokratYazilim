@@ -10,7 +10,7 @@ type FeedbackProps = {
   index: number;
 }
 
-const Feedback: React.FC<FeedbackProps> = ({ content, name, title, img, isActive, index }) => {
+const Feedback: React.FC<FeedbackProps> = ({ content, name, title, isActive, index }) => {
   const getDoctorIcon = () => {
     switch (index) {
       case 0: return '👩‍⚕️';

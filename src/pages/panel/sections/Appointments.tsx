@@ -14,6 +14,7 @@ const Appointments: React.FC = () => {
   const [openDetailsModal, setOpenDetailsModal] = useState(false);
   const [editedAppointment, setEditedAppointment] = useState<any | null>(null);
   const [viewedAppointment, setViewedAppointment] = useState<any | null>(null);
+  const [currentTime, setCurrentTime] = useState(new Date());
 
   // Utils for time math
   const timeToMinutes = (t: string) => {
@@ -32,35 +33,26 @@ const Appointments: React.FC = () => {
     const start = timeToMinutes(WORK_START);
     const end = timeToMinutes(WORK_END);
     const arr: number[] = [];
-    for (let t = start; t <= end; t += 60) arr.push(t);
+    for (let t = start; t <= end; t += 15) arr.push(t);
     return arr;
   }, []);
 
-  // Breakpoint'ler: tüm tam saatler + tüm randevu başlangıç/bitiş dakikaları
+  // Breakpoint'ler: sadece 15 dakikalık slotlar
   const breakpoints = useMemo(() => {
-    const set = new Set<number>();
-    hourSlots.forEach(t => set.add(t));
-    appointments.forEach(a => {
-      const dur: number = (a.durationMinutes ?? a.duration ?? 0);
-      const s = timeToMinutes(a.start ?? a.time);
-      const e = s + dur;
-      // Mesai sınırlarına göre kırp
-      const start = Math.max(s, timeToMinutes(WORK_START));
-      const end = Math.min(e, timeToMinutes(WORK_END));
-      if (start < end) {
-        set.add(start);
-        set.add(end);
-      }
-    });
-    const list = Array.from(set.values()).sort((a,b)=>a-b);
-    // Mesai bitişi tam olarak ekli olsun
-    if (!list.includes(timeToMinutes(WORK_END))) list.push(timeToMinutes(WORK_END));
-    return list;
-  }, [appointments]);
+    return hourSlots;
+  }, [hourSlots]);
 
   // 5 dk grid kaldırıldı; saatlik satırlar üzerinden oransal bloklar gösterilecek
 
   const dateISO = useMemo(() => selectedDate.toISOString().slice(0, 10), [selectedDate]);
+
+  // Update current time every minute
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, []);
 
   // Fetch appointments for selected day
   useEffect(() => {
@@ -77,7 +69,7 @@ const Appointments: React.FC = () => {
     fetchAppointments();
   }, [dateISO]);
 
-  // Segment aralığına düşen randevular
+  // Segment aralığına düşen randevular - sadece başlangıç zamanı bu slot içinde olanlar
   const getAppointmentsForSegment = (segStart: number, segEnd: number) => {
     return appointments
       .map(a => {
@@ -86,7 +78,7 @@ const Appointments: React.FC = () => {
         const e = s + dur;
         return { a, s, e, dur };
       })
-      .filter(({ s, e }) => s < segEnd && e > segStart) // overlap
+      .filter(({ s }) => s >= segStart && s < segEnd) // only if start time is in this slot
       .sort((x, y) => x.s - y.s);
   };
 
@@ -212,8 +204,14 @@ const Appointments: React.FC = () => {
               const list = getAppointmentsForSegment(bp, next);
               const hasAny = list.length > 0;
               const rowHeight = Math.max(56, list.length * 56);
+
+              // Check if this time slot is in the past
+              const isToday = selectedDate.toDateString() === currentTime.toDateString();
+              const currentMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
+              const isPast = isToday && next <= currentMinutes;
+
               return (
-                <div key={`${bp}-${next}`} className="flex items-stretch gap-4 p-4 bg-white/5 rounded-xl hover:bg-white/10 transition-all duration-200">
+                <div key={`${bp}-${next}`} className={`flex items-stretch gap-4 p-4 rounded-xl transition-all duration-200 ${isPast ? 'bg-white/5 opacity-50' : 'bg-white/5 hover:bg-white/10'}`}>
                   <div className="w-20 text-center">
                     <div className="text-white font-semibold">{minutesToTime(bp)}</div>
                     <div className="text-white/60 text-xs">{minutesToTime(next)}</div>
@@ -245,8 +243,8 @@ const Appointments: React.FC = () => {
                   <div className="flex flex-col items-center justify-center gap-2 w-12">
                     {hasAny ? (
                       <>
-                        <button 
-                          title="İncele" 
+                        <button
+                          title="İncele"
                           onClick={() => { setViewedAppointment(list[0].a); setOpenDetailsModal(true); }}
                           className="p-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-blue-300 hover:text-blue-200 transition-colors duration-150 cursor-pointer"
                         >👁️</button>
@@ -259,8 +257,13 @@ const Appointments: React.FC = () => {
                     ) : (
                       <button
                         aria-label="Yeni randevu ekle"
+                        disabled={isPast}
                         onClick={() => { setEditedAppointment(null); setOpenAddModal(true); }}
-                        className="p-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg text-green-300 hover:text-green-200 transition-colors duration-150 cursor-pointer leading-none"
+                        className={`p-2 rounded-lg transition-colors duration-150 leading-none ${
+                          isPast
+                            ? 'bg-gray-500/10 border border-gray-500/20 text-gray-500 cursor-not-allowed'
+                            : 'bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 text-green-300 hover:text-green-200 cursor-pointer'
+                        }`}
                       >
                         +
                       </button>

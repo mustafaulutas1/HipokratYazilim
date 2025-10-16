@@ -4,7 +4,7 @@ import { auth, secondaryAuth } from '../firebase/config';
 import { onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail } from 'firebase/auth';
 import type { User, UserCredential } from 'firebase/auth';
 import { db } from '../firebase/config';
-import { doc, setDoc, getDoc, collection, addDoc } from 'firebase/firestore';
+import { doc, setDoc, collection, addDoc } from 'firebase/firestore';
 
 interface AuthContextType {
   user: User | null;

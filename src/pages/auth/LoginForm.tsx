@@ -6,7 +6,7 @@ type LoginFormProps = {
   onSwitchTab: () => void;
 };
 
-const LoginForm: React.FC<LoginFormProps> = ({ onSwitchTab }) => {
+const LoginForm: React.FC<LoginFormProps> = ({ }) => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
