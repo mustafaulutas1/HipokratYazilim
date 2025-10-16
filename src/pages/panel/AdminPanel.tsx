@@ -15,6 +15,7 @@ import AssistantPanel from './sections/AssistantPanel';
 import DoctorPanel from './sections/DoctorPanel';
 import AccountingScreen from './sections/AccountingScreen';
 import TreatmentPanel from './sections/TreatmentPanel';
+import Pharmacy from './sections/Pharmacy';
 import { getUserPermissions } from '../../constants/permissions';
 
 type PanelSection = 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
@@ -142,6 +143,8 @@ export default function AdminPanel() {
         return <AccountingScreen doctorProfile={doctorProfile} />;
       case 'treatment-panel':
         return <TreatmentPanel doctorProfile={doctorProfile} />;
+      case 'pharmacy':
+        return <Pharmacy doctorProfile={doctorProfile} />;
       default:
         return <Dashboard doctorProfile={doctorProfile} />;
     }
