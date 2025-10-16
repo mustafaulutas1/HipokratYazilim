@@ -46,7 +46,16 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
   ) => {
     const target = e.target as HTMLInputElement;
     const { name } = target;
-    const newValue = target.type === 'checkbox' ? target.checked : target.value;
+    let newValue = target.type === 'checkbox' ? target.checked : target.value;
+    
+    // Special handling for TC Kimlik No to ensure only numeric input
+    if (name === 'tcNo') {
+      // Remove any non-numeric characters
+      newValue = newValue.toString().replace(/\D/g, '');
+      // Limit to 11 characters
+      newValue = newValue.slice(0, 11);
+    }
+    
     setFormData((prev) => ({
       ...prev,
       [name]: newValue,
@@ -238,6 +247,7 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
               </label>
               <input
                 type="text"
+                inputMode="numeric"
                 name="tcNo"
                 value={formData.tcNo}
                 onChange={handleInputChange}
@@ -246,6 +256,12 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
                   errors.tcNo ? 'border-red-500' : 'border-gray-300'
                 }`}
                 placeholder="11 haneli TC kimlik numarası"
+                onKeyPress={(e) => {
+                  // Prevent non-numeric characters
+                  if (!/[0-9]/.test(e.key) && e.key !== 'Backspace' && e.key !== 'Delete' && e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Tab') {
+                    e.preventDefault();
+                  }
+                }}
               />
               {errors.tcNo && (
                 <p className="text-red-500 text-sm mt-1">{errors.tcNo}</p>

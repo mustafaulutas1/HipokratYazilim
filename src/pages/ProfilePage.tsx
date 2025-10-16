@@ -336,6 +336,13 @@ export default function ProfilePage() {
                     required
                     maxLength={11}
                     placeholder="11 haneli TC kimlik numaranız"
+                    inputMode="numeric"
+                    onKeyPress={(e) => {
+                      // Prevent non-numeric characters
+                      if (!/[0-9]/.test(e.key) && e.key !== 'Backspace' && e.key !== 'Delete' && e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Tab') {
+                        e.preventDefault();
+                      }
+                    }}
                   />
                 </div>
                 <div>

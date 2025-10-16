@@ -5,14 +5,15 @@ type CountryOption = {
   name: string;
   dialCode: string; // without '+'
   flag: string; // emoji
+  phoneLength: number;
 };
 
 const COUNTRIES: CountryOption[] = [
-  { code: 'TR', name: 'Türkiye', dialCode: '90', flag: '🇹🇷' },
-  { code: 'US', name: 'United States', dialCode: '1', flag: '🇺🇸' },
-  { code: 'DE', name: 'Deutschland', dialCode: '49', flag: '🇩🇪' },
-  { code: 'GB', name: 'United Kingdom', dialCode: '44', flag: '🇬🇧' },
-  { code: 'FR', name: 'France', dialCode: '33', flag: '🇫🇷' },
+  { code: 'TR', name: 'Türkiye', dialCode: '90', flag: '🇹🇷', phoneLength: 10 },
+  { code: 'US', name: 'United States', dialCode: '1', flag: '🇺🇸', phoneLength: 10 },
+  { code: 'DE', name: 'Deutschland', dialCode: '49', flag: '🇩🇪', phoneLength: 10 },
+  { code: 'GB', name: 'United Kingdom', dialCode: '44', flag: '🇬🇧', phoneLength: 10 },
+  { code: 'FR', name: 'France', dialCode: '33', flag: '🇫🇷', phoneLength: 9 },
 ];
 
 interface PhoneInputProps {
@@ -76,50 +77,70 @@ const PhoneInput: React.FC<PhoneInputProps> = ({
   };
 
   const handleNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const digits = e.target.value.replace(/\D/g, '').slice(0, 15);
+    const digits = e.target.value.replace(/\D/g, '').slice(0, country.phoneLength);
     const newValue = digits ? `+${country.dialCode}${digits}` : '';
     onChange(name, newValue);
   };
 
   return (
-    <div className="flex w-full gap-2">
-      <div className="flex items-center w-24">
-        <select
-          aria-label="Ülke"
-          value={country.code}
-          onChange={handleCountryChange}
-          className={`w-full px-2 py-3 bg-gray-50 border rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm ${
-            hasError ? 'border-red-500' : 'border-gray-300'
-          }`}
-        >
-          {COUNTRIES.map((c) => (
-            <option key={c.code} value={c.code}>
-              {c.flag} (+{c.dialCode})
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="flex-1 flex items-center">
-        <div className={`px-3 py-3 bg-gray-100 border-y border-l rounded-l-xl text-gray-700 ${
-          hasError ? 'border-red-500' : 'border-gray-300'
-        }`}>
-          +{country.dialCode}
+    <div className="w-full">
+      <div className="flex items-center gap-2">
+        <div className="relative">
+          <select
+            aria-label="Ülke"
+            value={country.code}
+            onChange={handleCountryChange}
+            className={`appearance-none w-16 px-3 py-3 bg-white border rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-medium ${
+              hasError ? 'border-red-500' : 'border-gray-300'
+            }`}
+          >
+            {COUNTRIES.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.flag}
+              </option>
+            ))}
+          </select>
+          <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
+            <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+          </div>
         </div>
-        <input
-          type="tel"
-          inputMode="tel"
-          value={nationalNumber}
-          onChange={handleNumberChange}
-          className={`w-full px-4 py-3 bg-gray-50 border rounded-r-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-            hasError ? 'border-red-500' : 'border-gray-300'
-          }`}
-          placeholder={placeholder || '5XX XXX XX XX'}
-        />
+        <div className="flex-1">
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+              <span className="text-gray-500 font-medium">+{country.dialCode}</span>
+            </div>
+            <input
+              type="tel"
+              inputMode="tel"
+              value={nationalNumber}
+              onChange={handleNumberChange}
+              className={`w-full pl-12 pr-4 py-3 bg-white border rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                hasError ? 'border-red-500' : 'border-gray-300'
+              }`}
+              placeholder={placeholder || '5XX XXX XX XX'}
+            />
+          </div>
+        </div>
       </div>
+      {nationalNumber && nationalNumber.length > 0 && (
+        <div className="mt-1 text-xs">
+          {nationalNumber.length < country.phoneLength ? (
+            <span className="text-orange-600">
+              {country.phoneLength - nationalNumber.length} tane daha numara girmelisin
+            </span>
+          ) : nationalNumber.length > country.phoneLength ? (
+            <span className="text-red-600">
+              {nationalNumber.length - country.phoneLength} tane fazla numara girdin
+            </span>
+          ) : (
+            <span className="text-green-600">✓ Geçerli numara</span>
+          )}
+        </div>
+      )}
     </div>
   );
 };
 
 export default PhoneInput;
-
-
