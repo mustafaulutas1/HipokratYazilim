@@ -151,7 +151,28 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
   };
 
   const handleAnamrezCompleted = () => {
-    // Refresh patients list after anamnez is completed
+    // Immediately update the UI to reflect the change
+    if (selectedPatient) {
+      // Move the patient from pending to completed list
+      setPatients(prev => prev.filter(p => p.id !== selectedPatient.id));
+      
+      // Add the patient to completed list with updated status
+      const updatedPatient = {
+        ...selectedPatient,
+        isAnamnezCompleted: true,
+        anamrezCompletedAt: new Date().toISOString()
+      };
+      
+      setCompletedPatients(prev => [
+        updatedPatient,
+        ...prev
+      ]);
+      
+      // Update the selected patient state
+      setSelectedPatient(updatedPatient);
+    }
+    
+    // Also refresh data from database to ensure consistency
     if (doctorProfile?.clinicId) {
       const fetchPatients = async () => {
         try {
@@ -185,11 +206,6 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
           completedPatientsList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
           setCompletedPatients(completedPatientsList);
           
-          // If current selected patient is no longer in the list, clear selection
-          if (selectedPatient && !patientsList.find(p => p.id === selectedPatient.id) && !completedPatientsList.find(p => p.id === selectedPatient.id)) {
-            setSelectedPatient(null);
-          }
-
           // Also refresh anamnez records
           const recordsQuery = query(
             collection(db, 'anamrezRecords'),
