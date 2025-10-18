@@ -101,7 +101,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
   anamnez: ['dashboard', 'patients', 'anamnez'],
   accounting: ['dashboard', 'patients', 'accounting', 'reports'],
   pharmacy: ['dashboard', 'patients', 'pharmacy', 'prescriptions'],
-  treatment: ['dashboard', 'patients', 'appointments', 'treatment-protocols', 'anamnez', 'treatment-panel']
+  treatment: ['dashboard', 'patients', 'appointments', 'treatment-protocols', 'anamnez', 'treatment-panel'],
+  'call-center': ['dashboard', 'patients', 'appointments']
 };
 
 export const ROLE_TRANSLATIONS: Record<string, string> = {
@@ -114,6 +115,7 @@ export const ROLE_TRANSLATIONS: Record<string, string> = {
   accounting: 'Muhasebe Uzmanı',
   pharmacy: 'Eczane Sorumlusu',
   treatment: 'Tedavi Uzmanı',
+  'call-center': 'Call Center',
   patient: 'Hasta'
 };
 

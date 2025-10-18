@@ -73,5 +73,12 @@ export const DEFAULT_ROLES: Omit<Role, 'id' | 'createdAt' | 'updatedAt'>[] = [
     description: 'Tam yetki - tüm sistem yönetimi',
     permissions: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'prescriptions', 'reports', 'assistant-panel'],
     isDefault: true
+  },
+  {
+    name: 'call-center',
+    displayName: 'Call Center',
+    description: 'Hasta görüntüleme ve hızlı randevu verme işlemleri',
+    permissions: ['dashboard', 'patients', 'appointments'],
+    isDefault: true
   }
 ];

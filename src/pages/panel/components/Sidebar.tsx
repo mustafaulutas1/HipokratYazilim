@@ -68,6 +68,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
       accounting: '💰',
       pharmacy: '💊',
       treatment: '🩺',
+      'call-center': '📞',
       patient: '👤'
     };
     return icons[userType] || '👨‍⚕️';
