@@ -168,11 +168,12 @@ export default function ProfilePage() {
       await logout();
       console.log("✅ Hasta logout başarılı, ana sayfaya yönlendiriliyor");
       
-      navigate("/");
+      // Sayfa yenileme ile temiz bir başlangıç
+      window.location.href = "/";
     } catch (error) {
       console.error("❌ Hasta logout hatası:", error);
       // Even if logout fails, try to navigate to home
-      navigate("/");
+      window.location.href = "/";
     }
   };
 

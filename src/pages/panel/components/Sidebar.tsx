@@ -81,11 +81,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
       await logout();
       console.log("✅ Doktor logout başarılı, ana sayfaya yönlendiriliyor");
       
-      navigate('/');
+      // Sayfa yenileme ile temiz bir başlangıç
+      window.location.href = '/';
     } catch (error) {
       console.error("❌ Doktor logout hatası:", error);
       // Even if logout fails, try to navigate to home
-      navigate('/');
+      window.location.href = '/';
     }
   };
 

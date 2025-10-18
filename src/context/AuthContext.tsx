@@ -5,6 +5,7 @@ import { onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWith
 import type { User, UserCredential } from 'firebase/auth';
 import { db } from '../firebase/config';
 import { doc, setDoc, collection, addDoc } from 'firebase/firestore';
+import { loggingService } from '../services/loggingService';
 
 interface AuthContextType {
   user: User | null;
@@ -14,6 +15,8 @@ interface AuthContextType {
   register: (email: string, password: string) => Promise<UserCredential>;
   registerDoctor: (email: string, password: string) => Promise<UserCredential>;
   registerClinicUser: (userData: any) => Promise<UserCredential>;
+  logPageVisit: (page: string, pageTitle: string) => Promise<void>;
+  logNavigation: (fromPage: string, toPage: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -33,14 +36,50 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser) {
+        // Kullanıcı giriş yaptığında log yaz (sadece yeni giriş ise)
+        if (!user) {
+          loggingService.logUserAction(currentUser.uid, currentUser.email || '', 'login');
+          loggingService.logSessionStart(currentUser.uid, currentUser.email || '');
+        }
+      } else {
+        // Kullanıcı çıkış yaptığında log yaz (sadece önceki user varsa ve çıkış yapılmışsa)
+        if (user) {
+          // Çıkış log'u logout fonksiyonunda yazılıyor, burada tekrar yazmayalım
+        }
+      }
+      setUser(currentUser);
       setLoading(false);
     });
     return unsubscribe;
-  }, []);
+  }, [user]);
 
-  const logout = () => signOut(auth);
+  const logout = async () => {
+    try {
+      if (user) {
+        // Çıkış yapmadan önce log yaz (hata olsa bile çıkış yap)
+        try {
+          await loggingService.logUserAction(user.uid, user.email || '', 'logout');
+          await loggingService.logSessionEnd(user.uid, user.email || '');
+        } catch (logError) {
+          // Log yazma hatası sessizce geçiliyor
+        }
+      }
+      
+      // Firebase çıkış işlemi
+      await signOut(auth);
+      
+      // Session storage'ı temizle
+      sessionStorage.clear();
+      localStorage.removeItem('user_session_id');
+    } catch (error) {
+      // Hata olsa bile session'ı temizle
+      sessionStorage.clear();
+      localStorage.removeItem('user_session_id');
+      throw error;
+    }
+  };
 
   const login = (email: string, password: string) => {
     return signInWithEmailAndPassword(auth, email, password);
@@ -88,10 +127,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       };
       
       await setDoc(doc(db, 'patients', cred.user.uid), patientData);
-      console.log('Yeni hasta kaydı oluşturuldu:', cred.user.uid);
       return cred;
     } catch (error) {
-      console.error('Kayıt sırasında hata oluştu:', error);
       throw error;
     }
   };
@@ -143,12 +180,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       await setDoc(doc(db, 'doctors', cred.user.uid), doctorData);
       
-      console.log('Yeni klinik oluşturuldu:', clinicId);
-      console.log('Yeni doktor admin kaydı oluşturuldu:', cred.user.uid);
-      
       return cred;
     } catch (error) {
-      console.error('Doktor kayıt sırasında hata oluştu:', error);
       throw error;
     }
   };
@@ -178,22 +211,49 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Important: Sign out from secondary auth to prevent any issues
       await signOut(secondaryAuth);
       
-      console.log('Yeni klinik kullanıcısı kaydı oluşturuldu:', cred.user.uid);
       return cred;
     } catch (error) {
-      console.error('Klinik kullanıcısı kayıt sırasında hata oluştu:', error);
       // Make sure to sign out from secondary auth even if there's an error
       try {
         await signOut(secondaryAuth);
       } catch (signOutError) {
-        console.error('Secondary auth sign out error:', signOutError);
+        // Secondary auth sign out error
       }
       throw error;
     }
   };
 
+  const logPageVisit = async (page: string, pageTitle: string) => {
+    if (user) {
+      try {
+        await loggingService.logPageVisit(user.uid, user.email || '', page, pageTitle);
+      } catch (error) {
+        // Sayfa ziyaret log hatası
+      }
+    }
+  };
+
+  const logNavigation = async (fromPage: string, toPage: string) => {
+    if (user) {
+      await loggingService.logUserAction(user.uid, user.email || '', 'navigation', toPage, {
+        fromPage,
+        toPage
+      });
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, logout, login, register, registerDoctor, registerClinicUser }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      loading, 
+      logout, 
+      login, 
+      register, 
+      registerDoctor, 
+      registerClinicUser,
+      logPageVisit,
+      logNavigation
+    }}>
       {children}
     </AuthContext.Provider>
   );

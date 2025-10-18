@@ -157,11 +157,12 @@ export default function DoctorRegisterPage() {
       await logout();
       console.log("✅ Logout başarılı, ana sayfaya yönlendiriliyor");
       
-      navigate("/");
+      // Sayfa yenileme ile temiz bir başlangıç
+      window.location.href = "/";
     } catch (error) {
       console.error("❌ Logout hatası:", error);
       // Even if logout fails, try to navigate to home
-      navigate("/");
+      window.location.href = "/";
     }
   };
 

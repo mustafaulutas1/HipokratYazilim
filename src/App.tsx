@@ -9,12 +9,14 @@ import ProfilePage from './pages/ProfilePage';
 import DoctorRegisterPage from './pages/DoctorRegisterPage';
 import AdminPanel from './pages/panel/AdminPanel';
 import { AuthProvider } from './context/AuthContext';
+import PageTracker from './components/PageTracker';
 // deploy comment
 
 function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <PageTracker />
         <Routes>
           <Route path="/" element={<HipokratLandingPage />} />
           <Route path="/home" element={

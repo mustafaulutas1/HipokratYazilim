@@ -17,6 +17,7 @@ import AccountingScreen from './sections/AccountingScreen';
 import TreatmentPanel from './sections/TreatmentPanel';
 import Pharmacy from './sections/Pharmacy';
 import { getUserPermissions } from '../../constants/permissions';
+import { loggingService } from '../../services/loggingService';
 
 type PanelSection = 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
 
@@ -40,6 +41,47 @@ export default function AdminPanel() {
   const [isDoctor, setIsDoctor] = useState(false);
   const [panelLoading, setPanelLoading] = useState(true);
 
+  // Section değişikliklerini logla
+  const logSectionChange = async (newSection: PanelSection) => {
+    if (!user || !doctorProfile) return;
+    
+    const sectionNames: Record<string, string> = {
+      'dashboard': 'Anasayfa',
+      'patients': 'Hastalar',
+      'appointments': 'Randevular',
+      'anamnez': 'Anamnez Ekranı',
+      'assistant-panel': 'Asistan Ekranı',
+      'doctor-panel': 'Doktor Ekranı',
+      'treatment-protocols': 'Tedavi Protokolleri',
+      'users': 'Kullanıcılar',
+      'accounting': 'Muhasebe',
+      'pharmacy': 'Eczane',
+      'treatment-panel': 'Tedavi Ekranı',
+      'settings': 'Ayarlar'
+    };
+
+    const sectionName = sectionNames[newSection] || newSection;
+    const userRole = doctorProfile.role || doctorProfile.userType || 'doctor';
+    
+    try {
+      await loggingService.logUserAction(
+        user.uid,
+        user.email || '',
+        'navigation',
+        `/panel/${newSection}`,
+        {
+          section: newSection,
+          sectionName: sectionName,
+          userRole: userRole,
+          userName: doctorProfile.fullName,
+          action: 'Panel bölümü değiştirildi'
+        }
+      );
+    } catch (error) {
+      // Panel section log hatası
+    }
+  };
+
   useEffect(() => {
     const checkUserAccess = async () => {
       if (!loading && user) {
@@ -52,8 +94,7 @@ export default function AdminPanel() {
             const data = doctorSnap.data() as DoctorProfile;
             setDoctorProfile(data);
             setIsDoctor(true);
-            console.log("✅ Doctor access confirmed:", data.fullName);
-            console.log("🔍 Doctor profile data:", data);
+            // Doctor access confirmed
           } else {
             // Check if user is a clinic user
             const clinicUserRef = doc(db, "clinicUsers", user.uid);
@@ -63,10 +104,9 @@ export default function AdminPanel() {
               const data = clinicUserSnap.data() as DoctorProfile;
               setDoctorProfile(data);
               setIsDoctor(true);
-              console.log("✅ Clinic user access confirmed:", data.fullName);
-              console.log("🔍 Clinic user profile data:", data);
+              // Clinic user access confirmed
             } else {
-              console.log("❌ User is not authorized for admin panel, redirecting to home");
+              // User is not authorized for admin panel, redirecting to home
               navigate('/');
               return;
             }
@@ -77,7 +117,7 @@ export default function AdminPanel() {
           return;
         }
       } else if (!loading && !user) {
-        console.log("❌ No user logged in, redirecting to login");
+        // No user logged in, redirecting to login
         navigate('/login');
         return;
       }
@@ -101,6 +141,12 @@ export default function AdminPanel() {
       }
     }
   }, [doctorProfile, currentSection, panelLoading]);
+
+  // Section değişikliğini handle et ve logla
+  const handleSectionChange = (newSection: PanelSection) => {
+    setCurrentSection(newSection);
+    logSectionChange(newSection);
+  };
 
   const renderSection = () => {
     // Get user permissions
@@ -175,11 +221,11 @@ export default function AdminPanel() {
 
       <div className="relative z-10 flex h-screen overflow-hidden">
         {/* Sidebar */}
-        <Sidebar 
-          currentSection={currentSection}
-          onSectionChange={setCurrentSection}
-          doctorProfile={doctorProfile}
-        />
+      <Sidebar 
+        currentSection={currentSection} 
+        onSectionChange={handleSectionChange} 
+        doctorProfile={doctorProfile} 
+      />
 
         {/* Main Content */}
         <div className="flex-1 flex flex-col overflow-hidden">
