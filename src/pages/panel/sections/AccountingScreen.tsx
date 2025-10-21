@@ -1187,7 +1187,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   </h4>
                   <div className="max-h-40 overflow-y-auto">
                     <div className="space-y-2">
-                      {reportData.payments.map((payment, index) => (
+                      {reportData.payments.map((payment) => (
                         <div key={payment.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                           <div>
                             <p className="font-medium text-sm">{payment.fullName}</p>
@@ -1213,7 +1213,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   </h4>
                   <div className="max-h-40 overflow-y-auto">
                     <div className="space-y-2">
-                      {reportData.refunds.map((refund, index) => (
+                      {reportData.refunds.map((refund) => (
                         <div key={refund.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                           <div>
                             <p className="font-medium text-sm">{refund.fullName}</p>

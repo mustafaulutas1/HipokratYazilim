@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, query, deleteDoc, doc, where, updateDoc, orderBy } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, deleteDoc, doc, where, updateDoc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 
 interface Medication {

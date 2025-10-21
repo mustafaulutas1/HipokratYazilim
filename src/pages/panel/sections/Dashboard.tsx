@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getRoleDisplayName } from '../../../constants/permissions';
 import { useAuth } from '../../../context/AuthContext';
-import { loggingService, type UserLog, type PageVisitLog, type SessionLog } from '../../../services/loggingService';
+import { loggingService, type UserLog, type SessionLog } from '../../../services/loggingService';
 
 interface DashboardProps {
   doctorProfile: any;
@@ -10,10 +10,8 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ doctorProfile }) => {
   const { user } = useAuth();
   const [userLogs, setUserLogs] = useState<UserLog[]>([]);
-  const [pageVisitLogs, setPageVisitLogs] = useState<PageVisitLog[]>([]);
   const [sessionLogs, setSessionLogs] = useState<SessionLog[]>([]);
   const [pageStats, setPageStats] = useState<Record<string, number>>({});
-  const [dailyStats, setDailyStats] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
 
   const fetchLogData = async () => {
@@ -22,7 +20,7 @@ const Dashboard: React.FC<DashboardProps> = ({ doctorProfile }) => {
     try {
       setLoading(true);
       
-      const [userLogsData, pageVisitData, sessionData, pageStatsData, dailyStatsData] = await Promise.all([
+      const [userLogsData, , sessionData, pageStatsData] = await Promise.all([
         loggingService.getUserLogs(user.uid, 20),
         loggingService.getPageVisitLogs(user.uid, 20),
         loggingService.getSessionLogs(user.uid, 10),
@@ -32,10 +30,8 @@ const Dashboard: React.FC<DashboardProps> = ({ doctorProfile }) => {
 
 
       setUserLogs(userLogsData);
-      setPageVisitLogs(pageVisitData);
       setSessionLogs(sessionData);
       setPageStats(pageStatsData);
-      setDailyStats(dailyStatsData);
     } catch (error) {
       // Log verilerini yükleme hatası
     } finally {

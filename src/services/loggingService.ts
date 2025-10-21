@@ -1,5 +1,5 @@
 import { db } from '../firebase/config';
-import { collection, addDoc, query, where, orderBy, limit, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, query, where, limit, getDocs, Timestamp } from 'firebase/firestore';
 
 export interface UserLog {
   id?: string;
@@ -137,7 +137,7 @@ class LoggingService {
     }
   }
 
-  async logSessionEnd(userId: string, userEmail: string): Promise<void> {
+  async logSessionEnd(userId: string): Promise<void> {
     try {
       const sessionId = this.getCurrentSessionId();
       const sessionLogsRef = collection(db, 'sessionLogs');

@@ -61,7 +61,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         // Çıkış yapmadan önce log yaz (hata olsa bile çıkış yap)
         try {
           await loggingService.logUserAction(user.uid, user.email || '', 'logout');
-          await loggingService.logSessionEnd(user.uid, user.email || '');
+          await loggingService.logSessionEnd(user.uid);
         } catch (logError) {
           // Log yazma hatası sessizce geçiliyor
         }

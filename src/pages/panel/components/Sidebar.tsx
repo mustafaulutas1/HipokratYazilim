@@ -1,6 +1,5 @@
 import React from 'react';
 import { useAuth } from '../../../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
 import { rtmLogo } from '../../../assets';
 import { getRoleDisplayName } from '../../../constants/permissions';
 import { useUserPermissions } from '../../../hooks/useUserPermissions';
@@ -23,7 +22,6 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doctorProfile }) => {
   const { logout } = useAuth();
-  const navigate = useNavigate();
 
   // Get user permissions dynamically from role system
   const userRole = doctorProfile?.role || doctorProfile?.userType || 'doctor';
