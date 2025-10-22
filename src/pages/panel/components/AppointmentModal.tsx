@@ -11,6 +11,7 @@ interface AppointmentModalProps {
   onAdded: () => void;
   doctorId?: string;
   editedAppointment?: any | null;
+  doctorProfile?: any;
 }
 
 interface PatientDoc { id: string; fullName: string; }
@@ -27,7 +28,7 @@ function minutesToTime(mins: number) {
 }
 // generateTimes kaldırıldı (artık custom saat bileşeni var)
 
-const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, onAdded, doctorId, editedAppointment }) => {
+const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, onAdded, doctorId, editedAppointment, doctorProfile }) => {
   const [patients, setPatients] = useState<PatientDoc[]>([]);
   const [types, setTypes] = useState<TypeDoc[]>([]);
   const [patientOpen, setPatientOpen] = useState<boolean>(false);
@@ -88,9 +89,27 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
   useEffect(() => {
     if (!isOpen) return;
     (async () => {
-      const ps = await getDocs(collection(db, 'patients'));
+      // Check if doctorProfile and clinicId exist
+      if (!doctorProfile?.clinicId) {
+        console.error('❌ AppointmentModal: No clinicId found in doctorProfile');
+        setPatients([]);
+        setTypes([]);
+        return;
+      }
+      
+      console.log('🔍 AppointmentModal: Fetching patients for clinicId:', doctorProfile.clinicId);
+      
+      // Fetch patients with clinicID filter
+      const patientsQuery = query(
+        collection(db, 'patients'),
+        where('clinicId', '==', doctorProfile.clinicId)
+      );
+      const ps = await getDocs(patientsQuery);
       const patientsList: PatientDoc[] = ps.docs.map(d => ({ id: d.id, fullName: (d.data() as any).fullName || 'İsimsiz' }));
       setPatients(patientsList);
+      
+      console.log('👥 AppointmentModal: Found patients:', patientsList.length);
+      
       const tq = query(collection(db, 'appointment_types'));
       const ts = await getDocs(tq);
       const allTypes: TypeDoc[] = ts.docs.map(d => ({ id: d.id, name: (d.data() as any).name, durationMinutes: (d.data() as any).durationMinutes || 30, status: (d.data() as any).status }));
@@ -99,7 +118,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
       setTypes(activeTypes);
       setError('');
     })();
-  }, [isOpen]);
+  }, [isOpen, doctorProfile?.clinicId]);
 
   // Edit modunda alanları doldur
   useEffect(() => {
@@ -346,6 +365,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
             status: editedAppointment.status || 'confirmed',
             doctorId: doctorId || editedAppointment.doctorId || null,
             notes: notes || '',
+            clinicId: doctorProfile?.clinicId || editedAppointment.clinicId || 'default-clinic',
           });
         } else {
           // Quick reservation or regular appointment
@@ -358,6 +378,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
             status: 'confirmed',
             doctorId: doctorId || null,
             notes: notes || '',
+            clinicId: doctorProfile?.clinicId || 'default-clinic',
           };
 
           if (useQuickReservation) {
@@ -366,6 +387,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
               fullName: quickName.trim(),
               phone: quickPhone.trim(),
               registrationStatus: 'incomplete', // Mark as incomplete registration
+              clinicId: doctorProfile?.clinicId || 'default-clinic',
               createdAt: new Date().toISOString(),
               createdVia: 'quick_reservation',
             };

@@ -28,9 +28,10 @@ interface EditPatientModalProps {
   onClose: () => void;
   onPatientUpdated: () => void;
   patient: Patient | null;
+  doctorProfile?: any;
 }
 
-const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, onPatientUpdated, patient }) => {
+const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, onPatientUpdated, patient, doctorProfile }) => {
   const [formData, setFormData] = useState({
     fullName: '',
     tcNo: '',
@@ -170,6 +171,13 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
     e.preventDefault();
     
     if (!validateForm() || !patient) {
+      return;
+    }
+
+    // Security check: Verify patient belongs to the same clinic
+    if (doctorProfile?.clinicId && patient.clinicId !== doctorProfile.clinicId) {
+      console.error('❌ EditPatientModal: Security violation - patient belongs to different clinic');
+      alert('Bu hastayı düzenleme yetkiniz yok. Hasta farklı bir kliniğe ait.');
       return;
     }
 

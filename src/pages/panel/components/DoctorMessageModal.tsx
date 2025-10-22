@@ -45,139 +45,59 @@ const DoctorMessageModal: React.FC<DoctorMessageModalProps> = ({
   const fetchDoctors = async () => {
     try {
       setLoading(true);
-      console.log('🔍 Fetching all doctors...');
       
-      // Try different collection names and combine all users
-      const collectionNames = ['users', 'doctors', 'Users', 'Doctors', 'clinicUsers'];
-      let allUsers: any[] = [];
-      
-      for (const collectionName of collectionNames) {
-        try {
-          console.log(`🔍 Trying collection: ${collectionName}`);
-          const usersQuery = collection(db, collectionName);
-          const usersSnapshot = await getDocs(usersQuery);
-          const users = usersSnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
-          
-          console.log(`📊 Collection ${collectionName}: ${users.length} documents`);
-          if (users.length > 0) {
-            console.log(`📋 Sample data from ${collectionName}:`, users[0]);
-            // Combine all users from all collections
-            allUsers = [...allUsers, ...users];
-          }
-        } catch (err) {
-          console.log(`❌ Collection ${collectionName} not accessible:`, err);
-        }
-      }
-      
-      console.log('👥 Total users found:', allUsers.length);
-      
-      if (allUsers.length === 0) {
-        console.log('🧪 No users found in any collection, using test doctors');
-        const testDoctors = [
-          { id: 'test1', name: 'Dr. Ahmet Yılmaz', email: 'ahmet@clinic.com', role: 'doctor', specialization: 'Kardiyoloji' },
-          { id: 'test2', name: 'Dr. Ayşe Demir', email: 'ayse@clinic.com', role: 'doctor', specialization: 'Nöroloji' },
-          { id: 'test3', name: 'Dr. Mehmet Kaya', email: 'mehmet@clinic.com', role: 'doctor', specialization: 'Ortopedi' }
-        ] as Doctor[];
-        
-        setDoctors(testDoctors);
+      // Security check: clinicId is required
+      if (!doctorProfile?.clinicId) {
+        console.error('❌ DoctorMessageModal: No clinicId found in doctorProfile');
+        setDoctors([]);
+        setLoading(false);
         return;
       }
       
-      // Filter for doctors - prioritize role=doctor from clinic users
-      const doctorUsers = allUsers.filter((user: any) => {
-        console.log(`User ${user.id}: role=${user.role}, isClinicOwner=${user.isClinicOwner}, department=${user.department}, name=${user.name || user.firstName || user.displayName}`);
-        // Primary: Check if role is explicitly 'doctor'
-        if (user.role === 'doctor') {
-          console.log(`✅ Found doctor by role: ${user.name || user.firstName || user.displayName}`);
-          return true;
-        }
-        // Secondary: Check other doctor indicators
-        if (user.userType === 'doctor' || 
-            user.type === 'doctor' ||
-            user.isClinicOwner === true ||
-            user.department ||
-            user.specialization ||
-            user.hospital) {
-          console.log(`✅ Found doctor by other fields: ${user.name || user.firstName || user.displayName}`);
-          return true;
-        }
-        return false;
-      }) as Doctor[];
+      console.log('🔍 DoctorMessageModal: Fetching doctors for clinicId:', doctorProfile.clinicId);
       
-      console.log('👨‍⚕️ Found doctors:', doctorUsers.length);
+      // Fetch doctors from the same clinic only
+      const doctorsQuery = query(
+        collection(db, 'doctors'),
+        where('clinicId', '==', doctorProfile.clinicId)
+      );
+      const doctorsSnapshot = await getDocs(doctorsQuery);
+      const doctorsData = doctorsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
       
-      if (doctorUsers.length === 0) {
-        console.log('🧪 No doctors found, using test doctors');
-        const testDoctors = [
-          { id: 'test1', name: 'Dr. Ahmet Yılmaz', email: 'ahmet@clinic.com', role: 'doctor', specialization: 'Kardiyoloji' },
-          { id: 'test2', name: 'Dr. Ayşe Demir', email: 'ayse@clinic.com', role: 'doctor', specialization: 'Nöroloji' },
-          { id: 'test3', name: 'Dr. Mehmet Kaya', email: 'mehmet@clinic.com', role: 'doctor', specialization: 'Ortopedi' }
-        ] as Doctor[];
-        
-        setDoctors(testDoctors);
+      // Also fetch clinic users with doctor role
+      const clinicUsersQuery = query(
+        collection(db, 'clinicUsers'),
+        where('clinicId', '==', doctorProfile.clinicId),
+        where('role', '==', 'doctor')
+      );
+      const clinicUsersSnapshot = await getDocs(clinicUsersQuery);
+      const clinicUserDoctors = clinicUsersSnapshot.docs.map(doc => ({
+        id: doc.id,
+        name: (doc.data() as any).fullName,
+        specialization: (doc.data() as any).specialization || (doc.data() as any).department || 'Genel',
+        department: (doc.data() as any).department || '',
+        hospital: (doc.data() as any).hospital || '',
+        isAvailable: true
+      }));
+      
+      // Combine both sources
+      const allDoctors = [...doctorsData, ...clinicUserDoctors];
+      
+      console.log('👥 DoctorMessageModal: Found doctors:', allDoctors.length);
+      
+      if (allDoctors.length === 0) {
+        console.log('⚠️ No doctors found in clinic');
+        setDoctors([]);
       } else {
-        // Ensure we have proper name mapping for doctors
-        const mappedDoctors = doctorUsers.map((doctor: any) => {
-          console.log(`🔍 Doctor data for ${doctor.id}:`, doctor);
-          
-          // Check all possible name fields
-          let displayName = doctor.name || 
-                           doctor.firstName || 
-                           doctor.displayName || 
-                           doctor.fullName ||
-                           doctor.userName || 
-                           doctor.username || 
-                           doctor.title;
-          
-          // If no name fields, try to construct from firstName + lastName
-          if (!displayName && (doctor.firstName || doctor.lastName)) {
-            displayName = `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim();
-          }
-          
-          // If still no name, create a meaningful name from email
-          if (!displayName && doctor.email) {
-            const emailParts = doctor.email.split('@')[0].split('.');
-            if (emailParts.length >= 2) {
-              // e.turanemre@gmail.com -> E. Turanemre
-              const firstName = emailParts[0].charAt(0).toUpperCase() + '.';
-              const lastName = emailParts[1].charAt(0).toUpperCase() + emailParts[1].slice(1);
-              displayName = `Dr. ${firstName} ${lastName}`;
-            } else {
-              // single name in email
-              const emailName = emailParts[0];
-              displayName = `Dr. ${emailName.charAt(0).toUpperCase() + emailName.slice(1)}`;
-            }
-          }
-          
-          // Last resort - use ID
-          if (!displayName) {
-            displayName = `Dr. ${doctor.id.slice(0, 8)}`;
-          }
-          
-          console.log(`👨‍⚕️ Final display name for ${doctor.id}: ${displayName}`);
-          
-          return {
-            ...doctor,
-            name: displayName
-          };
-        });
-        
-        setDoctors(mappedDoctors);
+        setDoctors(allDoctors);
       }
       
     } catch (error) {
       console.error('❌ Error fetching doctors:', error);
-      console.log('🧪 Using test doctors due to error');
-      const testDoctors = [
-        { id: 'test1', name: 'Dr. Ahmet Yılmaz', email: 'ahmet@clinic.com', role: 'doctor', specialization: 'Kardiyoloji' },
-        { id: 'test2', name: 'Dr. Ayşe Demir', email: 'ayse@clinic.com', role: 'doctor', specialization: 'Nöroloji' },
-        { id: 'test3', name: 'Dr. Mehmet Kaya', email: 'mehmet@clinic.com', role: 'doctor', specialization: 'Ortopedi' }
-      ] as Doctor[];
-      
-      setDoctors(testDoctors);
+      setDoctors([]);
     } finally {
       setLoading(false);
     }

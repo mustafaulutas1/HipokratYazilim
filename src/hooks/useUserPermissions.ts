@@ -5,6 +5,7 @@ import { getUserPermissions } from '../constants/permissions';
 export const useUserPermissions = (userRole: string | undefined, clinicId: string | undefined, customPermissions?: string[]) => {
   const [permissions, setPermissions] = useState<string[]>(['dashboard']);
   const [loading, setLoading] = useState(true);
+  const [securityError, setSecurityError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchPermissions = async () => {
@@ -14,8 +15,18 @@ export const useUserPermissions = (userRole: string | undefined, clinicId: strin
         return;
       }
 
+      // Security check: clinicId is required for all operations
+      if (!clinicId) {
+        console.error('❌ Security: No clinicId provided for user permissions');
+        setSecurityError('Güvenlik hatası: Klinik bilgisi bulunamadı');
+        setPermissions(['dashboard']); // Minimal permissions
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
+        setSecurityError(null);
         
         // If user has custom permissions, use those
         if (customPermissions && customPermissions.length > 0) {
@@ -61,5 +72,5 @@ export const useUserPermissions = (userRole: string | undefined, clinicId: strin
     fetchPermissions();
   }, [userRole, clinicId, customPermissions]);
 
-  return { permissions, loading };
+  return { permissions, loading, securityError };
 };

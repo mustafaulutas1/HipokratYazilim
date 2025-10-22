@@ -5,7 +5,11 @@ import AppointmentModal from '../components/AppointmentModal';
 import AppointmentTypeManager from '../components/AppointmentTypeManager';
 import AppointmentDetailsModal from '../components/AppointmentDetailsModal';
 
-const Appointments: React.FC = () => {
+interface AppointmentsProps {
+  doctorProfile?: any;
+}
+
+const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
   const [appointments, setAppointments] = useState<any[]>([]);
@@ -57,17 +61,29 @@ const Appointments: React.FC = () => {
   // Fetch appointments for selected day
   useEffect(() => {
     const fetchAppointments = async () => {
+      // Check if doctorProfile and clinicId exist
+      if (!doctorProfile?.clinicId) {
+        console.error('❌ Appointments: No clinicId found in doctorProfile');
+        setAppointments([]);
+        return;
+      }
+      
+      console.log('🔍 Appointments: Fetching appointments for clinicId:', doctorProfile.clinicId);
+      
       const qDay = query(
         collection(db, 'appointments'),
+        where('clinicId', '==', doctorProfile.clinicId),
         where('dateISO', '==', dateISO)
       );
       const snap = await getDocs(qDay);
       const list = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
       list.sort((a,b) => String(a.start||'').localeCompare(String(b.start||'')));
+      
+      console.log('📅 Appointments: Found appointments:', list.length);
       setAppointments(list);
     };
     fetchAppointments();
-  }, [dateISO]);
+  }, [dateISO, doctorProfile?.clinicId]);
 
   // Segment aralığına düşen randevular - sadece başlangıç zamanı bu slot içinde olanlar
   const getAppointmentsForSegment = (segStart: number, segEnd: number) => {
@@ -304,8 +320,11 @@ const Appointments: React.FC = () => {
         onAdded={() => {
           // refresh after add
           (async () => {
+            if (!doctorProfile?.clinicId) return;
+            
             const qDay = query(
               collection(db, 'appointments'),
+              where('clinicId', '==', doctorProfile.clinicId),
               where('dateISO', '==', dateISO)
             );
             const snap = await getDocs(qDay);
@@ -315,6 +334,7 @@ const Appointments: React.FC = () => {
           })();
         }}
         editedAppointment={editedAppointment}
+        doctorProfile={doctorProfile}
       />
       <AppointmentTypeManager
         isOpen={openTypeModal}
@@ -328,8 +348,11 @@ const Appointments: React.FC = () => {
         onDeleted={() => {
           // refresh appointments after delete
           (async () => {
+            if (!doctorProfile?.clinicId) return;
+            
             const qDay = query(
               collection(db, 'appointments'),
+              where('clinicId', '==', doctorProfile.clinicId),
               where('dateISO', '==', dateISO)
             );
             const snap = await getDocs(qDay);

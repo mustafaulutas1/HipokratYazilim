@@ -86,38 +86,26 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    console.log('🔍 DoctorPanel: Setting up real-time listener for all doctor assignments');
+    // Security check: clinicId is required
+    if (!doctorProfile?.clinicId) {
+      console.error('❌ DoctorPanel: No clinicId found in doctorProfile');
+      setAssignedPatients([]);
+      setLoading(false);
+      return;
+    }
+
+    console.log('🔍 DoctorPanel: Setting up real-time listener for clinicId:', doctorProfile.clinicId);
     console.log('🔍 DoctorPanel: Doctor profile:', doctorProfile);
 
-    // Query to get all patients with assigned doctors (not just current user)
-    const testQuery = query(
-      collection(db, 'patients'),
-      where('assignedDoctorId', '!=', null)
-    );
-
-    const testUnsubscribe = onSnapshot(testQuery, (testSnapshot) => {
-      console.log('🔍 DoctorPanel: Test query - Total patients assigned to all doctors:', testSnapshot.docs.length);
-      testSnapshot.docs.forEach(doc => {
-        const data = doc.data();
-        console.log('📋 Patient:', {
-          id: doc.id,
-          name: data.fullName,
-          status: data.status,
-          assignedDoctorId: data.assignedDoctorId,
-          assignedDoctorName: data.assignedDoctorName,
-          assignedAt: data.assignedAt
-        });
-      });
-    });
-
-    // Main query - Show all patients assigned to any doctor (including those without status)
+    // Main query - Show patients assigned to the current doctor only
     const patientsQuery = query(
       collection(db, 'patients'),
-      where('assignedDoctorId', '!=', null)
+      where('clinicId', '==', doctorProfile.clinicId),
+      where('assignedDoctorId', '==', user?.uid)
     );
 
     const unsubscribe = onSnapshot(patientsQuery, (snapshot) => {
-      console.log('📊 DoctorPanel: Main query returned:', snapshot.docs.length, 'documents');
+      console.log('📊 DoctorPanel: Query returned:', snapshot.docs.length, 'patients for clinicId:', doctorProfile.clinicId);
       
       const patients = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -131,7 +119,8 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
         assignedDoctorId: p.assignedDoctorId,
         assignedDoctorName: p.assignedDoctorName,
         status: p.status,
-        assignedAt: p.assignedAt
+        assignedAt: p.assignedAt,
+        clinicId: p.clinicId
       })));
 
       // Show all patients assigned to any doctor, prioritizing active ones
@@ -151,7 +140,8 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
       // Query completed patients separately for stats only
       const completedQuery = query(
         collection(db, 'patients'),
-        where('assignedDoctorId', '!=', null),
+        where('clinicId', '==', doctorProfile.clinicId),
+        where('assignedDoctorId', '==', user?.uid),
         where('status', '==', 'treatment_completed')
       );
       
@@ -181,17 +171,17 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
 
     return () => {
       unsubscribe();
-      testUnsubscribe();
     };
-  }, [doctorProfile]);
+  }, [doctorProfile, user?.uid]);
 
   useEffect(() => {
-    if (!user?.uid) return;
+    if (!user?.uid || !doctorProfile?.clinicId) return;
 
-    console.log('🔍 DoctorPanel: Setting up messages listener for doctor:', user.uid);
+    console.log('🔍 DoctorPanel: Setting up messages listener for doctor:', user.uid, 'clinicId:', doctorProfile.clinicId);
     
     const messagesQuery = query(
       collection(db, 'doctorMessages'),
+      where('clinicId', '==', doctorProfile.clinicId),
       orderBy('createdAt', 'desc'),
       limit(50)
     );
@@ -212,7 +202,7 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
     });
 
     return () => unsubscribe();
-  }, [user?.uid]);
+  }, [user?.uid, doctorProfile?.clinicId]);
 
   const handleViewAnamnez = (patient: AssignedPatient) => {
     setSelectedPatient(patient);

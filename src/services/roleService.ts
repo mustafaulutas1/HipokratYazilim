@@ -120,8 +120,15 @@ export const getRoleByName = async (roleName: string, clinicId: string): Promise
 // Get permissions for a role
 export const getRolePermissions = async (roleName: string, clinicId: string): Promise<string[]> => {
   try {
+    // Security check: clinicId is required
+    if (!clinicId || clinicId === 'default-clinic') {
+      console.error('❌ Security: Invalid clinicId for role permissions:', clinicId);
+      throw new Error('Güvenlik hatası: Geçersiz klinik bilgisi');
+    }
+    
     const role = await getRoleByName(roleName, clinicId);
     if (role?.permissions && role.permissions.length > 0) {
+      console.log('🔐 Role permissions retrieved for:', { roleName, clinicId, permissions: role.permissions });
       return role.permissions;
     }
     // Return null/empty to indicate no dynamic role found, let caller handle fallback

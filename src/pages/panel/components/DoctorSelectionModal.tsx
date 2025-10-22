@@ -236,9 +236,10 @@ const DoctorSelectionModal: React.FC<DoctorSelectionModalProps> = ({
     try {
       setAssigning(true);
 
-      // Check if the doctor already has an active patient
+      // Check if the doctor already has an active patient (same clinic only)
       const activePatientQuery = query(
         collection(db, 'patients'),
+        where('clinicId', '==', clinicId),
         where('assignedDoctorId', '==', selectedDoctor.id),
         where('status', 'in', ['assigned_to_doctor', 'in_treatment'])
       );

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import AddPatientModal from './AddPatientModal';
 import EditPatientModal from '../components/EditPatientModal';
@@ -44,8 +44,22 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
   const fetchPatients = async () => {
     try {
       setLoading(true);
+      
+      // Check if doctorProfile and clinicId exist
+      if (!doctorProfile?.clinicId) {
+        console.error('❌ Patients: No clinicId found in doctorProfile');
+        setPatients([]);
+        return;
+      }
+      
+      console.log('🔍 Patients: Fetching patients for clinicId:', doctorProfile.clinicId);
+      
       const patientsRef = collection(db, 'patients');
-      const q = query(patientsRef, orderBy('createdAt', 'desc'));
+      const q = query(
+        patientsRef, 
+        where('clinicId', '==', doctorProfile.clinicId),
+        orderBy('createdAt', 'desc')
+      );
       const querySnapshot = await getDocs(q);
       
       const patientsData: Patient[] = [];
@@ -56,9 +70,10 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
         } as Patient);
       });
       
+      console.log('📋 Patients: Found patients:', patientsData.length);
       setPatients(patientsData);
     } catch (error) {
-      console.error('Error fetching patients:', error);
+      console.error('❌ Patients: Error fetching patients:', error);
     } finally {
       setLoading(false);
     }
@@ -286,6 +301,7 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
          }}
          onPatientUpdated={fetchPatients}
          patient={selectedPatient}
+         doctorProfile={doctorProfile}
        />
 
        {/* Patient Details Modal */}
