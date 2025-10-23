@@ -6,8 +6,11 @@ import DoctorNotesModal from './DoctorNotesModal';
 import DoctorMessageModal from '../components/DoctorMessageModal';
 import DoctorSelectionModal from '../components/DoctorSelectionModal';
 
+type PanelSection = 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
+
 interface AssistantPanelProps {
   doctorProfile?: any;
+  onSectionChange?: (section: PanelSection) => void;
 }
 
 interface PatientStats {
@@ -49,7 +52,7 @@ interface AnamrezRecord {
   updatedAt: string;
 }
 
-const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
+const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectionChange }) => {
   const [stats, setStats] = useState<PatientStats>({
     totalPatients: 0,
     todayAppointments: 0,
@@ -60,7 +63,6 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
   const [accountingPatients, setAccountingPatients] = useState<WaitingPatient[]>([]);
   const [treatmentCompletedPatients, setTreatmentCompletedPatients] = useState<WaitingPatient[]>([]);
   const [emergencyPatients, setEmergencyPatients] = useState<WaitingPatient[]>([]);
-  const [todayAppointmentPatients, setTodayAppointmentPatients] = useState<WaitingPatient[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPatient, setSelectedPatient] = useState<WaitingPatient | null>(null);
   const [isAnamrezViewModalOpen, setIsAnamrezViewModalOpen] = useState(false);
@@ -68,7 +70,7 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
   const [isDoctorSelectionModalOpen, setIsDoctorSelectionModalOpen] = useState(false);
   const [patientToAssign, setPatientToAssign] = useState<WaitingPatient | null>(null);
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
-  const [activeListType, setActiveListType] = useState<'anamnez_completed' | 'waiting_accounting' | 'treatment_completed' | 'emergency' | 'today_appointments'>('anamnez_completed');
+  const [activeListType, setActiveListType] = useState<'anamnez_completed' | 'waiting_accounting' | 'treatment_completed' | 'emergency'>('anamnez_completed');
 
   useEffect(() => {
     const fetchDoctorData = async () => {
@@ -206,45 +208,6 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
           return dateB - dateA;
         });
         setEmergencyPatients(emergencyPatientsFiltered);
-
-        // Fetch today's appointment patients
-        const todayDate = new Date();
-        const todayDateString = todayDate.toISOString().split('T')[0];
-
-        try {
-          const appointmentsQuery = query(
-            collection(db, 'appointments'),
-            where('clinicId', '==', doctorProfile.clinicId)
-          );
-          const appointmentsSnapshot = await getDocs(appointmentsQuery);
-
-          const todayAppointmentsList = appointmentsSnapshot.docs.filter(doc => {
-            const data = doc.data();
-            const appointmentDate = data.date || data.appointmentDate || data.scheduledDate;
-            if (!appointmentDate) return false;
-
-            const dateStr = typeof appointmentDate === 'string' ?
-              appointmentDate.split('T')[0] :
-              new Date(appointmentDate).toISOString().split('T')[0];
-
-            return dateStr === todayDateString;
-          }).map(doc => {
-            const appointmentData = doc.data();
-            const patientId = appointmentData.patientId;
-            const patient = allClinicPatients.find(p => p.id === patientId);
-
-            return patient ? {
-              ...patient,
-              appointmentTime: appointmentData.time || appointmentData.appointmentTime,
-              appointmentType: appointmentData.type || 'Genel Muayene'
-            } : null;
-          }).filter(patient => patient !== null) as WaitingPatient[];
-
-          setTodayAppointmentPatients(todayAppointmentsList);
-        } catch (error) {
-          console.warn('⚠️ Could not fetch today\'s appointment patients:', error);
-          setTodayAppointmentPatients([]);
-        }
 
         // Get the final waiting patients count for stats
         const finalWaitingPatientsCount = completedPatients.length;
@@ -495,45 +458,6 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
       });
       setEmergencyPatients(emergencyPatientsFiltered);
 
-      // Fetch today's appointment patients
-      const today = new Date();
-      const todayDateString = today.toISOString().split('T')[0];
-
-      try {
-        const appointmentsQuery = query(
-          collection(db, 'appointments'),
-          where('clinicId', '==', doctorProfile.clinicId)
-        );
-        const appointmentsSnapshot = await getDocs(appointmentsQuery);
-
-        const todayAppointmentsList = appointmentsSnapshot.docs.filter(doc => {
-          const data = doc.data();
-          const appointmentDate = data.date || data.appointmentDate || data.scheduledDate;
-          if (!appointmentDate) return false;
-
-          const dateStr = typeof appointmentDate === 'string' ?
-            appointmentDate.split('T')[0] :
-            new Date(appointmentDate).toISOString().split('T')[0];
-
-          return dateStr === todayDateString;
-        }).map(doc => {
-          const appointmentData = doc.data();
-          const patientId = appointmentData.patientId;
-          const patient = allClinicPatients.find(p => p.id === patientId);
-
-          return patient ? {
-            ...patient,
-            appointmentTime: appointmentData.time || appointmentData.appointmentTime,
-            appointmentType: appointmentData.type || 'Genel Muayene'
-          } : null;
-        }).filter(patient => patient !== null) as WaitingPatient[];
-
-        setTodayAppointmentPatients(todayAppointmentsList);
-      } catch (error) {
-        console.warn('⚠️ Could not fetch today\'s appointment patients:', error);
-        setTodayAppointmentPatients([]);
-      }
-
       // Get the final waiting patients count for stats
       const finalWaitingPatientsCount = completedPatients.length;
 
@@ -625,8 +549,6 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
         return treatmentCompletedPatients;
       case 'emergency':
         return emergencyPatients;
-      case 'today_appointments':
-        return todayAppointmentPatients;
       default:
         return waitingPatients;
     }
@@ -642,8 +564,6 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
         return 'Tedavi Tamamlanan Hastalar';
       case 'emergency':
         return 'Acil Durum Hastaları';
-      case 'today_appointments':
-        return 'Bugünkü Randevulu Hastalar';
       default:
         return 'Hasta Listesi';
     }
@@ -659,8 +579,6 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
         return '🏁';
       case 'emergency':
         return '🚨';
-      case 'today_appointments':
-        return '📅';
       default:
         return '📋';
     }
@@ -816,17 +734,6 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
             Acil Durumlar ({emergencyPatients.length})
           </button>
 
-          <button
-            onClick={() => setActiveListType('today_appointments')}
-            className={`px-4 py-2 rounded-xl font-medium text-sm transition-all duration-200 flex items-center gap-2 ${
-              activeListType === 'today_appointments'
-                ? 'bg-purple-500/30 border-2 border-purple-400 text-purple-200'
-                : 'bg-white/5 border border-white/20 text-white/70 hover:bg-white/10'
-            }`}
-          >
-            <span className="text-lg">📅</span>
-            Bugünkü Randevular ({todayAppointmentPatients.length})
-          </button>
         </div>
       </div>
 
@@ -877,11 +784,6 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
                           ACİL DURUM
                         </span>
                       )}
-                      {activeListType === 'today_appointments' && (
-                        <span className="text-xs bg-blue-500/30 text-blue-200 px-2 py-1 rounded-full">
-                          {(patient as any).appointmentTime || 'Saat Belirsiz'}
-                        </span>
-                      )}
                     </div>
                     <div className="flex items-center gap-4 text-white/70 text-sm">
                       <span>Yaş: {calculateAge(patient.birthDate)}</span>
@@ -923,7 +825,6 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
                       {activeListType === 'waiting_accounting' && `Tedavi Kararı: ${formatDate(patient.createdAt)}`}
                       {activeListType === 'treatment_completed' && `Taburcu: ${formatDate(patient.createdAt)}`}
                       {activeListType === 'emergency' && `Acil Kayıt: ${formatDate(patient.createdAt)}`}
-                      {activeListType === 'today_appointments' && `Randevu Türü: ${(patient as any).appointmentType || 'Genel Muayene'}`}
                     </p>
                   </div>
                   <div className="flex flex-col gap-2">
@@ -942,13 +843,6 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
                         Ödeme Al
                       </button>
                     )}
-                    {activeListType === 'today_appointments' && (
-                      <button
-                        className="px-3 py-1 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-lg text-purple-200 text-sm transition-all duration-200"
-                      >
-                        Randevu Detay
-                      </button>
-                    )}
                     {activeListType === 'emergency' && (
                       <button
                         className="px-3 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-200 text-sm transition-all duration-200"
@@ -960,7 +854,7 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
                       onClick={() => handleViewAnamnez(patient)}
                       className="px-3 py-1 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-lg text-purple-200 text-sm transition-all duration-200"
                     >
-                      {activeListType === 'today_appointments' ? 'Hasta Detayı' : 'Anamnez Görüntüle'}
+                      Anamnez Görüntüle
                     </button>
                   </div>
                 </div>
@@ -973,14 +867,12 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
                   {activeListType === 'waiting_accounting' && 'Tedavi Kararı Verilen Hasta Yok'}
                   {activeListType === 'treatment_completed' && 'Tedavi Tamamlanan Hasta Yok'}
                   {activeListType === 'emergency' && 'Acil Durum Hastası Yok'}
-                  {activeListType === 'today_appointments' && 'Bugün Randevulu Hasta Yok'}
                 </h4>
                 <p className="text-white/60">
                   {activeListType === 'anamnez_completed' && 'Anamnezi tamamlanmış ve doktora gönderilmeyi bekleyen hasta bulunmuyor.'}
                   {activeListType === 'waiting_accounting' && 'Doktor tarafından tedavi kararı verilmiş hasta bulunmuyor.'}
                   {activeListType === 'treatment_completed' && 'Tedavisi tamamen bitmiş hasta bulunmuyor.'}
                   {activeListType === 'emergency' && 'Acil durum hastası bulunmuyor.'}
-                  {activeListType === 'today_appointments' && 'Bugün için randevulu hasta bulunmuyor.'}
                 </p>
                 {activeListType === 'anamnez_completed' && (
                   <p className="text-white/50 text-xs mt-2">💡 Doktorlar aynı anda sadece bir hasta ile ilgilenebilir</p>
@@ -1006,12 +898,10 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
               <span className="font-medium text-sm">Hasta Notu Ekle</span>
             </button>
             
-            <button className="w-full flex items-center gap-3 p-3 bg-gradient-to-r from-green-500/20 to-green-600/30 hover:from-green-500/30 hover:to-green-600/40 border border-green-500/30 rounded-xl text-white transition-all duration-200">
-              <span className="text-lg">📞</span>
-              <span className="font-medium text-sm">Hasta Ara</span>
-            </button>
-            
-            <button className="w-full flex items-center gap-3 p-3 bg-gradient-to-r from-purple-500/20 to-purple-600/30 hover:from-purple-500/30 hover:to-purple-600/40 border border-purple-500/30 rounded-xl text-white transition-all duration-200">
+            <button 
+              onClick={() => onSectionChange ? onSectionChange('appointments') : console.log('onSectionChange not provided')}
+              className="w-full flex items-center gap-3 p-3 bg-gradient-to-r from-purple-500/20 to-purple-600/30 hover:from-purple-500/30 hover:to-purple-600/40 border border-purple-500/30 rounded-xl text-white transition-all duration-200"
+            >
               <span className="text-lg">📅</span>
               <span className="font-medium text-sm">Randevu Planla</span>
             </button>
@@ -1024,16 +914,6 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile }) => {
               <span className="font-medium text-sm">Doktora Bildir</span>
             </button>
             
-            <button className="w-full flex items-center gap-3 p-3 bg-gradient-to-r from-teal-500/20 to-teal-600/30 hover:from-teal-500/30 hover:to-teal-600/40 border border-teal-500/30 rounded-xl text-white transition-all duration-200">
-              <span className="text-lg">📋</span>
-              <span className="font-medium text-sm">Hasta Durumu Güncelle</span>
-            </button>
-            
-            <button className="w-full flex items-center gap-3 p-3 bg-gradient-to-r from-yellow-500/20 to-yellow-600/30 hover:from-yellow-500/30 hover:to-yellow-600/40 border border-yellow-500/30 rounded-xl text-white transition-all duration-200">
-              <span className="text-lg">🔔</span>
-              <span className="font-medium text-sm">Acil Durum Bildirimi</span>
-            </button>
-
           </div>
         </div>
       </div>
