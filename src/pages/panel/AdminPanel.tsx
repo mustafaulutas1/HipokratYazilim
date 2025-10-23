@@ -182,7 +182,7 @@ export default function AdminPanel() {
       case 'users':
         return <Users doctorProfile={doctorProfile} />;
       case 'assistant-panel':
-        return <AssistantPanel doctorProfile={doctorProfile} />;
+        return <AssistantPanel doctorProfile={doctorProfile} onSectionChange={handleSectionChange} />;
       case 'doctor-panel':
         return <DoctorPanel doctorProfile={doctorProfile} />;
       case 'accounting':
