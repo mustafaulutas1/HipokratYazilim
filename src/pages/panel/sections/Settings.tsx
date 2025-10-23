@@ -5,14 +5,12 @@ interface SettingsProps {
 }
 
 const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
-  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'notifications' | 'billing'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'security'>('profile');
   const [isEditing, setIsEditing] = useState(false);
 
   const tabs = [
     { id: 'profile', label: 'Profil', icon: '👤' },
-    { id: 'security', label: 'Güvenlik', icon: '🔒' },
-    { id: 'notifications', label: 'Bildirimler', icon: '🔔' },
-    { id: 'billing', label: 'Faturalama', icon: '💰' }
+    { id: 'security', label: 'Güvenlik', icon: '🔒' }
   ];
 
   const renderProfileTab = () => (
@@ -144,80 +142,7 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
     </div>
   );
 
-  const renderNotificationsTab = () => (
-    <div className="space-y-6">
-      <h3 className="text-xl font-bold text-white">Bildirim Ayarları</h3>
-      
-      <div className="space-y-4">
-        {[
-          { title: 'Yeni Randevu Bildirimleri', description: 'Yeni randevu oluşturulduğunda bildirim al', enabled: true },
-          { title: 'Randevu Hatırlatmaları', description: 'Randevulardan 1 saat önce hatırlatma al', enabled: true },
-          { title: 'Hasta Mesajları', description: 'Hastalardan gelen mesajları bildir', enabled: false },
-          { title: 'Sistem Güncellemeleri', description: 'Sistem güncellemeleri hakkında bilgilendir', enabled: true },
-          { title: 'E-posta Bildirimleri', description: 'Önemli olaylar için e-posta al', enabled: true }
-        ].map((notification, index) => (
-          <div key={index} className="bg-white/10 rounded-xl p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-white font-semibold">{notification.title}</h4>
-                <p className="text-white/70 text-sm">{notification.description}</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" defaultChecked={notification.enabled} className="sr-only peer" />
-                <div className="w-11 h-6 bg-white/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
-              </label>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
 
-  const renderBillingTab = () => (
-    <div className="space-y-6">
-      <h3 className="text-xl font-bold text-white">Faturalama ve Ödemeler</h3>
-      
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white/10 rounded-xl p-6">
-          <div className="text-center">
-            <div className="text-3xl font-bold text-white mb-2">₺24,500</div>
-            <div className="text-white/70 text-sm">Bu Ay Gelir</div>
-          </div>
-        </div>
-        <div className="bg-white/10 rounded-xl p-6">
-          <div className="text-center">
-            <div className="text-3xl font-bold text-white mb-2">156</div>
-            <div className="text-white/70 text-sm">Toplam Hasta</div>
-          </div>
-        </div>
-        <div className="bg-white/10 rounded-xl p-6">
-          <div className="text-center">
-            <div className="text-3xl font-bold text-white mb-2">₺157</div>
-            <div className="text-white/70 text-sm">Ortalama Hasta Başı</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white/10 rounded-xl p-6">
-        <h4 className="text-white font-semibold mb-4">Son İşlemler</h4>
-        <div className="space-y-3">
-          {[
-            { date: '2024-01-15', description: 'Ahmet Yılmaz - Kontrol', amount: '₺200' },
-            { date: '2024-01-14', description: 'Fatma Demir - İlk Muayene', amount: '₺300' },
-            { date: '2024-01-13', description: 'Mehmet Kaya - Laboratuvar', amount: '₺150' }
-          ].map((transaction, index) => (
-            <div key={index} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
-              <div>
-                <div className="text-white font-semibold">{transaction.description}</div>
-                <div className="text-white/60 text-sm">{transaction.date}</div>
-              </div>
-              <div className="text-green-400 font-semibold">{transaction.amount}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -225,10 +150,6 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
         return renderProfileTab();
       case 'security':
         return renderSecurityTab();
-      case 'notifications':
-        return renderNotificationsTab();
-      case 'billing':
-        return renderBillingTab();
       default:
         return renderProfileTab();
     }
