@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../../../firebase/config';
+import { useAuth } from '../../../context/AuthContext';
 
 interface SessionData {
   id: string;
@@ -16,15 +19,80 @@ interface SettingsProps {
 }
 
 const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'profile' | 'security'>('profile');
   const [isEditing, setIsEditing] = useState(false);
   const [sessions, setSessions] = useState<SessionData[]>([]);
   const [showSessionHistory, setShowSessionHistory] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [profileData, setProfileData] = useState({
+    fullName: doctorProfile?.fullName || '',
+    specialization: doctorProfile?.specialization || '',
+    hospital: doctorProfile?.hospital || '',
+    department: doctorProfile?.department || '',
+    phone: doctorProfile?.phone || ''
+  });
+
+  // doctorProfile değiştiğinde profileData'yı güncelle
+  useEffect(() => {
+    if (doctorProfile) {
+      setProfileData({
+        fullName: doctorProfile.fullName || '',
+        specialization: doctorProfile.specialization || '',
+        hospital: doctorProfile.hospital || '',
+        department: doctorProfile.department || '',
+        phone: doctorProfile.phone || ''
+      });
+    }
+  }, [doctorProfile]);
 
   const tabs = [
     { id: 'profile', label: 'Profil', icon: '👤' },
     { id: 'security', label: 'Güvenlik', icon: '🔒' }
   ];
+
+  const handleSaveProfile = async () => {
+    if (!user) {
+      alert('Kullanıcı bilgisi bulunamadı');
+      return;
+    }
+
+    if (!profileData.fullName.trim()) {
+      alert('Lütfen ad soyad giriniz');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const doctorRef = doc(db, 'doctors', user.uid);
+      const clinicUserRef = doc(db, 'clinicUsers', user.uid);
+
+      const updateData = {
+        fullName: profileData.fullName.trim(),
+        specialization: profileData.specialization.trim(),
+        hospital: profileData.hospital.trim(),
+        department: profileData.department.trim(),
+        phone: profileData.phone.trim(),
+        updatedAt: new Date().toISOString()
+      };
+
+      try {
+        await updateDoc(doctorRef, updateData);
+      } catch (error) {
+        await updateDoc(clinicUserRef, updateData);
+      }
+
+      alert('Profil bilgileriniz başarıyla güncellendi!');
+      setIsEditing(false);
+      window.location.reload();
+    } catch (error) {
+      console.error('Profil güncellenirken hata:', error);
+      alert('Profil güncellenirken bir hata oluştu. Lütfen tekrar deneyin.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Gerçek oturum verilerini yükle
   useEffect(() => {
@@ -252,10 +320,11 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
-          <label className="block text-white/80 font-semibold mb-2">Ad Soyad</label>
+          <label className="block text-white/80 font-semibold mb-2">Ad Soyad *</label>
           <input
             type="text"
-            defaultValue={doctorProfile?.fullName || ''}
+            value={profileData.fullName}
+            onChange={(e) => setProfileData(prev => ({ ...prev, fullName: e.target.value }))}
             disabled={!isEditing}
             className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
           />
@@ -264,17 +333,21 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
           <label className="block text-white/80 font-semibold mb-2">E-posta</label>
           <input
             type="email"
-            defaultValue={doctorProfile?.email || ''}
-            disabled={!isEditing}
-            className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
+            value={doctorProfile?.email || ''}
+            disabled={true}
+            className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 cursor-not-allowed"
+            title="E-posta adresi değiştirilemez"
           />
+          <p className="text-white/50 text-xs mt-1">E-posta adresi güvenlik nedeniyle değiştirilemez</p>
         </div>
         <div>
           <label className="block text-white/80 font-semibold mb-2">Uzmanlık</label>
           <input
             type="text"
-            defaultValue={doctorProfile?.specialization || ''}
+            value={profileData.specialization}
+            onChange={(e) => setProfileData(prev => ({ ...prev, specialization: e.target.value }))}
             disabled={!isEditing}
+            placeholder="Örn: Dahiliye, Kardiyoloji"
             className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
           />
         </div>
@@ -282,8 +355,10 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
           <label className="block text-white/80 font-semibold mb-2">Hastane</label>
           <input
             type="text"
-            defaultValue={doctorProfile?.hospital || ''}
+            value={profileData.hospital}
+            onChange={(e) => setProfileData(prev => ({ ...prev, hospital: e.target.value }))}
             disabled={!isEditing}
+            placeholder="Hastane adı"
             className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
           />
         </div>
@@ -291,8 +366,10 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
           <label className="block text-white/80 font-semibold mb-2">Bölüm</label>
           <input
             type="text"
-            defaultValue={doctorProfile?.department || ''}
+            value={profileData.department}
+            onChange={(e) => setProfileData(prev => ({ ...prev, department: e.target.value }))}
             disabled={!isEditing}
+            placeholder="Bölüm adı"
             className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
           />
         </div>
@@ -300,8 +377,10 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
           <label className="block text-white/80 font-semibold mb-2">Telefon</label>
           <input
             type="tel"
-            defaultValue={doctorProfile?.phone || ''}
+            value={profileData.phone}
+            onChange={(e) => setProfileData(prev => ({ ...prev, phone: e.target.value }))}
             disabled={!isEditing}
+            placeholder="0555 123 45 67"
             className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
           />
         </div>
@@ -309,12 +388,17 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
 
       {isEditing && (
         <div className="flex gap-4">
-          <button className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-200">
-            Kaydet
+          <button 
+            onClick={handleSaveProfile}
+            disabled={loading}
+            className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? 'Kaydediliyor...' : 'Kaydet'}
           </button>
           <button
             onClick={() => setIsEditing(false)}
-            className="px-6 py-3 bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl text-white transition-all duration-200"
+            disabled={loading}
+            className="px-6 py-3 bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl text-white transition-all duration-200 disabled:opacity-50"
           >
             İptal
           </button>

@@ -7,7 +7,7 @@ import ScrollAnimation from '../UI/ScrollAnimation'
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
-  const systemPaths = ['/login', '/register', '/doctor-register', '/panel']; // Basit footer eklenecek sistem sayfaları
+  const systemPaths = ['/login', '/register', '/panel']; // Basit footer eklenecek sistem sayfaları
   const isSystemPage = systemPaths.includes(location.pathname);
   const isPanelPage = location.pathname === '/panel';
   
