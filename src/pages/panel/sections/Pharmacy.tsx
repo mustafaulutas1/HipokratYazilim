@@ -30,10 +30,37 @@ interface DoctorProfile {
   fullName: string;
 }
 
+interface MedicalDevice {
+  id?: string;
+  name: string;
+  description: string;
+  deviceType: string;
+  manufacturer: string;
+  price: number;
+  serialNumber: string;
+  category: string;
+  maintenanceRequired: boolean;
+  stockQuantity: number;
+  minStockLevel: number;
+  lastMaintenanceDate?: string;
+  nextMaintenanceDate?: string;
+  clinicId: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+interface SavedMedicalDevice extends MedicalDevice {
+  id: string;
+}
+
 const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorProfile }) => {
+  const [activeTab, setActiveTab] = useState<'medications' | 'devices'>('medications');
   const [savedMedications, setSavedMedications] = useState<SavedMedication[]>([]);
+  const [savedDevices, setSavedDevices] = useState<SavedMedicalDevice[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingMedication, setEditingMedication] = useState<SavedMedication | null>(null);
+  const [editingDevice, setEditingDevice] = useState<SavedMedicalDevice | null>(null);
   const [loading, setLoading] = useState(false);
   const [showPriceUpdateSection, setShowPriceUpdateSection] = useState(false);
   const [percentageIncrease, setPercentageIncrease] = useState<string>('');
@@ -50,6 +77,21 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     barcode: '',
     category: '',
     prescriptionRequired: false,
+    stockQuantity: 0,
+    minStockLevel: 0,
+    clinicId: doctorProfile?.clinicId || '',
+    createdBy: doctorProfile?.fullName || '',
+    createdAt: new Date().toISOString()
+  });
+  const [deviceFormData, setDeviceFormData] = useState<MedicalDevice>({
+    name: '',
+    description: '',
+    deviceType: '',
+    manufacturer: '',
+    price: 0,
+    serialNumber: '',
+    category: '',
+    maintenanceRequired: false,
     stockQuantity: 0,
     minStockLevel: 0,
     clinicId: doctorProfile?.clinicId || '',
@@ -94,6 +136,38 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     'Diğer'
   ];
 
+  // Available device categories
+  const DEVICE_CATEGORIES = [
+    'Tansiyon Aleti',
+    'Şeker Ölçüm Cihazı',
+    'Termometre',
+    'Nebulizatör',
+    'EKG Cihazı',
+    'Ultrason Cihazı',
+    'Oksijen Konsantratörü',
+    'Pulse Oksimetre',
+    'Sterilizatör',
+    'Otoskop',
+    'Oftalmoskop',
+    'Stetoskop',
+    'Defibrilatör',
+    'Aspiratör',
+    'Diğer'
+  ];
+
+  // Available device types
+  const DEVICE_TYPES = [
+    'Tanı Cihazı',
+    'Tedavi Cihazı',
+    'Monitör',
+    'Laboratuvar Cihazı',
+    'Cerrahi Alet',
+    'Görüntüleme Cihazı',
+    'Sterilizasyon',
+    'Acil Müdahale',
+    'Diğer'
+  ];
+
   const fetchMedications = async () => {
     if (!doctorProfile?.clinicId) return;
     
@@ -131,39 +205,92 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     }
   };
 
+  const fetchDevices = async () => {
+    if (!doctorProfile?.clinicId) return;
+    
+    try {
+      setLoading(true);
+      console.log('🔍 Pharmacy: Refetching devices for clinicId:', doctorProfile.clinicId);
+      
+      const devicesRef = collection(db, 'medicalDevices');
+      
+      const q = query(
+        devicesRef,
+        where('clinicId', '==', doctorProfile.clinicId)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const devices: SavedMedicalDevice[] = [];
+      
+      querySnapshot.forEach((doc) => {
+        devices.push({
+          id: doc.id,
+          ...doc.data()
+        } as SavedMedicalDevice);
+      });
+      
+      devices.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      
+      console.log('✅ Pharmacy: Refetched devices:', devices.length);
+      setSavedDevices(devices);
+    } catch (error) {
+      console.error('❌ Pharmacy: Error refetching devices:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       if (!doctorProfile?.clinicId) return;
       
       try {
         setLoading(true);
-        console.log('🔍 Pharmacy: Fetching medications for clinicId:', doctorProfile.clinicId);
+        console.log('🔍 Pharmacy: Fetching data for clinicId:', doctorProfile.clinicId);
         
+        // Fetch medications
         const medicationsRef = collection(db, 'medications');
-        
-        // Use only where clause without orderBy to avoid compound index requirement
-        const q = query(
+        const medicationsQuery = query(
           medicationsRef,
           where('clinicId', '==', doctorProfile.clinicId)
         );
         
-        const querySnapshot = await getDocs(q);
+        const medicationsSnapshot = await getDocs(medicationsQuery);
         const medications: SavedMedication[] = [];
         
-        querySnapshot.forEach((doc) => {
+        medicationsSnapshot.forEach((doc) => {
           medications.push({
             id: doc.id,
             ...doc.data()
           } as SavedMedication);
         });
         
-        // Manual sort by creation date (newest first)
         medications.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        
-        console.log('✅ Pharmacy: Fetched medications:', medications.length);
         setSavedMedications(medications);
+
+        // Fetch devices
+        const devicesRef = collection(db, 'medicalDevices');
+        const devicesQuery = query(
+          devicesRef,
+          where('clinicId', '==', doctorProfile.clinicId)
+        );
+        
+        const devicesSnapshot = await getDocs(devicesQuery);
+        const devices: SavedMedicalDevice[] = [];
+        
+        devicesSnapshot.forEach((doc) => {
+          devices.push({
+            id: doc.id,
+            ...doc.data()
+          } as SavedMedicalDevice);
+        });
+        
+        devices.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setSavedDevices(devices);
+        
+        console.log('✅ Pharmacy: Fetched medications:', medications.length, 'devices:', devices.length);
       } catch (error) {
-        console.error('❌ Pharmacy: Error fetching medications:', error);
+        console.error('❌ Pharmacy: Error fetching data:', error);
       } finally {
         setLoading(false);
       }
@@ -283,6 +410,115 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     setEditingMedication(null);
   };
 
+  const saveDevice = async () => {
+    if (!deviceFormData.name.trim()) {
+      alert('Lütfen cihaz adı girin.');
+      return;
+    }
+    
+    if (deviceFormData.price <= 0) {
+      alert('Lütfen geçerli bir fiyat girin.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      if (editingDevice) {
+        const deviceRef = doc(db, 'medicalDevices', editingDevice.id);
+        await updateDoc(deviceRef, {
+          name: deviceFormData.name,
+          description: deviceFormData.description,
+          deviceType: deviceFormData.deviceType,
+          manufacturer: deviceFormData.manufacturer,
+          price: deviceFormData.price,
+          serialNumber: deviceFormData.serialNumber,
+          category: deviceFormData.category,
+          maintenanceRequired: deviceFormData.maintenanceRequired,
+          stockQuantity: deviceFormData.stockQuantity,
+          minStockLevel: deviceFormData.minStockLevel,
+          lastMaintenanceDate: deviceFormData.lastMaintenanceDate,
+          nextMaintenanceDate: deviceFormData.nextMaintenanceDate,
+          updatedAt: new Date().toISOString()
+        });
+        alert('Cihaz başarıyla güncellendi!');
+      } else {
+        const devicesRef = collection(db, 'medicalDevices');
+        await addDoc(devicesRef, {
+          ...deviceFormData,
+          clinicId: doctorProfile?.clinicId || '',
+          createdAt: new Date().toISOString()
+        });
+        alert('Cihaz başarıyla kaydedildi!');
+      }
+
+      setShowAddForm(false);
+      setEditingDevice(null);
+      resetDeviceForm();
+      fetchDevices();
+      
+    } catch (error) {
+      console.error('Error saving device:', error);
+      alert('Cihaz kaydedilirken bir hata oluştu.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const editDevice = (device: SavedMedicalDevice) => {
+    setEditingDevice(device);
+    setDeviceFormData({
+      name: device.name,
+      description: device.description,
+      deviceType: device.deviceType || '',
+      manufacturer: device.manufacturer || '',
+      price: device.price || 0,
+      serialNumber: device.serialNumber || '',
+      category: device.category || '',
+      maintenanceRequired: device.maintenanceRequired || false,
+      stockQuantity: device.stockQuantity || 0,
+      minStockLevel: device.minStockLevel || 0,
+      lastMaintenanceDate: device.lastMaintenanceDate || '',
+      nextMaintenanceDate: device.nextMaintenanceDate || '',
+      clinicId: device.clinicId,
+      createdBy: device.createdBy,
+      createdAt: device.createdAt
+    });
+    setShowAddForm(true);
+  };
+
+  const deleteDevice = async (deviceId: string) => {
+    if (window.confirm('Bu cihazı silmek istediğinizden emin misiniz?')) {
+      try {
+        await deleteDoc(doc(db, 'medicalDevices', deviceId));
+        fetchDevices();
+        alert('Cihaz başarıyla silindi!');
+      } catch (error) {
+        console.error('Error deleting device:', error);
+        alert('Cihaz silinirken bir hata oluştu.');
+      }
+    }
+  };
+
+  const resetDeviceForm = () => {
+    setDeviceFormData({
+      name: '',
+      description: '',
+      deviceType: '',
+      manufacturer: '',
+      price: 0,
+      serialNumber: '',
+      category: '',
+      maintenanceRequired: false,
+      stockQuantity: 0,
+      minStockLevel: 0,
+      clinicId: doctorProfile?.clinicId || '',
+      createdBy: doctorProfile?.fullName || '',
+      createdAt: new Date().toISOString()
+    });
+    setEditingDevice(null);
+  };
+
   const applyPercentageIncrease = async () => {
     const percentage = parseFloat(percentageIncrease);
 
@@ -362,6 +598,29 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       }
     });
 
+  // Filter and sort devices
+  const filteredAndSortedDevices = savedDevices
+    .filter(dev => {
+      const matchesSearch = dev.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                           dev.serialNumber.includes(searchTerm) ||
+                           (dev.manufacturer && dev.manufacturer.toLowerCase().includes(searchTerm.toLowerCase()));
+      const matchesCategory = filterCategory === 'all' || dev.category === filterCategory;
+      return matchesSearch && matchesCategory;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'name') {
+        return sortOrder === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+      } else if (sortBy === 'price') {
+        return sortOrder === 'asc' ? a.price - b.price : b.price - a.price;
+      } else if (sortBy === 'stock') {
+        return sortOrder === 'asc' ? a.stockQuantity - b.stockQuantity : b.stockQuantity - a.stockQuantity;
+      } else {
+        return sortOrder === 'asc' ? 
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() : 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      }
+    });
+
   // Get low stock medications
   const lowStockMedications = savedMedications.filter(
     med => med.stockQuantity <= med.minStockLevel
@@ -378,48 +637,120 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
            new Date(med.expiryDate) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
   );
 
+  // Get low stock devices
+  const lowStockDevices = savedDevices.filter(
+    dev => dev.stockQuantity <= dev.minStockLevel
+  );
+
+  // Get devices needing maintenance
+  const devicesNeedingMaintenance = savedDevices.filter(
+    dev => dev.maintenanceRequired && dev.nextMaintenanceDate && new Date(dev.nextMaintenanceDate) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+  );
+
   return (
     <div className="space-y-6">
       {/* Header Section */}
       <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-        <div className="text-center">
+        <div className="text-center mb-6">
           <h1 className="text-3xl font-bold text-white mb-2">
-            💊 Eczane Yönetimi
+            💊 Eczane ve Cihaz Yönetimi
           </h1>
           <p className="text-white/70 text-lg">
-            İlaç tanımlama, stok takibi ve fiyat yönetimi
+            İlaç ve tıbbi cihaz tanımlama, stok takibi ve fiyat yönetimi
           </p>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex justify-center gap-4">
+          <button
+            onClick={() => {
+              setActiveTab('medications');
+              setShowAddForm(false);
+              setSearchTerm('');
+              setFilterCategory('all');
+            }}
+            className={`px-8 py-3 rounded-xl font-medium transition-all duration-200 ${
+              activeTab === 'medications'
+                ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg'
+                : 'bg-white/10 text-white/70 hover:bg-white/20'
+            }`}
+          >
+            💊 İlaçlar
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab('devices');
+              setShowAddForm(false);
+              setSearchTerm('');
+              setFilterCategory('all');
+            }}
+            className={`px-8 py-3 rounded-xl font-medium transition-all duration-200 ${
+              activeTab === 'devices'
+                ? 'bg-gradient-to-r from-purple-600 to-purple-700 text-white shadow-lg'
+                : 'bg-white/10 text-white/70 hover:bg-white/20'
+            }`}
+          >
+            🏥 Tıbbi Cihazlar
+          </button>
         </div>
       </div>
 
       {!showAddForm ? (
         <>
           {/* Stats Overview */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-gradient-to-r from-blue-500/20 to-blue-600/20 border border-blue-500/30 rounded-2xl p-4">
-              <div className="text-blue-300 text-2xl mb-1">💊</div>
-              <div className="text-white text-2xl font-bold">{savedMedications.length}</div>
-              <div className="text-white/70 text-sm">Toplam İlaç</div>
+          {activeTab === 'medications' ? (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="bg-gradient-to-r from-blue-500/20 to-blue-600/20 border border-blue-500/30 rounded-2xl p-4">
+                <div className="text-blue-300 text-2xl mb-1">💊</div>
+                <div className="text-white text-2xl font-bold">{savedMedications.length}</div>
+                <div className="text-white/70 text-sm">Toplam İlaç</div>
+              </div>
+              
+              <div className="bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 border border-yellow-500/30 rounded-2xl p-4">
+                <div className="text-yellow-300 text-2xl mb-1">⚠️</div>
+                <div className="text-white text-2xl font-bold">{lowStockMedications.length}</div>
+                <div className="text-white/70 text-sm">Düşük Stok</div>
+              </div>
+              
+              <div className="bg-gradient-to-r from-red-500/20 to-red-600/20 border border-red-500/30 rounded-2xl p-4">
+                <div className="text-red-300 text-2xl mb-1">📅</div>
+                <div className="text-white text-2xl font-bold">{expiredMedications.length}</div>
+                <div className="text-white/70 text-sm">Süresi Dolmuş</div>
+              </div>
+              
+              <div className="bg-gradient-to-r from-orange-500/20 to-orange-600/20 border border-orange-500/30 rounded-2xl p-4">
+                <div className="text-orange-300 text-2xl mb-1">⏰</div>
+                <div className="text-white text-2xl font-bold">{soonToExpireMedications.length}</div>
+                <div className="text-white/70 text-sm">Yakında Bitiyor</div>
+              </div>
             </div>
-            
-            <div className="bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 border border-yellow-500/30 rounded-2xl p-4">
-              <div className="text-yellow-300 text-2xl mb-1">⚠️</div>
-              <div className="text-white text-2xl font-bold">{lowStockMedications.length}</div>
-              <div className="text-white/70 text-sm">Düşük Stok</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="bg-gradient-to-r from-purple-500/20 to-purple-600/20 border border-purple-500/30 rounded-2xl p-4">
+                <div className="text-purple-300 text-2xl mb-1">🏥</div>
+                <div className="text-white text-2xl font-bold">{savedDevices.length}</div>
+                <div className="text-white/70 text-sm">Toplam Cihaz</div>
+              </div>
+              
+              <div className="bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 border border-yellow-500/30 rounded-2xl p-4">
+                <div className="text-yellow-300 text-2xl mb-1">⚠️</div>
+                <div className="text-white text-2xl font-bold">{lowStockDevices.length}</div>
+                <div className="text-white/70 text-sm">Düşük Stok</div>
+              </div>
+              
+              <div className="bg-gradient-to-r from-orange-500/20 to-orange-600/20 border border-orange-500/30 rounded-2xl p-4">
+                <div className="text-orange-300 text-2xl mb-1">🔧</div>
+                <div className="text-white text-2xl font-bold">{devicesNeedingMaintenance.length}</div>
+                <div className="text-white/70 text-sm">Bakım Gerekli</div>
+              </div>
+              
+              <div className="bg-gradient-to-r from-green-500/20 to-green-600/20 border border-green-500/30 rounded-2xl p-4">
+                <div className="text-green-300 text-2xl mb-1">✅</div>
+                <div className="text-white text-2xl font-bold">{savedDevices.filter(d => d.maintenanceRequired).length}</div>
+                <div className="text-white/70 text-sm">Bakım Takipli</div>
+              </div>
             </div>
-            
-            <div className="bg-gradient-to-r from-red-500/20 to-red-600/20 border border-red-500/30 rounded-2xl p-4">
-              <div className="text-red-300 text-2xl mb-1">📅</div>
-              <div className="text-white text-2xl font-bold">{expiredMedications.length}</div>
-              <div className="text-white/70 text-sm">Süresi Dolmuş</div>
-            </div>
-            
-            <div className="bg-gradient-to-r from-orange-500/20 to-orange-600/20 border border-orange-500/30 rounded-2xl p-4">
-              <div className="text-orange-300 text-2xl mb-1">⏰</div>
-              <div className="text-white text-2xl font-bold">{soonToExpireMedications.length}</div>
-              <div className="text-white/70 text-sm">Yakında Bitiyor</div>
-            </div>
-          </div>
+          )}
 
           {/* Action Buttons and Filters */}
           <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
@@ -428,10 +759,10 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                 onClick={() => setShowAddForm(true)}
                 className="px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-xl font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center gap-2"
               >
-                ➕ Yeni İlaç Ekle
+                ➕ {activeTab === 'medications' ? 'Yeni İlaç Ekle' : 'Yeni Cihaz Ekle'}
               </button>
 
-              {savedMedications.length > 0 && (
+              {activeTab === 'medications' && savedMedications.length > 0 && (
                 <button
                   onClick={() => setShowPriceUpdateSection(!showPriceUpdateSection)}
                   className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center gap-2"
@@ -445,7 +776,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="İlaç adı, barkod veya üretici ara..."
+                  placeholder={activeTab === 'medications' ? 'İlaç adı, barkod veya üretici ara...' : 'Cihaz adı, seri no veya üretici ara...'}
                   className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                 />
               </div>
@@ -456,7 +787,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                 className="px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
               >
                 <option value="all" className="text-gray-900 bg-white">Tüm Kategoriler</option>
-                {MEDICATION_CATEGORIES.map(category => (
+                {(activeTab === 'medications' ? MEDICATION_CATEGORIES : DEVICE_CATEGORIES).map(category => (
                   <option key={category} value={category} className="text-gray-900 bg-white">{category}</option>
                 ))}
               </select>
@@ -481,7 +812,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
             </div>
 
             {/* Percentage Increase Section */}
-            {showPriceUpdateSection && savedMedications.length > 0 && (
+            {activeTab === 'medications' && showPriceUpdateSection && savedMedications.length > 0 && (
               <div className="mb-6 p-5 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-400/30 rounded-xl">
                 <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                   📊 Toplu Fiyat Güncelleme
@@ -543,28 +874,29 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
               </div>
             )}
 
-            {/* Medications List */}
+            {/* Items List */}
             <div className="space-y-4">
               {loading ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
-                  <span className="ml-3 text-white">İlaçlar yükleniyor...</span>
+                  <span className="ml-3 text-white">{activeTab === 'medications' ? 'İlaçlar' : 'Cihazlar'} yükleniyor...</span>
                 </div>
-              ) : filteredAndSortedMedications.length === 0 ? (
-                <div className="text-center py-12">
-                  <div className="text-6xl mb-4">💊</div>
-                  <h3 className="text-xl font-semibold text-white mb-2">
-                    {searchTerm || filterCategory !== 'all' ? 'Arama kriterlerinize uygun ilaç bulunamadı' : 'Henüz ilaç eklenmemiş'}
-                  </h3>
-                  <p className="text-white/60">
-                    {searchTerm || filterCategory !== 'all' ? 'Farklı bir arama deneyin' : 'İlk ilacınızı eklemek için yukarıdaki butonu kullanın'}
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <h3 className="text-lg font-semibold text-white mb-4">
-                    📋 İlaçlar ({filteredAndSortedMedications.length})
-                  </h3>
+              ) : activeTab === 'medications' ? (
+                filteredAndSortedMedications.length === 0 ? (
+                  <div className="text-center py-12">
+                    <div className="text-6xl mb-4">💊</div>
+                    <h3 className="text-xl font-semibold text-white mb-2">
+                      {searchTerm || filterCategory !== 'all' ? 'Arama kriterlerinize uygun ilaç bulunamadı' : 'Henüz ilaç eklenmemiş'}
+                    </h3>
+                    <p className="text-white/60">
+                      {searchTerm || filterCategory !== 'all' ? 'Farklı bir arama deneyin' : 'İlk ilacınızı eklemek için yukarıdaki butonu kullanın'}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <h3 className="text-lg font-semibold text-white mb-4">
+                      📋 İlaçlar ({filteredAndSortedMedications.length})
+                    </h3>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {filteredAndSortedMedications.map((medication) => (
@@ -664,21 +996,140 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                     ))}
                   </div>
                 </>
+              )
+              ) : (
+                filteredAndSortedDevices.length === 0 ? (
+                  <div className="text-center py-12">
+                    <div className="text-6xl mb-4">🏥</div>
+                    <h3 className="text-xl font-semibold text-white mb-2">
+                      {searchTerm || filterCategory !== 'all' ? 'Arama kriterlerinize uygun cihaz bulunamadı' : 'Henüz cihaz eklenmemiş'}
+                    </h3>
+                    <p className="text-white/60">
+                      {searchTerm || filterCategory !== 'all' ? 'Farklı bir arama deneyin' : 'İlk cihazınızı eklemek için yukarıdaki butonu kullanın'}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <h3 className="text-lg font-semibold text-white mb-4">
+                      📋 Tıbbi Cihazlar ({filteredAndSortedDevices.length})
+                    </h3>
+                  
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {filteredAndSortedDevices.map((device) => (
+                        <div 
+                          key={device.id} 
+                          className={`bg-white/5 border rounded-xl p-4 transition-all duration-200 hover:bg-white/10 ${
+                            device.stockQuantity <= device.minStockLevel 
+                              ? 'border-yellow-500/50 bg-yellow-500/10' 
+                              : device.maintenanceRequired && device.nextMaintenanceDate && new Date(device.nextMaintenanceDate) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+                                ? 'border-orange-500/50 bg-orange-500/10'
+                                : 'border-white/20'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <h4 className="text-lg font-semibold text-white">{device.name}</h4>
+                                <span className="px-3 py-1 bg-green-500/20 border border-green-400/30 rounded-full text-green-300 text-sm font-medium">
+                                  💰 {device.price.toFixed(2)} TL
+                                </span>
+                              </div>
+                              
+                              <div className="flex flex-wrap gap-2 mb-2">
+                                {device.category && (
+                                  <span className="px-2 py-1 bg-purple-500/20 text-purple-300 rounded text-xs">
+                                    {device.category}
+                                  </span>
+                                )}
+                                {device.deviceType && (
+                                  <span className="px-2 py-1 bg-blue-500/20 text-blue-300 rounded text-xs">
+                                    {device.deviceType}
+                                  </span>
+                                )}
+                                {device.maintenanceRequired && (
+                                  <span className="px-2 py-1 bg-orange-500/20 text-orange-300 rounded text-xs">
+                                    🔧 Bakım Takipli
+                                  </span>
+                                )}
+                              </div>
+                              
+                              {device.serialNumber && (
+                                <p className="text-white/70 text-sm mb-1">Seri No: {device.serialNumber}</p>
+                              )}
+                              
+                              {device.manufacturer && (
+                                <p className="text-white/70 text-sm mb-1">{device.manufacturer}</p>
+                              )}
+                              
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                <span className={`px-2 py-1 rounded text-xs ${
+                                  device.stockQuantity <= device.minStockLevel 
+                                    ? 'bg-yellow-500/20 text-yellow-300' 
+                                    : 'bg-green-500/20 text-green-300'
+                                }`}>
+                                  📦 Stok: {device.stockQuantity}
+                                </span>
+                                
+                                {device.nextMaintenanceDate && (
+                                  <span className={`px-2 py-1 rounded text-xs ${
+                                    new Date(device.nextMaintenanceDate) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+                                      ? 'bg-orange-500/20 text-orange-300'
+                                      : 'bg-blue-500/20 text-blue-300'
+                                  }`}>
+                                    🔧 {new Date(device.nextMaintenanceDate).toLocaleDateString('tr-TR')}
+                                  </span>
+                                )}
+                              </div>
+                              
+                              {device.description && (
+                                <p className="text-white/70 text-sm mt-2 line-clamp-2">{device.description}</p>
+                              )}
+                              
+                              <div className="flex items-center gap-4 text-xs text-white/50 mt-3">
+                                <span>👨‍⚕️ {device.createdBy}</span>
+                                <span>📅 {new Date(device.createdAt).toLocaleDateString('tr-TR')}</span>
+                              </div>
+                            </div>
+                            
+                            <div className="flex flex-col gap-2">
+                              <button
+                                onClick={() => editDevice(device)}
+                                className="px-3 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-blue-300 hover:text-blue-200 transition-all duration-200 text-sm"
+                              >
+                                ✏️ Düzenle
+                              </button>
+                              <button
+                                onClick={() => deleteDevice(device.id)}
+                                className="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-all duration-200 text-sm"
+                              >
+                                🗑️ Sil
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )
               )}
             </div>
           </div>
         </>
       ) : (
-        /* Add/Edit Medication Form */
+        /* Add/Edit Form */
         <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-xl font-bold text-white">
-              {editingMedication ? '✏️ İlaç Düzenle' : '➕ Yeni İlaç Ekle'}
+              {activeTab === 'medications' 
+                ? (editingMedication ? '✏️ İlaç Düzenle' : '➕ Yeni İlaç Ekle')
+                : (editingDevice ? '✏️ Cihaz Düzenle' : '➕ Yeni Cihaz Ekle')
+              }
             </h3>
             <button
               onClick={() => {
                 setShowAddForm(false);
                 resetForm();
+                resetDeviceForm();
               }}
               className="px-4 py-2 bg-gray-500/20 hover:bg-gray-500/30 border border-gray-500/30 rounded-xl text-gray-300 hover:text-gray-200 transition-all duration-200"
             >
@@ -686,21 +1137,23 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
             </button>
           </div>
 
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Medication Name */}
-              <div>
-                <label className="block text-white/80 text-sm font-medium mb-2">
-                  İlaç Adı *
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                  placeholder="Örn: Parol, Dolorex"
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                />
-              </div>
+          {activeTab === 'medications' ? (
+            /* Medication Form */
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Medication Name */}
+                <div>
+                  <label className="block text-white/80 text-sm font-medium mb-2">
+                    İlaç Adı *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="Örn: Parol, Dolorex"
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  />
+                </div>
 
               {/* Barcode */}
               <div>
@@ -757,8 +1210,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                 </label>
                 <input
                   type="number"
-                  value={formData.price}
-                  onChange={(e) => setFormData(prev => ({ ...prev, price: parseFloat(e.target.value) || 0 }))}
+                  value={formData.price === 0 ? '' : formData.price}
+                  onChange={(e) => setFormData(prev => ({ ...prev, price: e.target.value === '' ? 0 : parseFloat(e.target.value) }))}
                   placeholder="Örn: 25.50"
                   min="0"
                   step="0.01"
@@ -787,8 +1240,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                 </label>
                 <input
                   type="number"
-                  value={formData.stockQuantity}
-                  onChange={(e) => setFormData(prev => ({ ...prev, stockQuantity: parseInt(e.target.value) || 0 }))}
+                  value={formData.stockQuantity === 0 ? '' : formData.stockQuantity}
+                  onChange={(e) => setFormData(prev => ({ ...prev, stockQuantity: e.target.value === '' ? 0 : parseInt(e.target.value) }))}
                   placeholder="Stok miktarı"
                   min="0"
                   className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
@@ -802,8 +1255,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                 </label>
                 <input
                   type="number"
-                  value={formData.minStockLevel}
-                  onChange={(e) => setFormData(prev => ({ ...prev, minStockLevel: parseInt(e.target.value) || 0 }))}
+                  value={formData.minStockLevel === 0 ? '' : formData.minStockLevel}
+                  onChange={(e) => setFormData(prev => ({ ...prev, minStockLevel: e.target.value === '' ? 0 : parseInt(e.target.value) }))}
                   placeholder="Minimum stok uyarısı için"
                   min="0"
                   className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
@@ -852,24 +1305,224 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
               />
             </div>
 
-            {/* Save Button */}
-            <div className="flex justify-end">
-              <button
-                onClick={saveMedication}
-                disabled={!formData.name.trim() || formData.price <= 0 || loading}
-                className="px-8 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-xl font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
-              >
-                {loading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white inline-block mr-2"></div>
-                    Kaydediliyor...
-                  </>
-                ) : (
-                  editingMedication ? '💾 İlacı Güncelle' : '💾 İlacı Kaydet'
-                )}
-              </button>
+              {/* Save Button */}
+              <div className="flex justify-end">
+                <button
+                  onClick={saveMedication}
+                  disabled={!formData.name.trim() || formData.price <= 0 || loading}
+                  className="px-8 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-xl font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
+                >
+                  {loading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white inline-block mr-2"></div>
+                      Kaydediliyor...
+                    </>
+                  ) : (
+                    editingMedication ? '💾 İlacı Güncelle' : '💾 İlacı Kaydet'
+                  )}
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            /* Device Form */
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Device Name */}
+                <div>
+                  <label className="block text-white/80 text-sm font-medium mb-2">
+                    Cihaz Adı *
+                  </label>
+                  <input
+                    type="text"
+                    value={deviceFormData.name}
+                    onChange={(e) => setDeviceFormData(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="Örn: Tansiyon Aleti, EKG Cihazı"
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                  />
+                </div>
+
+                {/* Serial Number */}
+                <div>
+                  <label className="block text-white/80 text-sm font-medium mb-2">
+                    Seri Numarası
+                  </label>
+                  <input
+                    type="text"
+                    value={deviceFormData.serialNumber}
+                    onChange={(e) => setDeviceFormData(prev => ({ ...prev, serialNumber: e.target.value }))}
+                    placeholder="Seri numarası"
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                  />
+                </div>
+
+                {/* Device Type */}
+                <div>
+                  <label className="block text-white/80 text-sm font-medium mb-2">
+                    Cihaz Tipi
+                  </label>
+                  <select
+                    value={deviceFormData.deviceType}
+                    onChange={(e) => setDeviceFormData(prev => ({ ...prev, deviceType: e.target.value }))}
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                  >
+                    <option value="" className="text-gray-900 bg-white">Seçiniz</option>
+                    {DEVICE_TYPES.map(type => (
+                      <option key={type} value={type} className="text-gray-900 bg-white">{type}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Category */}
+                <div>
+                  <label className="block text-white/80 text-sm font-medium mb-2">
+                    Kategori
+                  </label>
+                  <select
+                    value={deviceFormData.category}
+                    onChange={(e) => setDeviceFormData(prev => ({ ...prev, category: e.target.value }))}
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                  >
+                    <option value="" className="text-gray-900 bg-white">Seçiniz</option>
+                    {DEVICE_CATEGORIES.map(category => (
+                      <option key={category} value={category} className="text-gray-900 bg-white">{category}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Price */}
+                <div>
+                  <label className="block text-white/80 text-sm font-medium mb-2">
+                    Fiyat (TL) *
+                  </label>
+                  <input
+                    type="number"
+                    value={deviceFormData.price === 0 ? '' : deviceFormData.price}
+                    onChange={(e) => setDeviceFormData(prev => ({ ...prev, price: e.target.value === '' ? 0 : parseFloat(e.target.value) }))}
+                    placeholder="Örn: 1500.00"
+                    min="0"
+                    step="0.01"
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                  />
+                </div>
+
+                {/* Manufacturer */}
+                <div>
+                  <label className="block text-white/80 text-sm font-medium mb-2">
+                    Üretici Firma
+                  </label>
+                  <input
+                    type="text"
+                    value={deviceFormData.manufacturer}
+                    onChange={(e) => setDeviceFormData(prev => ({ ...prev, manufacturer: e.target.value }))}
+                    placeholder="Örn: Omron, Philips"
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                  />
+                </div>
+
+                {/* Stock Quantity */}
+                <div>
+                  <label className="block text-white/80 text-sm font-medium mb-2">
+                    Stok Miktarı
+                  </label>
+                  <input
+                    type="number"
+                    value={deviceFormData.stockQuantity === 0 ? '' : deviceFormData.stockQuantity}
+                    onChange={(e) => setDeviceFormData(prev => ({ ...prev, stockQuantity: e.target.value === '' ? 0 : parseInt(e.target.value) }))}
+                    placeholder="Stok miktarı"
+                    min="0"
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                  />
+                </div>
+
+                {/* Minimum Stock Level */}
+                <div>
+                  <label className="block text-white/80 text-sm font-medium mb-2">
+                    Minimum Stok Seviyesi
+                  </label>
+                  <input
+                    type="number"
+                    value={deviceFormData.minStockLevel === 0 ? '' : deviceFormData.minStockLevel}
+                    onChange={(e) => setDeviceFormData(prev => ({ ...prev, minStockLevel: e.target.value === '' ? 0 : parseInt(e.target.value) }))}
+                    placeholder="Minimum stok uyarısı için"
+                    min="0"
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                  />
+                </div>
+
+                {/* Last Maintenance Date */}
+                <div>
+                  <label className="block text-white/80 text-sm font-medium mb-2">
+                    Son Bakım Tarihi
+                  </label>
+                  <input
+                    type="date"
+                    value={deviceFormData.lastMaintenanceDate || ''}
+                    onChange={(e) => setDeviceFormData(prev => ({ ...prev, lastMaintenanceDate: e.target.value }))}
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                  />
+                </div>
+
+                {/* Next Maintenance Date */}
+                <div>
+                  <label className="block text-white/80 text-sm font-medium mb-2">
+                    Sonraki Bakım Tarihi
+                  </label>
+                  <input
+                    type="date"
+                    value={deviceFormData.nextMaintenanceDate || ''}
+                    onChange={(e) => setDeviceFormData(prev => ({ ...prev, nextMaintenanceDate: e.target.value }))}
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                  />
+                </div>
+
+                {/* Maintenance Required */}
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="maintenanceRequired"
+                    checked={deviceFormData.maintenanceRequired}
+                    onChange={(e) => setDeviceFormData(prev => ({ ...prev, maintenanceRequired: e.target.checked }))}
+                    className="w-5 h-5 text-purple-600 bg-white/10 border-white/20 rounded focus:ring-purple-500"
+                  />
+                  <label htmlFor="maintenanceRequired" className="ml-2 text-white/80 text-sm font-medium">
+                    Bakım Takibi Gerekli
+                  </label>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-white/80 text-sm font-medium mb-2">
+                  Açıklama
+                </label>
+                <textarea
+                  value={deviceFormData.description}
+                  onChange={(e) => setDeviceFormData(prev => ({ ...prev, description: e.target.value }))}
+                  rows={3}
+                  placeholder="Bu cihazın kullanım alanları, özellikleri vb..."
+                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                />
+              </div>
+
+              {/* Save Button */}
+              <div className="flex justify-end">
+                <button
+                  onClick={saveDevice}
+                  disabled={!deviceFormData.name.trim() || deviceFormData.price <= 0 || loading}
+                  className="px-8 py-3 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white rounded-xl font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
+                >
+                  {loading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white inline-block mr-2"></div>
+                      Kaydediliyor...
+                    </>
+                  ) : (
+                    editingDevice ? '💾 Cihazı Güncelle' : '💾 Cihazı Kaydet'
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

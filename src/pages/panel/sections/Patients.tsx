@@ -44,24 +44,24 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
   const fetchPatients = async () => {
     try {
       setLoading(true);
-      
+
       // Check if doctorProfile and clinicId exist
       if (!doctorProfile?.clinicId) {
         console.error('❌ Patients: No clinicId found in doctorProfile');
         setPatients([]);
         return;
       }
-      
+
       console.log('🔍 Patients: Fetching patients for clinicId:', doctorProfile.clinicId);
-      
+
       const patientsRef = collection(db, 'patients');
       const q = query(
-        patientsRef, 
+        patientsRef,
         where('clinicId', '==', doctorProfile.clinicId),
         orderBy('createdAt', 'desc')
       );
       const querySnapshot = await getDocs(q);
-      
+
       const patientsData: Patient[] = [];
       querySnapshot.forEach((doc) => {
         patientsData.push({
@@ -69,7 +69,7 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
           ...doc.data()
         } as Patient);
       });
-      
+
       console.log('📋 Patients: Found patients:', patientsData.length);
       setPatients(patientsData);
     } catch (error) {
@@ -89,11 +89,11 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
     const birth = new Date(birthDate);
     let age = today.getFullYear() - birth.getFullYear();
     const monthDiff = today.getMonth() - birth.getMonth();
-    
+
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
       age--;
     }
-    
+
     return age;
   };
 
@@ -104,14 +104,14 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
 
   const filteredPatients = patients.filter(patient => {
     const matchesSearch = patient.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (patient.tcNo && patient.tcNo.includes(searchTerm)) ||
-                         (patient.email && patient.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                         (patient.phone && patient.phone.includes(searchTerm));
+      (patient.tcNo && patient.tcNo.includes(searchTerm)) ||
+      (patient.email && patient.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (patient.phone && patient.phone.includes(searchTerm));
 
     const isIncomplete = (patient as any).registrationStatus === 'incomplete';
     const matchesFilter = filterStatus === 'all' ||
-                         (filterStatus === 'active' && !isIncomplete) ||
-                         (filterStatus === 'inactive' && isIncomplete);
+      (filterStatus === 'active' && !isIncomplete) ||
+      (filterStatus === 'inactive' && isIncomplete);
     return matchesSearch && matchesFilter;
   });
 
@@ -131,7 +131,7 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
           <h1 className="text-3xl font-bold text-white">Hasta Yönetimi</h1>
           <p className="text-white/70">Hasta listesi ve bilgileri</p>
         </div>
-        <button 
+        <button
           onClick={() => setIsAddModalOpen(true)}
           className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-200 shadow-lg"
         >
@@ -175,11 +175,13 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
         {[
           { title: 'Toplam Hasta', value: patients.length.toString(), icon: '👥', color: 'from-blue-500 to-cyan-500' },
           { title: 'Kayıtlı Hasta', value: patients.filter(p => (p as any).registrationStatus !== 'incomplete').length.toString(), icon: '✅', color: 'from-green-500 to-emerald-500' },
-          { title: 'Bu Ay Yeni', value: patients.filter(p => {
-            const createdAt = new Date(p.createdAt);
-            const now = new Date();
-            return createdAt.getMonth() === now.getMonth() && createdAt.getFullYear() === now.getFullYear();
-          }).length.toString(), icon: '🆕', color: 'from-yellow-500 to-orange-500' },
+          {
+            title: 'Bu Ay Yeni', value: patients.filter(p => {
+              const createdAt = new Date(p.createdAt);
+              const now = new Date();
+              return createdAt.getMonth() === now.getMonth() && createdAt.getFullYear() === now.getFullYear();
+            }).length.toString(), icon: '🆕', color: 'from-yellow-500 to-orange-500'
+          },
           { title: 'Kayıtsız Hasta', value: patients.filter(p => (p as any).registrationStatus === 'incomplete').length.toString(), icon: '📅', color: 'from-purple-500 to-pink-500' }
         ].map((stat, index) => (
           <div key={index} className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
@@ -201,7 +203,7 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
         <div className="p-6 border-b border-white/20">
           <h2 className="text-xl font-bold text-white">Hasta Listesi</h2>
         </div>
-        
+
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-white/5">
@@ -238,34 +240,33 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
                     {patient.registrationDate ? formatDate(patient.registrationDate) : '-'}
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                      patient.registrationDate 
-                        ? 'bg-green-500/20 text-green-300' 
-                        : 'bg-red-500/20 text-red-300'
-                    }`}>
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${patient.registrationDate
+                      ? 'bg-green-500/20 text-green-300'
+                      : 'bg-red-500/20 text-red-300'
+                      }`}>
                       {patient.registrationDate ? 'Kayıtlı' : 'Kayıtsız'}
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                                         <div className="flex items-center gap-2">
-                       <button 
-                         onClick={() => {
-                           setSelectedPatientForDetails(patient);
-                           setIsDetailsModalOpen(true);
-                         }}
-                         className="p-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-blue-300 hover:text-blue-200 transition-all duration-200"
-                       >
-                         👁️
-                       </button>
-                                             <button 
-                         onClick={() => {
-                           setSelectedPatient(patient);
-                           setIsEditModalOpen(true);
-                         }}
-                         className="p-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg text-green-300 hover:text-green-200 transition-all duration-200"
-                       >
-                         ✏️
-                       </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setSelectedPatientForDetails(patient);
+                          setIsDetailsModalOpen(true);
+                        }}
+                        className="p-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-blue-300 hover:text-blue-200 transition-all duration-200"
+                      >
+                        👁️
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSelectedPatient(patient);
+                          setIsEditModalOpen(true);
+                        }}
+                        className="p-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg text-green-300 hover:text-green-200 transition-all duration-200"
+                      >
+                        ✏️
+                      </button>
                       <button className="p-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-all duration-200">
                         🗑️
                       </button>
@@ -276,7 +277,7 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
             </tbody>
           </table>
         </div>
-        
+
         {filteredPatients.length === 0 && (
           <div className="p-8 text-center">
             <div className="text-white/60">Hasta bulunamadı</div>
@@ -292,29 +293,29 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
         doctorProfile={doctorProfile}
       />
 
-             {/* Edit Patient Modal */}
-       <EditPatientModal
-         isOpen={isEditModalOpen}
-         onClose={() => {
-           setIsEditModalOpen(false);
-           setSelectedPatient(null);
-         }}
-         onPatientUpdated={fetchPatients}
-         patient={selectedPatient}
-         doctorProfile={doctorProfile}
-       />
+      {/* Edit Patient Modal */}
+      <EditPatientModal
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setSelectedPatient(null);
+        }}
+        onPatientUpdated={fetchPatients}
+        patient={selectedPatient}
+        doctorProfile={doctorProfile}
+      />
 
-       {/* Patient Details Modal */}
-       <PatientDetailsModal
-         isOpen={isDetailsModalOpen}
-         onClose={() => {
-           setIsDetailsModalOpen(false);
-           setSelectedPatientForDetails(null);
-         }}
-         patient={selectedPatientForDetails}
-       />
-     </div>
-   );
- };
+      {/* Patient Details Modal */}
+      <PatientDetailsModal
+        isOpen={isDetailsModalOpen}
+        onClose={() => {
+          setIsDetailsModalOpen(false);
+          setSelectedPatientForDetails(null);
+        }}
+        patient={selectedPatientForDetails}
+      />
+    </div>
+  );
+};
 
 export default Patients; 
