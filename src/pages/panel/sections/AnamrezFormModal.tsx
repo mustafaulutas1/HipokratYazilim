@@ -172,8 +172,8 @@ const DIAGNOSIS_SPECIFIC_QUESTIONS: Record<string, { label: string; questions: s
       'Yaygın Ödem'
     ]
   },
-  'Pisikolojik Değerlendirme': {
-    label: 'Pisikolojik Değerlendirme',
+  'Psikolojik Değerlendirme': {
+    label: 'Psikolojik Değerlendirme',
     questions: [
       'Evham',
       'Halüsinasyon',
