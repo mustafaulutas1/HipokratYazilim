@@ -102,15 +102,15 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
   // Tekrarlanan oturumları temizle
   const cleanDuplicateSessions = (sessions: SessionData[]): SessionData[] => {
     const uniqueSessions = new Map<string, SessionData>();
-    
+
     sessions.forEach(session => {
       const key = session.ipAddress;
-      if (!uniqueSessions.has(key) || 
-          new Date(session.lastLogin) > new Date(uniqueSessions.get(key)!.lastLogin)) {
+      if (!uniqueSessions.has(key) ||
+        new Date(session.lastLogin) > new Date(uniqueSessions.get(key)!.lastLogin)) {
         uniqueSessions.set(key, session);
       }
     });
-    
+
     return Array.from(uniqueSessions.values());
   };
 
@@ -118,7 +118,7 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
     const userAgent = navigator.userAgent;
     const platform = navigator.platform;
     const language = navigator.language;
-    
+
     // Cihaz adını belirle
     let deviceName = 'Bilinmeyen Cihaz';
     if (userAgent.includes('iPhone')) {
@@ -165,11 +165,11 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
       // IP adresini al
       const ipResponse = await fetch('https://api.ipify.org?format=json');
       const ipData = await ipResponse.json();
-      
+
       // Konum bilgisini al
       const locationResponse = await fetch(`https://ipapi.co/${ipData.ip}/json/`);
       const locationData = await locationResponse.json();
-      
+
       return {
         ipAddress: ipData.ip,
         location: `${locationData.city || 'Bilinmeyen'}, ${locationData.country_name || 'Bilinmeyen'}`
@@ -188,10 +188,10 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
       // Mevcut cihaz bilgilerini al
       const deviceInfo = getDeviceInfo();
       const locationInfo = await getIPAndLocation();
-      
+
       // Mevcut oturum bilgilerini localStorage'dan al
       const existingSessionsData = JSON.parse(localStorage.getItem('userSessions') || '[]');
-      
+
       // Tarih verilerini doğru şekilde parse et
       const existingSessions = existingSessionsData.map((session: any) => ({
         ...session,
@@ -225,7 +225,7 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
             isActive: false
           };
         });
-        
+
         localStorage.setItem('userSessions', JSON.stringify(updatedSessions));
         setSessions(updatedSessions);
       } else {
@@ -250,7 +250,7 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
 
         // Yeni oturum ekle
         const allSessions = [currentSession, ...updatedSessions];
-        
+
         localStorage.setItem('userSessions', JSON.stringify(allSessions));
         setSessions(allSessions);
       }
@@ -266,10 +266,10 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
       // localStorage'dan oturumu kaldır
       const updatedSessions = sessions.filter(session => session.id !== sessionId);
       localStorage.setItem('userSessions', JSON.stringify(updatedSessions));
-      
+
       // State'i güncelle
       setSessions(updatedSessions);
-      
+
       console.log('Oturum sonlandırıldı:', sessionId);
     } catch (error) {
       console.error('Oturum sonlandırılırken hata:', error);
@@ -280,15 +280,15 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
     try {
       // Eğer string ise Date objesine çevir
       const dateObj = typeof date === 'string' ? new Date(date) : date;
-      
+
       // Geçerli tarih kontrolü
       if (isNaN(dateObj.getTime())) {
         return 'Bilinmeyen tarih';
       }
-      
+
       const now = new Date();
       const diffInSeconds = Math.floor((now.getTime() - dateObj.getTime()) / 1000);
-      
+
       if (diffInSeconds < 60) return 'Az önce';
       if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} dakika önce`;
       if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} saat önce`;
@@ -310,12 +310,14 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h3 className="text-xl font-bold text-white">Profil Bilgileri</h3>
-        <button
-          onClick={() => setIsEditing(!isEditing)}
-          className="px-4 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-xl text-green-300 hover:text-green-200 transition-all duration-200"
-        >
-          {isEditing ? 'İptal' : 'Düzenle'}
-        </button>
+        {!isEditing && (
+          <button
+            onClick={() => setIsEditing(true)}
+            className="px-4 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-xl text-green-300 hover:text-green-200 transition-all duration-200"
+          >
+            ✏️ Düzenle
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -388,7 +390,7 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
 
       {isEditing && (
         <div className="flex gap-4">
-          <button 
+          <button
             onClick={handleSaveProfile}
             disabled={loading}
             className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -410,7 +412,7 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
   const renderSecurityTab = () => (
     <div className="space-y-6">
       <h3 className="text-xl font-bold text-white">Güvenlik Ayarları</h3>
-      
+
       <div className="space-y-4">
         <div className="bg-white/10 rounded-xl p-6">
           <div className="flex items-center justify-between mb-4">
@@ -431,14 +433,14 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
               <h4 className="text-white font-semibold">Oturum Geçmişi</h4>
               <p className="text-white/70 text-sm">Son giriş yapılan cihazları görüntüleyin</p>
             </div>
-            <button 
+            <button
               onClick={() => setShowSessionHistory(!showSessionHistory)}
               className="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-xl text-purple-300 hover:text-purple-200 transition-all duration-200"
             >
               {showSessionHistory ? 'Gizle' : 'Görüntüle'}
             </button>
           </div>
-          
+
           {showSessionHistory && (
             <div className="space-y-3 mt-4">
               {sessions.length === 0 ? (
@@ -449,12 +451,10 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
                 sessions.map((session) => (
                   <div key={session.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
                     <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                        session.isActive ? 'bg-green-500/20' : 'bg-blue-500/20'
-                      }`}>
-                        <span className={`text-sm ${
-                          session.isActive ? 'text-green-400' : 'text-blue-400'
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${session.isActive ? 'bg-green-500/20' : 'bg-blue-500/20'
                         }`}>
+                        <span className={`text-sm ${session.isActive ? 'text-green-400' : 'text-blue-400'
+                          }`}>
                           {getDeviceIcon(session.userAgent)}
                         </span>
                       </div>
@@ -520,11 +520,10 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl font-semibold transition-all duration-200 ${
-                activeTab === tab.id
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl font-semibold transition-all duration-200 ${activeTab === tab.id
                   ? 'bg-green-500 text-white'
                   : 'bg-white/10 text-white/70 hover:bg-white/20'
-              }`}
+                }`}
             >
               <span>{tab.icon}</span>
               <span>{tab.label}</span>
