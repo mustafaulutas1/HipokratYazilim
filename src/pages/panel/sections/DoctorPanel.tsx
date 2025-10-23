@@ -84,6 +84,8 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
   const [treatmentPatient, setTreatmentPatient] = useState<AssignedPatient | null>(null);
   const [messages, setMessages] = useState<DoctorMessage[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [isMessagesExpanded, setIsMessagesExpanded] = useState(false);
+  const [patientsSectionRef, setPatientsSectionRef] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     // Security check: clinicId is required
@@ -203,6 +205,19 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
 
     return () => unsubscribe();
   }, [user?.uid, doctorProfile?.clinicId]);
+
+  // Sayfa yüklendiğinde hastalar bölümüne scroll yap
+  useEffect(() => {
+    if (!loading && assignedPatients.length > 0 && patientsSectionRef) {
+      // Kısa bir gecikme ile scroll yap (DOM'un render olması için)
+      setTimeout(() => {
+        patientsSectionRef.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'start' 
+        });
+      }, 100);
+    }
+  }, [loading, assignedPatients.length, patientsSectionRef]);
 
   const handleViewAnamnez = (patient: AssignedPatient) => {
     setSelectedPatient(patient);
@@ -435,10 +450,10 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
           </div>
         </div>
 
-        {/* Messages Section */}
+        {/* Messages Section - Collapsible */}
         {messages.length > 0 && (
           <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <span className="text-3xl">📨</span>
                 <h2 className="text-2xl font-bold text-white">
@@ -450,56 +465,72 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
                   )}
                 </h2>
               </div>
+              <button
+                onClick={() => setIsMessagesExpanded(!isMessagesExpanded)}
+                className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-xl text-blue-300 hover:text-blue-200 transition-all duration-200 flex items-center gap-2"
+              >
+                <span className="text-sm">
+                  {isMessagesExpanded ? 'Gizle' : 'Göster'}
+                </span>
+                <span className={`transform transition-transform duration-200 ${isMessagesExpanded ? 'rotate-180' : ''}`}>
+                  ▼
+                </span>
+              </button>
             </div>
 
-            <div className="space-y-4 max-h-96 overflow-y-auto">
-              {messages.map((message) => (
-                <div 
-                  key={message.id}
-                  className={`p-4 rounded-xl border transition-all duration-200 ${
-                    message.isRead 
-                      ? 'bg-white/5 border-white/20' 
-                      : 'bg-blue-500/10 border-blue-500/30 shadow-lg'
-                  }`}
-                  onClick={() => !message.isRead && markMessageAsRead(message.id)}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">👨‍💼</span>
-                      <span className="text-white font-medium">Dr. {message.toDoctorName}</span>
-                      <span className={`text-xs px-2 py-1 rounded-full border ${getMessageTypeColor(message.messageType)}`}>
-                        {getMessageTypeLabel(message.messageType)}
-                      </span>
-                      {!message.isRead && (
-                        <span className="text-xs bg-red-500 text-white px-2 py-1 rounded-full">
-                          Yeni
+            {isMessagesExpanded && (
+              <div className="space-y-4 max-h-96 overflow-y-auto">
+                {messages.map((message) => (
+                  <div 
+                    key={message.id}
+                    className={`p-4 rounded-xl border transition-all duration-200 ${
+                      message.isRead 
+                        ? 'bg-white/5 border-white/20' 
+                        : 'bg-blue-500/10 border-blue-500/30 shadow-lg'
+                    }`}
+                    onClick={() => !message.isRead && markMessageAsRead(message.id)}
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">👨‍💼</span>
+                        <span className="text-white font-medium">Dr. {message.toDoctorName}</span>
+                        <span className={`text-xs px-2 py-1 rounded-full border ${getMessageTypeColor(message.messageType)}`}>
+                          {getMessageTypeLabel(message.messageType)}
                         </span>
-                      )}
-                    </div>
-                    <span className="text-white/50 text-xs">
-                      {formatMessageDate(message.createdAt)}
-                    </span>
-                  </div>
-
-                  {message.patientName && (
-                    <div className="mb-3 p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                      <div className="flex items-center gap-2 text-blue-300">
-                        <span className="text-sm">👤</span>
-                        <span className="text-sm font-medium">Hasta: {message.patientName}</span>
+                        {!message.isRead && (
+                          <span className="text-xs bg-red-500 text-white px-2 py-1 rounded-full">
+                            Yeni
+                          </span>
+                        )}
                       </div>
+                      <span className="text-white/50 text-xs">
+                        {formatMessageDate(message.createdAt)}
+                      </span>
                     </div>
-                  )}
 
-                  <p className="text-white/80 text-sm leading-relaxed">
-                    {message.message}
-                  </p>
-                </div>
-              ))}
-            </div>
+                    {message.patientName && (
+                      <div className="mb-3 p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                        <div className="flex items-center gap-2 text-blue-300">
+                          <span className="text-sm">👤</span>
+                          <span className="text-sm font-medium">Hasta: {message.patientName}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    <p className="text-white/80 text-sm leading-relaxed">
+                      {message.message}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6 shadow-sm">
+        <div 
+          ref={setPatientsSectionRef}
+          className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6 shadow-sm"
+        >
           <div className="flex items-center gap-3 mb-6">
             <span className="text-3xl">👤</span>
             <h2 className="text-2xl font-bold text-white">

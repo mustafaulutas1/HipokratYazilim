@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { useAuth } from '../../../context/AuthContext';
 
@@ -62,10 +62,18 @@ const DoctorMessageModal: React.FC<DoctorMessageModalProps> = ({
         where('clinicId', '==', doctorProfile.clinicId)
       );
       const doctorsSnapshot = await getDocs(doctorsQuery);
-      const doctorsData = doctorsSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      const doctorsData = doctorsSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          name: data.fullName || data.name || `Doktor ${doc.id.slice(0, 8)}`,
+          email: data.email || '',
+          specialization: data.specialization || '',
+          department: data.department || '',
+          clinicId: data.clinicId || '',
+          role: data.role || 'doctor'
+        };
+      });
       
       // Also fetch clinic users with doctor role
       const clinicUsersQuery = query(
@@ -74,19 +82,26 @@ const DoctorMessageModal: React.FC<DoctorMessageModalProps> = ({
         where('role', '==', 'doctor')
       );
       const clinicUsersSnapshot = await getDocs(clinicUsersQuery);
-      const clinicUserDoctors = clinicUsersSnapshot.docs.map(doc => ({
-        id: doc.id,
-        name: (doc.data() as any).fullName,
-        specialization: (doc.data() as any).specialization || (doc.data() as any).department || 'Genel',
-        department: (doc.data() as any).department || '',
-        hospital: (doc.data() as any).hospital || '',
-        isAvailable: true
-      }));
+      const clinicUserDoctors = clinicUsersSnapshot.docs.map(doc => {
+        const data = doc.data() as any;
+        return {
+          id: doc.id,
+          name: data.fullName || `Doktor ${doc.id.slice(0, 8)}`,
+          email: data.email || '',
+          specialization: data.specialization || data.department || 'Genel',
+          department: data.department || '',
+          clinicId: data.clinicId || '',
+          role: data.role || 'doctor'
+        };
+      });
       
       // Combine both sources
       const allDoctors = [...doctorsData, ...clinicUserDoctors];
       
       console.log('👥 DoctorMessageModal: Found doctors:', allDoctors.length);
+      console.log('📋 DoctorMessageModal: Doctors from doctors collection:', doctorsData);
+      console.log('📋 DoctorMessageModal: Doctors from clinicUsers collection:', clinicUserDoctors);
+      console.log('📋 DoctorMessageModal: All doctors combined:', allDoctors);
       
       if (allDoctors.length === 0) {
         console.log('⚠️ No doctors found in clinic');
