@@ -50,6 +50,28 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
 
   const dateISO = useMemo(() => selectedDate.toISOString().slice(0, 10), [selectedDate]);
 
+  // Get week range for weekly view
+  const getWeekRange = (date: Date) => {
+    const start = new Date(date);
+    const day = start.getDay();
+    const diff = start.getDate() - day + (day === 0 ? -6 : 1); // Monday as first day
+    start.setDate(diff);
+    start.setHours(0, 0, 0, 0);
+    
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+    
+    return { start, end };
+  };
+
+  // Get month range for monthly view
+  const getMonthRange = (date: Date) => {
+    const start = new Date(date.getFullYear(), date.getMonth(), 1);
+    const end = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
+    return { start, end };
+  };
+
   // Update current time every minute
   useEffect(() => {
     const interval = setInterval(() => {
@@ -58,7 +80,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch appointments for selected day
+  // Fetch appointments based on view mode
   useEffect(() => {
     const fetchAppointments = async () => {
       // Check if doctorProfile and clinicId exist
@@ -70,20 +92,39 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
       
       console.log('🔍 Appointments: Fetching appointments for clinicId:', doctorProfile.clinicId);
       
+      let startDate: string, endDate: string;
+      
+      if (viewMode === 'day') {
+        startDate = endDate = dateISO;
+      } else if (viewMode === 'week') {
+        const { start, end } = getWeekRange(selectedDate);
+        startDate = start.toISOString().slice(0, 10);
+        endDate = end.toISOString().slice(0, 10);
+      } else { // month
+        const { start, end } = getMonthRange(selectedDate);
+        startDate = start.toISOString().slice(0, 10);
+        endDate = end.toISOString().slice(0, 10);
+      }
+      
       const qDay = query(
         collection(db, 'appointments'),
         where('clinicId', '==', doctorProfile.clinicId),
-        where('dateISO', '==', dateISO)
+        where('dateISO', '>=', startDate),
+        where('dateISO', '<=', endDate)
       );
       const snap = await getDocs(qDay);
       const list = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-      list.sort((a,b) => String(a.start||'').localeCompare(String(b.start||'')));
+      list.sort((a,b) => {
+        const dateCompare = String(a.dateISO||'').localeCompare(String(b.dateISO||''));
+        if (dateCompare !== 0) return dateCompare;
+        return String(a.start||'').localeCompare(String(b.start||''));
+      });
       
       console.log('📅 Appointments: Found appointments:', list.length);
       setAppointments(list);
     };
     fetchAppointments();
-  }, [dateISO, doctorProfile?.clinicId]);
+  }, [dateISO, viewMode, selectedDate, doctorProfile?.clinicId]);
 
   // Segment aralığına düşen randevular - sadece başlangıç zamanı bu slot içinde olanlar
   const getAppointmentsForSegment = (segStart: number, segEnd: number) => {
@@ -168,18 +209,58 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
           </div>
           
           <div className="flex items-center gap-4">
-            <button onClick={() => setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate() - 1))} className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-all duration-200">
+            <button 
+              onClick={() => setSelectedDate(new Date())}
+              className="px-3 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg text-green-300 hover:text-green-200 transition-all duration-200 text-sm font-semibold"
+            >
+              Bugün
+            </button>
+            <button 
+              onClick={() => {
+                const newDate = new Date(selectedDate);
+                if (viewMode === 'day') {
+                  newDate.setDate(newDate.getDate() - 1);
+                } else if (viewMode === 'week') {
+                  newDate.setDate(newDate.getDate() - 7);
+                } else {
+                  newDate.setMonth(newDate.getMonth() - 1);
+                }
+                setSelectedDate(newDate);
+              }} 
+              className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-all duration-200"
+            >
               ←
             </button>
             <div className="text-white font-semibold">
-              {selectedDate.toLocaleDateString('tr-TR', { 
+              {viewMode === 'day' && selectedDate.toLocaleDateString('tr-TR', { 
                 weekday: 'long', 
                 year: 'numeric', 
                 month: 'long', 
                 day: 'numeric' 
               })}
+              {viewMode === 'week' && (() => {
+                const { start, end } = getWeekRange(selectedDate);
+                return `${start.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} - ${end.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+              })()}
+              {viewMode === 'month' && selectedDate.toLocaleDateString('tr-TR', { 
+                year: 'numeric', 
+                month: 'long' 
+              })}
             </div>
-            <button onClick={() => setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate() + 1))} className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-all duration-200">
+            <button 
+              onClick={() => {
+                const newDate = new Date(selectedDate);
+                if (viewMode === 'day') {
+                  newDate.setDate(newDate.getDate() + 1);
+                } else if (viewMode === 'week') {
+                  newDate.setDate(newDate.getDate() + 7);
+                } else {
+                  newDate.setMonth(newDate.getMonth() + 1);
+                }
+                setSelectedDate(newDate);
+              }} 
+              className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-all duration-200"
+            >
               →
             </button>
           </div>
@@ -188,7 +269,12 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {[
-            { title: 'Bugünkü Randevular', value: String(appointments.length), icon: '📅', color: 'from-blue-500 to-cyan-500' },
+            { 
+              title: viewMode === 'day' ? 'Bugünkü Randevular' : viewMode === 'week' ? 'Haftalık Randevular' : 'Aylık Randevular', 
+              value: String(appointments.length), 
+              icon: '📅', 
+              color: 'from-blue-500 to-cyan-500' 
+            },
             { title: 'Onaylanan', value: String(appointments.filter(a=>a.status==='confirmed').length), icon: '✅', color: 'from-green-500 to-emerald-500' },
             { title: 'Beklemede', value: String(appointments.filter(a=>a.status==='pending').length), icon: '⏳', color: 'from-yellow-500 to-orange-500' },
             { title: 'İptal', value: String(appointments.filter(a=>a.status==='cancelled').length), icon: '❌', color: 'from-red-500 to-pink-500' }
@@ -208,14 +294,18 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
         </div>
       </div>
 
-      {/* Daily Schedule */}
+      {/* Schedule View */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Time Slots */}
+        {/* Time Slots / Calendar */}
         <div className="lg:col-span-2 bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-          <h2 className="text-xl font-bold text-white mb-6">Günlük Program</h2>
+          <h2 className="text-xl font-bold text-white mb-6">
+            {viewMode === 'day' ? 'Günlük Program' : viewMode === 'week' ? 'Haftalık Program' : 'Aylık Program'}
+          </h2>
           
-          <div className="space-y-3">
-            {breakpoints.slice(0, -1).map((bp, idx) => {
+          {/* Daily View */}
+          {viewMode === 'day' && (
+            <div className="space-y-3">
+              {breakpoints.slice(0, -1).map((bp, idx) => {
               const next = breakpoints[idx + 1];
               const list = getAppointmentsForSegment(bp, next);
               const hasAny = list.length > 0;
@@ -289,26 +379,236 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
               );
             })}
           </div>
+          )}
+
+          {/* Weekly View */}
+          {viewMode === 'week' && (() => {
+            const { start } = getWeekRange(selectedDate);
+            const weekDays = Array.from({ length: 7 }, (_, i) => {
+              const day = new Date(start);
+              day.setDate(start.getDate() + i);
+              return day;
+            });
+
+            // Saatlik slotlar (08:00 - 18:00)
+            const timeSlots = Array.from({ length: 11 }, (_, i) => 8 + i); // 8-18 arası saatler
+
+            return (
+              <div className="overflow-auto max-h-[600px]">
+                <div className="min-w-[1000px]">
+                  {/* Header - Günler */}
+                  <div className="grid grid-cols-8 gap-2 mb-3 sticky top-0 bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900 backdrop-blur-xl z-10 pb-3 pt-2 px-2 rounded-xl shadow-lg border border-white/10">
+                    <div className="text-white/70 text-xs font-semibold text-center py-2">Saat</div>
+                    {weekDays.map((day) => {
+                      const isToday = day.toDateString() === new Date().toDateString();
+                      return (
+                        <div key={day.toISOString()} className={`text-center py-2 rounded-lg ${isToday ? 'bg-green-500/30 ring-2 ring-green-400' : 'bg-white/10'}`}>
+                          <div className="text-white/90 text-xs uppercase font-semibold">{day.toLocaleDateString('tr-TR', { weekday: 'short' })}</div>
+                          <div className="text-white font-bold text-xl">{day.getDate()}</div>
+                          <div className="text-white/70 text-[10px]">{day.toLocaleDateString('tr-TR', { month: 'short' })}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Time Grid */}
+                  <div className="space-y-1">
+                    {timeSlots.map((hour) => {
+                      const timeStr = `${String(hour).padStart(2, '0')}:00`;
+                      const nextTimeStr = `${String(hour + 1).padStart(2, '0')}:00`;
+                      
+                      return (
+                        <div key={hour} className="grid grid-cols-8 gap-2">
+                          {/* Saat etiketi */}
+                          <div className="text-white/70 text-xs font-semibold text-center py-2">
+                            {timeStr}
+                          </div>
+                          
+                          {/* Her gün için slot */}
+                          {weekDays.map((day) => {
+                            const dayISO = day.toISOString().slice(0, 10);
+                            const isPast = day < new Date(new Date().setHours(0, 0, 0, 0));
+                            
+                            // Bu saat aralığındaki randevular
+                            const slotAppointments = appointments.filter(a => {
+                              if (a.dateISO !== dayISO) return false;
+                              const aptHour = parseInt(a.start?.split(':')[0] || '0');
+                              return aptHour === hour;
+                            });
+
+                            return (
+                              <div 
+                                key={`${dayISO}-${hour}`} 
+                                className={`min-h-[80px] bg-white/5 rounded-lg p-2 border border-white/10 ${isPast ? 'opacity-40' : ''}`}
+                              >
+                                {slotAppointments.length === 0 ? (
+                                  <div className="h-full flex items-center justify-center text-white/20 text-xs">-</div>
+                                ) : (
+                                  <div className="space-y-1">
+                                    {slotAppointments.map((apt) => {
+                                      const dur = apt.durationMinutes ?? apt.duration ?? 0;
+                                      return (
+                                        <div
+                                          key={apt.id}
+                                          onClick={() => { setViewedAppointment(apt); setOpenDetailsModal(true); }}
+                                          className={`p-2 rounded border cursor-pointer hover:scale-105 transition-all ${getStatusColor(apt.status)}`}
+                                        >
+                                          <div className="flex items-center justify-between mb-1">
+                                            <div className="text-[10px] font-bold">{apt.start}</div>
+                                            <div className="text-[8px] opacity-70">{dur}dk</div>
+                                          </div>
+                                          <div className="text-[11px] font-semibold truncate">{apt.patientName}</div>
+                                          <div className="text-[9px] opacity-80 truncate">{apt.typeName ?? apt.type}</div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Footer - Günlük özet */}
+                  <div className="grid grid-cols-8 gap-2 mt-2 pt-2 border-t border-white/10">
+                    <div className="text-white/70 text-xs font-semibold text-center py-2">Toplam</div>
+                    {weekDays.map((day) => {
+                      const dayISO = day.toISOString().slice(0, 10);
+                      const dayAppointments = appointments.filter(a => a.dateISO === dayISO);
+                      return (
+                        <div key={`total-${dayISO}`} className="text-center py-2 bg-white/5 rounded-lg">
+                          <div className="text-white font-bold">{dayAppointments.length}</div>
+                          <div className="text-white/60 text-[10px]">randevu</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Monthly View */}
+          {viewMode === 'month' && (() => {
+            const { start, end } = getMonthRange(selectedDate);
+            const firstDay = new Date(start);
+            const lastDay = new Date(end);
+            
+            // Get first Monday before or on the first day of month
+            const calendarStart = new Date(firstDay);
+            const dayOfWeek = calendarStart.getDay();
+            const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+            calendarStart.setDate(calendarStart.getDate() - daysToMonday);
+            
+            // Get last Sunday after or on the last day of month
+            const calendarEnd = new Date(lastDay);
+            const daysToSunday = 7 - calendarEnd.getDay();
+            if (daysToSunday < 7) {
+              calendarEnd.setDate(calendarEnd.getDate() + daysToSunday);
+            }
+            
+            const totalDays = Math.ceil((calendarEnd.getTime() - calendarStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            const weeks = Math.ceil(totalDays / 7);
+            
+            return (
+              <div className="space-y-2">
+                {/* Week day headers */}
+                <div className="grid grid-cols-7 gap-2 mb-2">
+                  {['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'].map(day => (
+                    <div key={day} className="text-center text-white/70 text-sm font-semibold py-2">
+                      {day}
+                    </div>
+                  ))}
+                </div>
+                
+                {/* Calendar grid */}
+                {Array.from({ length: weeks }, (_, weekIdx) => (
+                  <div key={weekIdx} className="grid grid-cols-7 gap-2">
+                    {Array.from({ length: 7 }, (_, dayIdx) => {
+                      const currentDay = new Date(calendarStart);
+                      currentDay.setDate(calendarStart.getDate() + weekIdx * 7 + dayIdx);
+                      const dayISO = currentDay.toISOString().slice(0, 10);
+                      const dayAppointments = appointments.filter(a => a.dateISO === dayISO);
+                      const isCurrentMonth = currentDay.getMonth() === selectedDate.getMonth();
+                      const isToday = currentDay.toDateString() === new Date().toDateString();
+                      const isPast = currentDay < new Date(new Date().setHours(0, 0, 0, 0));
+
+                      return (
+                        <div
+                          key={dayISO}
+                          onClick={() => {
+                            setSelectedDate(new Date(currentDay));
+                            setViewMode('day');
+                          }}
+                          className={`bg-white/5 rounded-xl p-2 min-h-[100px] cursor-pointer hover:bg-white/10 transition-all ${
+                            !isCurrentMonth ? 'opacity-30' : ''
+                          } ${isToday ? 'ring-2 ring-green-500' : ''} ${isPast ? 'opacity-50' : ''}`}
+                        >
+                          <div className="text-white text-sm font-semibold mb-1">{currentDay.getDate()}</div>
+                          <div className="space-y-1">
+                            {dayAppointments.slice(0, 3).map((apt) => (
+                              <div
+                                key={apt.id}
+                                onClick={(e) => { 
+                                  e.stopPropagation();
+                                  setViewedAppointment(apt); 
+                                  setOpenDetailsModal(true); 
+                                }}
+                                className={`text-[10px] p-1 rounded border cursor-pointer hover:scale-105 transition-transform truncate ${getStatusColor(apt.status)}`}
+                              >
+                                {apt.start} {apt.patientName}
+                              </div>
+                            ))}
+                            {dayAppointments.length > 3 && (
+                              <div className="text-[10px] text-white/60 text-center">+{dayAppointments.length - 3}</div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Upcoming Appointments */}
         <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-          <h2 className="text-xl font-bold text-white mb-6">Yaklaşan Randevular</h2>
+          <h2 className="text-xl font-bold text-white mb-6">
+            {viewMode === 'day' ? 'Yaklaşan Randevular' : 'Randevular'}
+          </h2>
           
-          <div className="space-y-4">
-            {appointments.slice(0, 5).map((appointment) => (
-              <div key={appointment.id} className="bg-white/5 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-white font-semibold">{appointment.patientName}</div>
-                  <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${getStatusColor(appointment.status)}`}>
-                    {appointment.status === 'confirmed' ? 'Onaylandı' :
-                     appointment.status === 'pending' ? 'Beklemede' : 'İptal'}
-                  </span>
+          <div className="space-y-4 max-h-[600px] overflow-y-auto">
+            {appointments.length === 0 ? (
+              <div className="text-white/40 text-center py-8">Randevu bulunamadı</div>
+            ) : (
+              appointments.slice(0, viewMode === 'day' ? 5 : 10).map((appointment) => (
+                <div 
+                  key={appointment.id} 
+                  className="bg-white/5 rounded-xl p-4 cursor-pointer hover:bg-white/10 transition-colors"
+                  onClick={() => { setViewedAppointment(appointment); setOpenDetailsModal(true); }}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-white font-semibold">{appointment.patientName}</div>
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${getStatusColor(appointment.status)}`}>
+                      {appointment.status === 'confirmed' ? 'Onaylandı' :
+                       appointment.status === 'pending' ? 'Beklemede' : 'İptal'}
+                    </span>
+                  </div>
+                  {viewMode !== 'day' && (
+                    <div className="text-white/60 text-xs mb-1">
+                      {new Date(appointment.dateISO).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', weekday: 'short' })}
+                    </div>
+                  )}
+                  <div className="text-white/70 text-sm mb-1">{appointment.start} • {appointment.typeName ?? appointment.type}</div>
+                  <div className="text-white/60 text-xs">{appointment.notes ?? ''}</div>
                 </div>
-                <div className="text-white/70 text-sm mb-1">{appointment.start} • {appointment.typeName ?? appointment.type}</div>
-                <div className="text-white/60 text-xs">{appointment.notes ?? ''}</div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>
