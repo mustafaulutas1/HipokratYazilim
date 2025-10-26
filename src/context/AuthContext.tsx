@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { auth, secondaryAuth } from '../firebase/config';
-import { onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail } from 'firebase/auth';
+import { onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider, sendPasswordResetEmail } from 'firebase/auth';
 import type { User, UserCredential } from 'firebase/auth';
 import { db } from '../firebase/config';
 import { doc, setDoc, collection, addDoc } from 'firebase/firestore';
@@ -15,6 +15,8 @@ interface AuthContextType {
   register: (email: string, password: string) => Promise<UserCredential>;
   registerDoctor: (email: string, password: string) => Promise<UserCredential>;
   registerClinicUser: (userData: any) => Promise<UserCredential>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
   logPageVisit: (page: string, pageTitle: string) => Promise<void>;
   logNavigation: (fromPage: string, toPage: string) => Promise<void>;
 }
@@ -233,6 +235,38 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const changePassword = async (currentPassword: string, newPassword: string) => {
+    if (!user) {
+      throw new Error('Kullanıcı giriş yapmamış');
+    }
+    
+    try {
+      // Önce kullanıcıyı mevcut şifre ile yeniden doğrula
+      const credential = EmailAuthProvider.credential(user.email || '', currentPassword);
+      await reauthenticateWithCredential(user, credential);
+      
+      // Şimdi şifreyi değiştir
+      await updatePassword(user, newPassword);
+      
+       // Şifre değişikliği log'u
+       await loggingService.logUserAction(user.uid, user.email || '', 'navigation', 'password_change', {
+         action: 'password_change',
+         timestamp: new Date().toISOString()
+       });
+    } catch (error: any) {
+      console.error('Şifre değiştirme hatası:', error);
+      throw error;
+    }
+  };
+
+  const resetPassword = async (email: string) => {
+    try {
+      await sendPasswordResetEmail(auth, email);
+    } catch (error) {
+      throw error;
+    }
+  };
+
   const logNavigation = async (fromPage: string, toPage: string) => {
     if (user) {
       await loggingService.logUserAction(user.uid, user.email || '', 'navigation', toPage, {
@@ -251,6 +285,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       register, 
       registerDoctor, 
       registerClinicUser,
+      changePassword,
+      resetPassword,
       logPageVisit,
       logNavigation
     }}>
