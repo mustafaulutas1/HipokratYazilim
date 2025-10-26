@@ -3,7 +3,7 @@ import {
   collection,
   getDocs,
   query,
-  orderBy,
+  where,
   updateDoc,
   doc,
   deleteDoc,
@@ -48,18 +48,54 @@ const Users: React.FC<UsersProps> = ({ doctorProfile }) => {
 
   // Fetch users from Firestore
   const fetchUsers = async () => {
+    if (!doctorProfile?.clinicId) {
+      setUsers([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       const usersRef = collection(db, 'clinicUsers');
-      const q = query(usersRef, orderBy('createdAt', 'desc'));
-      const querySnapshot = await getDocs(q);
 
+      // Get users with clinicId filter (without orderBy to avoid compound index requirement)
+      const qWithClinic = query(
+        usersRef,
+        where('clinicId', '==', doctorProfile.clinicId)
+      );
+
+      let querySnapshot = await getDocs(qWithClinic);
       const usersData: User[] = [];
+
       querySnapshot.forEach((doc) => {
         usersData.push({
           id: doc.id,
           ...doc.data(),
         } as User);
+      });
+
+      // If no users found with clinicId, also fetch users without clinicId (legacy users)
+      if (usersData.length === 0) {
+        const qAll = query(usersRef);
+        const allSnapshot = await getDocs(qAll);
+
+        allSnapshot.forEach((doc) => {
+          const userData = doc.data();
+          // Include users without clinicId or with matching clinicId
+          if (!userData.clinicId || userData.clinicId === doctorProfile.clinicId) {
+            usersData.push({
+              id: doc.id,
+              ...userData,
+            } as User);
+          }
+        });
+      }
+
+      // Sort manually by createdAt (newest first)
+      usersData.sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0).getTime();
+        const dateB = new Date(b.createdAt || 0).getTime();
+        return dateB - dateA;
       });
 
       setUsers(usersData);
@@ -71,8 +107,20 @@ const Users: React.FC<UsersProps> = ({ doctorProfile }) => {
   };
 
   useEffect(() => {
-    fetchUsers();
-  }, []);
+    if (doctorProfile?.clinicId) {
+      fetchUsers();
+    }
+  }, [doctorProfile?.clinicId]);
+
+  // Auto-update legacy users when users list changes
+  useEffect(() => {
+    if (users.length > 0 && doctorProfile?.clinicId) {
+      const hasLegacyUsers = users.some(user => !user.clinicId);
+      if (hasLegacyUsers) {
+        updateLegacyUsers();
+      }
+    }
+  }, [users.length]);
 
   const handleUserAdded = () => {
     fetchUsers();
@@ -94,6 +142,36 @@ const Users: React.FC<UsersProps> = ({ doctorProfile }) => {
 
   const handlePermissionsUpdated = () => {
     fetchUsers();
+  };
+
+  // Update legacy users with clinicId
+  const updateLegacyUsers = async () => {
+    if (!doctorProfile?.clinicId) return;
+
+    try {
+      const usersToUpdate = users.filter(user => !user.clinicId);
+
+      if (usersToUpdate.length === 0) {
+        return;
+      }
+
+      const updatePromises = usersToUpdate.map(async (user) => {
+        const userRef = doc(db, 'clinicUsers', user.id);
+        return updateDoc(userRef, {
+          clinicId: doctorProfile.clinicId,
+          updatedAt: new Date().toISOString(),
+        });
+      });
+
+      await Promise.all(updatePromises);
+      alert('Kullanıcılar başarıyla güncellendi!');
+
+      // Refresh the list
+      fetchUsers();
+    } catch (error) {
+      console.error('Error updating legacy users:', error);
+      alert('Kullanıcılar güncellenirken bir hata oluştu.');
+    }
   };
 
   const handleDeleteUser = async (userId: string) => {
@@ -178,6 +256,15 @@ const Users: React.FC<UsersProps> = ({ doctorProfile }) => {
           <p className="text-white/70">Klinik personeli ve yetkilendirme</p>
         </div>
         <div className="flex items-center gap-3">
+          {users.some(user => !user.clinicId) && (
+            <button
+              onClick={updateLegacyUsers}
+              className="px-6 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-semibold rounded-xl transition-all duration-200 shadow-lg"
+              title="Eski kullanıcıları klinik ile ilişkilendir"
+            >
+              🔄 Kullanıcıları Güncelle
+            </button>
+          )}
           <button
             onClick={() => setIsRoleManagementOpen(true)}
             className="px-6 py-3 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white font-semibold rounded-xl transition-all duration-200 shadow-lg"
@@ -196,33 +283,33 @@ const Users: React.FC<UsersProps> = ({ doctorProfile }) => {
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {[
-          { 
-            title: 'Toplam Kullanıcı', 
-            value: users.length.toString(), 
-            icon: '👥', 
-            color: 'from-blue-500 to-cyan-500' 
+          {
+            title: 'Toplam Kullanıcı',
+            value: users.length.toString(),
+            icon: '👥',
+            color: 'from-blue-500 to-cyan-500'
           },
-          { 
-            title: 'Aktif Kullanıcı', 
-            value: users.filter(u => u.isActive).length.toString(), 
-            icon: '✅', 
-            color: 'from-green-500 to-emerald-500' 
+          {
+            title: 'Aktif Kullanıcı',
+            value: users.filter(u => u.isActive).length.toString(),
+            icon: '✅',
+            color: 'from-green-500 to-emerald-500'
           },
-          { 
-            title: 'Bu Ay Yeni', 
+          {
+            title: 'Bu Ay Yeni',
             value: users.filter(u => {
               const createdAt = new Date(u.createdAt);
               const now = new Date();
               return createdAt.getMonth() === now.getMonth() && createdAt.getFullYear() === now.getFullYear();
-            }).length.toString(), 
-            icon: '🆕', 
-            color: 'from-yellow-500 to-orange-500' 
+            }).length.toString(),
+            icon: '🆕',
+            color: 'from-yellow-500 to-orange-500'
           },
-          { 
-            title: 'Admin Kullanıcı', 
-            value: users.filter(u => u.role === 'admin').length.toString(), 
-            icon: '👑', 
-            color: 'from-purple-500 to-pink-500' 
+          {
+            title: 'Admin Kullanıcı',
+            value: users.filter(u => u.role === 'admin').length.toString(),
+            icon: '👑',
+            color: 'from-purple-500 to-pink-500'
           }
         ].map((stat, index) => (
           <div key={index} className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
@@ -344,11 +431,10 @@ const Users: React.FC<UsersProps> = ({ doctorProfile }) => {
                   <td className="px-6 py-4">
                     <button
                       onClick={() => toggleUserStatus(user.id, user.isActive)}
-                      className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full transition-colors ${
-                        user.isActive
-                          ? 'bg-green-100 text-green-800 hover:bg-green-200'
-                          : 'bg-red-100 text-red-800 hover:bg-red-200'
-                      }`}
+                      className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full transition-colors ${user.isActive
+                        ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                        : 'bg-red-100 text-red-800 hover:bg-red-200'
+                        }`}
                     >
                       {user.isActive ? 'Aktif' : 'Pasif'}
                     </button>
