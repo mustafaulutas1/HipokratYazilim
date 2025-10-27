@@ -41,26 +41,40 @@ const ApplicationSelector: React.FC<ApplicationSelectorProps> = ({
 
         const applicationsRef = collection(db, 'medicalApplications');
         
-        // Query all applications for this clinic (no diagnosis system filter)
-        const q = query(
-          applicationsRef,
-          where('clinicId', '==', clinicId)
-        );
-
-        const querySnapshot = await getDocs(q);
+        // Fetch all applications (both clinic-specific and standard)
+        const querySnapshot = await getDocs(applicationsRef);
         const fetchedApplications: Application[] = [];
+        const clinicApplicationNames = new Set<string>();
 
+        // First pass: collect clinic-specific applications
         querySnapshot.forEach((doc) => {
-          fetchedApplications.push({
-            id: doc.id,
-            ...doc.data()
-          } as Application);
+          const data = doc.data();
+          if (data.clinicId === clinicId) {
+            fetchedApplications.push({
+              id: doc.id,
+              ...data
+            } as Application);
+            clinicApplicationNames.add(data.name);
+          }
+        });
+
+        // Second pass: add standard applications that don't have clinic-specific versions
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          if (data.clinicId === 'STANDARD' && !clinicApplicationNames.has(data.name)) {
+            fetchedApplications.push({
+              id: doc.id,
+              ...data
+            } as Application);
+          }
         });
 
         // Sort by creation date (newest first)
         fetchedApplications.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
         console.log('✅ ApplicationSelector: Fetched applications:', fetchedApplications.length);
+        console.log('   - Clinic-specific:', clinicApplicationNames.size);
+        console.log('   - Standard:', fetchedApplications.length - clinicApplicationNames.size);
         setApplications(fetchedApplications);
       } catch (error) {
         console.error('❌ ApplicationSelector: Error fetching applications:', error);
@@ -187,6 +201,11 @@ const ApplicationSelector: React.FC<ApplicationSelectorProps> = ({
                       <span className="px-2 py-1 bg-green-500/20 border border-green-400/30 rounded text-green-300 text-xs font-medium">
                         💰 {application.price || 0} TL
                       </span>
+                      {application.clinicId === 'STANDARD' && (
+                        <span className="px-2 py-1 bg-blue-500/20 border border-blue-400/30 rounded text-blue-300 text-xs font-medium">
+                          🌐 Standart
+                        </span>
+                      )}
                     </div>
                     
                     {application.description && (

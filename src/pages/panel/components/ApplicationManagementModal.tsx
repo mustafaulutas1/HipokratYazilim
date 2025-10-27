@@ -60,26 +60,40 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
       
       const applicationsRef = collection(db, 'medicalApplications');
       
-      // Use only where clause without orderBy to avoid compound index requirement
-      const q = query(
-        applicationsRef,
-        where('clinicId', '==', doctorProfile.clinicId)
-      );
-      
-      const querySnapshot = await getDocs(q);
+      // Fetch all applications (both clinic-specific and standard)
+      const querySnapshot = await getDocs(applicationsRef);
       const applications: SavedApplication[] = [];
+      const clinicApplicationNames = new Set<string>();
       
+      // First pass: collect clinic-specific applications
       querySnapshot.forEach((doc) => {
-        applications.push({
-          id: doc.id,
-          ...doc.data()
-        } as SavedApplication);
+        const data = doc.data();
+        if (data.clinicId === doctorProfile.clinicId) {
+          applications.push({
+            id: doc.id,
+            ...data
+          } as SavedApplication);
+          clinicApplicationNames.add(data.name);
+        }
+      });
+      
+      // Second pass: add standard applications that don't have clinic-specific versions
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.clinicId === 'STANDARD' && !clinicApplicationNames.has(data.name)) {
+          applications.push({
+            id: doc.id,
+            ...data
+          } as SavedApplication);
+        }
       });
       
       // Manual sort by creation date (newest first)
       applications.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       
       console.log('✅ ApplicationManagement: Refetched applications:', applications.length);
+      console.log('   - Clinic-specific:', clinicApplicationNames.size);
+      console.log('   - Standard:', applications.length - clinicApplicationNames.size);
       setSavedApplications(applications);
     } catch (error) {
       console.error('❌ ApplicationManagement: Error refetching applications:', error);
@@ -89,45 +103,8 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
   };
 
   useEffect(() => {
-    const fetchData = async () => {
-      if (!doctorProfile?.clinicId) return;
-      
-      try {
-        setLoading(true);
-        console.log('🔍 ApplicationManagement: Fetching applications for clinicId:', doctorProfile.clinicId);
-        
-        const applicationsRef = collection(db, 'medicalApplications');
-        
-        // Use only where clause without orderBy to avoid compound index requirement
-        const q = query(
-          applicationsRef,
-          where('clinicId', '==', doctorProfile.clinicId)
-        );
-        
-        const querySnapshot = await getDocs(q);
-        const applications: SavedApplication[] = [];
-        
-        querySnapshot.forEach((doc) => {
-          applications.push({
-            id: doc.id,
-            ...doc.data()
-          } as SavedApplication);
-        });
-        
-        // Manual sort by creation date (newest first)
-        applications.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        
-        console.log('✅ ApplicationManagement: Fetched applications:', applications.length);
-        setSavedApplications(applications);
-      } catch (error) {
-        console.error('❌ ApplicationManagement: Error fetching applications:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     if (isOpen && doctorProfile?.clinicId) {
-      fetchData();
+      fetchApplications();
     }
   }, [isOpen, doctorProfile?.clinicId]);
 
@@ -181,19 +158,30 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
   };
 
   const editApplication = (application: SavedApplication) => {
-    setEditingApplication(application);
+    // If editing a standard application, create a new clinic-specific version
+    const isStandard = application.clinicId === 'STANDARD';
+    
+    setEditingApplication(isStandard ? null : application);
     setFormData({
       name: application.name,
       description: application.description,
       price: application.price || 0,
-      clinicId: application.clinicId,
-      createdBy: application.createdBy,
-      createdAt: application.createdAt
+      clinicId: doctorProfile?.clinicId || '',
+      createdBy: isStandard ? (doctorProfile?.fullName || '') : application.createdBy,
+      createdAt: isStandard ? new Date().toISOString() : application.createdAt
     });
     setShowAddForm(true);
   };
 
   const deleteApplication = async (applicationId: string) => {
+    const application = savedApplications.find(app => app.id === applicationId);
+    
+    // Prevent deleting standard applications
+    if (application?.clinicId === 'STANDARD') {
+      alert('Standart uygulamalar silinemez. Sadece kendi kliniğinize özel uygulamaları silebilirsiniz.');
+      return;
+    }
+    
     if (window.confirm('Bu uygulamayı silmek istediğinizden emin misiniz?')) {
       try {
         await deleteDoc(doc(db, 'medicalApplications', applicationId));
@@ -413,6 +401,11 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
                             <span className="px-3 py-1 bg-green-500/20 border border-green-400/30 rounded-full text-green-300 text-sm font-medium">
                               💰 {application.price || 0} TL
                             </span>
+                            {application.clinicId === 'STANDARD' && (
+                              <span className="px-3 py-1 bg-blue-500/20 border border-blue-400/30 rounded-full text-blue-300 text-sm font-medium">
+                                🌐 Standart
+                              </span>
+                            )}
                           </div>
                           
                           {application.description && (
@@ -430,14 +423,16 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
                             onClick={() => editApplication(application)}
                             className="px-3 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-blue-300 hover:text-blue-200 transition-all duration-200 text-sm"
                           >
-                            ✏️ Düzenle
+                            {application.clinicId === 'STANDARD' ? '📋 Kopyala' : '✏️ Düzenle'}
                           </button>
-                          <button
-                            onClick={() => deleteApplication(application.id)}
-                            className="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-all duration-200 text-sm"
-                          >
-                            🗑️ Sil
-                          </button>
+                          {application.clinicId !== 'STANDARD' && (
+                            <button
+                              onClick={() => deleteApplication(application.id)}
+                              className="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-all duration-200 text-sm"
+                            >
+                              🗑️ Sil
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>

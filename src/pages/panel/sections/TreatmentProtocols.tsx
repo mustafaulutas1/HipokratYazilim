@@ -134,73 +134,9 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
 
   // Load saved protocols for this clinic
   useEffect(() => {
-    const fetchData = async () => {
-      if (!doctorProfile?.clinicId) {
-        console.warn('❌ TreatmentProtocols: No clinicId found in doctorProfile:', doctorProfile);
-        return;
-      }
-      
-      try {
-        console.log('🔍 TreatmentProtocols: Fetching protocols for clinicId:', doctorProfile.clinicId);
-        console.log('👨‍⚕️ TreatmentProtocols: Doctor profile:', doctorProfile);
-        
-        const protocolsRef = collection(db, 'treatmentProtocols');
-        
-        // First try without orderBy to check if compound index is the issue
-        console.log('🔍 TreatmentProtocols: Trying query without orderBy first...');
-        let q = query(
-          protocolsRef, 
-          where('clinicId', '==', doctorProfile.clinicId)
-        );
-        
-        let querySnapshot = await getDocs(q);
-        console.log('📊 TreatmentProtocols: Query without orderBy returned:', querySnapshot.size, 'documents');
-        
-        // If we get results, try with orderBy
-        if (querySnapshot.size > 0) {
-          console.log('✅ TreatmentProtocols: Found protocols, now trying with orderBy...');
-          try {
-            q = query(
-              protocolsRef, 
-              where('clinicId', '==', doctorProfile.clinicId),
-              orderBy('createdAt', 'desc')
-            );
-            querySnapshot = await getDocs(q);
-            console.log('📊 TreatmentProtocols: Query with orderBy returned:', querySnapshot.size, 'documents');
-          } catch {
-            console.warn('⚠️ TreatmentProtocols: orderBy failed, using results without ordering');
-            // Continue with the previous result without ordering
-          }
-        }
-        
-        const protocols: SavedProtocol[] = [];
-        querySnapshot.forEach((doc) => {
-          const data = doc.data();
-          console.log('📄 TreatmentProtocols: Processing document:', doc.id, data);
-          protocols.push({
-            id: doc.id,
-            ...data
-          } as SavedProtocol);
-        });
-        
-        // Manual sort by createdAt if orderBy didn't work
-        if (protocols.length > 0) {
-          protocols.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        }
-        
-        console.log('✅ TreatmentProtocols: Final protocols array:', protocols.length, 'protocols');
-        console.log('📋 TreatmentProtocols: Protocol details:', protocols);
-        setSavedProtocols(protocols);
-      } catch (error) {
-        console.error('❌ TreatmentProtocols: Error fetching protocols:', error);
-        console.error('❌ TreatmentProtocols: Error details:', {
-          message: (error as Error)?.message || 'No message',
-          name: (error as Error)?.name || 'Unknown'
-        });
-      }
-    };
-
-    fetchData();
+    if (doctorProfile?.clinicId) {
+      fetchSavedProtocols();
+    }
   }, [doctorProfile]);
 
   const fetchSavedProtocols = async () => {
@@ -213,27 +149,46 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
       console.log('🔍 TreatmentProtocols: Refetching protocols for clinicId:', doctorProfile.clinicId);
       
       const protocolsRef = collection(db, 'treatmentProtocols');
-      // Simple query without orderBy to avoid compound index requirement
-      const q = query(
-        protocolsRef, 
-        where('clinicId', '==', doctorProfile.clinicId)
-      );
       
-      const querySnapshot = await getDocs(q);
+      // Fetch all protocols (both clinic-specific and standard)
+      const querySnapshot = await getDocs(protocolsRef);
       const protocols: SavedProtocol[] = [];
+      const clinicProtocolKeys = new Set<string>();
       
+      // First pass: collect clinic-specific protocols
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        protocols.push({
-          id: doc.id,
-          ...data
-        } as SavedProtocol);
+        if (data.clinicId === doctorProfile.clinicId) {
+          protocols.push({
+            id: doc.id,
+            ...data
+          } as SavedProtocol);
+          // Create unique key for protocol (diagnosisSystem + ageGroup + name)
+          const key = `${data.diagnosisSystem}_${data.ageGroup}_${data.name}`;
+          clinicProtocolKeys.add(key);
+        }
+      });
+      
+      // Second pass: add standard protocols that don't have clinic-specific versions
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.clinicId === 'STANDARD') {
+          const key = `${data.diagnosisSystem}_${data.ageGroup}_${data.name}`;
+          if (!clinicProtocolKeys.has(key)) {
+            protocols.push({
+              id: doc.id,
+              ...data
+            } as SavedProtocol);
+          }
+        }
       });
       
       // Client-side sort by createdAt (newest first)
       protocols.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       
       console.log('✅ TreatmentProtocols: Refetched', protocols.length, 'protocols');
+      console.log('   - Clinic-specific:', clinicProtocolKeys.size);
+      console.log('   - Standard:', protocols.length - clinicProtocolKeys.size);
       setSavedProtocols(protocols);
     } catch (error) {
       console.error('❌ TreatmentProtocols: Error refetching protocols:', error);
@@ -434,7 +389,10 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
 
   const handleEditProtocol = (protocol: SavedProtocol) => {
     console.log('✏️ TreatmentProtocols: Editing protocol:', protocol);
-    setEditingProtocol(protocol);
+    
+    // If editing a standard protocol, create a new clinic-specific version
+    const isStandard = protocol.clinicId === 'STANDARD';
+    setEditingProtocol(isStandard ? null : protocol);
     
     // Build phases object with proper default values
     const newFormData = {
@@ -451,11 +409,11 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
       symptomConditions: protocol.symptomConditions || [],
       toxicityRequired: protocol.toxicityRequired || false,
       conditionsLogic: protocol.conditionsLogic || 'any',
-      clinicId: protocol.clinicId,
+      clinicId: isStandard ? (doctorProfile?.clinicId || '') : protocol.clinicId,
       priority: protocol.priority || 1,
       control: protocol.control || '3 AYDA 1 KONTROL',
-      createdBy: protocol.createdBy || doctorProfile?.fullName || '',
-      createdAt: protocol.createdAt
+      createdBy: isStandard ? (doctorProfile?.fullName || '') : (protocol.createdBy || doctorProfile?.fullName || ''),
+      createdAt: isStandard ? new Date().toISOString() : protocol.createdAt
     };
     
     // Add optional phases only if they have valid treatment values
@@ -473,6 +431,14 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
   };
 
   const deleteProtocol = async (protocolId: string) => {
+    const protocol = savedProtocols.find(p => p.id === protocolId);
+    
+    // Prevent deleting standard protocols
+    if (protocol?.clinicId === 'STANDARD') {
+      alert('Standart protokoller silinemez. Sadece kendi kliniğinize özel protokolleri silebilirsiniz.');
+      return;
+    }
+    
     if (window.confirm('Bu protokolü silmek istediğinizden emin misiniz?')) {
       try {
         console.log('🗑️ TreatmentProtocols: Deleting protocol:', protocolId);
@@ -598,12 +564,17 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
                           </div>
                         )}
                         
-                        <div className="flex items-center gap-4 text-sm text-white/60">
+                        <div className="flex items-center gap-4 text-sm text-white/60 flex-wrap">
                           <span>🏥 {protocol.diagnosisSystem}</span>
                           <span>👤 {protocol.ageGroup === 'adult' ? 'Yetişkin' : `${protocol.ageGroup} Yaş`}</span>
                           {protocol.frequency && <span>📅 {protocol.frequency}</span>}
                           <span>👨‍⚕️ {protocol.createdBy}</span>
                           <span>📅 {new Date(protocol.createdAt).toLocaleDateString('tr-TR')}</span>
+                          {protocol.clinicId === 'STANDARD' && (
+                            <span className="px-2 py-1 bg-blue-500/20 border border-blue-400/30 rounded text-blue-300 text-xs font-medium">
+                              🌐 Standart
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -611,14 +582,16 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
                           onClick={() => handleEditProtocol(protocol)}
                           className="px-3 py-1 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-blue-300 hover:text-blue-200 transition-all duration-200"
                         >
-                          ✏️ Düzenle
+                          {protocol.clinicId === 'STANDARD' ? '📋 Kopyala' : '✏️ Düzenle'}
                         </button>
-                        <button
-                          onClick={() => deleteProtocol(protocol.id)}
-                          className="px-3 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-all duration-200"
-                        >
-                          🗑️ Sil
-                        </button>
+                        {protocol.clinicId !== 'STANDARD' && (
+                          <button
+                            onClick={() => deleteProtocol(protocol.id)}
+                            className="px-3 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-all duration-200"
+                          >
+                            🗑️ Sil
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
