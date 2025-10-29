@@ -105,6 +105,7 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
   const [savedProtocols, setSavedProtocols] = useState<SavedProtocol[]>([]);
   const [loading, setLoading] = useState(false);
   const [editingProtocol, setEditingProtocol] = useState<SavedProtocol | null>(null);
+  const [isEditingStandardProtocol, setIsEditingStandardProtocol] = useState(false);
   
   // Application management state
   const [showApplicationModal, setShowApplicationModal] = useState(false);
@@ -197,6 +198,7 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
 
   const handleDiagnosisSystemSelect = (system: string) => {
     setSelectedDiagnosisSystem(system);
+    setIsEditingStandardProtocol(false);
     setFormData(prev => ({
       ...prev,
       diagnosisSystem: system,
@@ -355,6 +357,7 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
       setShowCreationForm(false);
       setSelectedDiagnosisSystem('');
       setEditingProtocol(null);
+      setIsEditingStandardProtocol(false);
       fetchSavedProtocols();
       
       // Reset form
@@ -393,6 +396,7 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
     // If editing a standard protocol, create a new clinic-specific version
     const isStandard = protocol.clinicId === 'STANDARD';
     setEditingProtocol(isStandard ? null : protocol);
+    setIsEditingStandardProtocol(isStandard);
     
     // Build phases object with proper default values
     const newFormData = {
@@ -604,19 +608,36 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
         <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-bold text-white">
-              {editingProtocol ? '✏️' : '🏥'} {selectedDiagnosisSystem} - {editingProtocol ? 'Tedavi Protokolü Düzenle' : 'Tedavi Protokolü Oluştur'}
+              {editingProtocol ? '✏️' : isEditingStandardProtocol ? '📋' : '🏥'} {selectedDiagnosisSystem} - {editingProtocol ? 'Tedavi Protokolü Düzenle' : isEditingStandardProtocol ? 'Varsayılan Protokolden Klinik Özel Kopya Oluştur' : 'Tedavi Protokolü Oluştur'}
             </h2>
             <button
               onClick={() => {
                 setShowCreationForm(false);
                 setSelectedDiagnosisSystem('');
                 setEditingProtocol(null);
+                setIsEditingStandardProtocol(false);
               }}
               className="px-4 py-2 bg-gray-500/20 hover:bg-gray-500/30 border border-gray-500/30 rounded-xl text-gray-300 hover:text-gray-200 transition-all duration-200"
             >
               ← Geri
             </button>
           </div>
+
+          {/* Warning for editing standard protocol */}
+          {isEditingStandardProtocol && (
+            <div className="mb-6 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">⚠️</span>
+                <div className="text-sm text-yellow-200">
+                  <p className="font-medium mb-1">Varsayılan Protokol Kopyalanıyor</p>
+                  <p className="text-yellow-200/80">
+                    Bu varsayılan protokolü düzenliyorsunuz. Kaydettiğinizde <strong>sadece kendi kliniğinize özel</strong> bir kopya oluşturulacak. 
+                    Diğer klinikler orijinal varsayılan protokolü görmeye devam edecek.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-6">
             {/* Basic Information */}

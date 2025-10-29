@@ -76,17 +76,16 @@ const TreatmentProtocolsModal: React.FC<TreatmentProtocolsModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Double-check clinic filtering as a safety measure
-  const clinicFilteredProtocols = doctorProfile?.clinicId 
-    ? savedProtocols.filter(p => p.clinicId === doctorProfile.clinicId)
-    : savedProtocols;
-    
-  const systemProtocols = clinicFilteredProtocols.filter(p => p.diagnosisSystem === diagnosisSystem);
+  // Show STANDARD protocols + clinic-specific protocols
+  // STANDARD protocols are visible to all clinics (default treatments)
+  // Clinic-specific protocols are only visible to their respective clinic
+  const systemProtocols = savedProtocols.filter(p => p.diagnosisSystem === diagnosisSystem);
   
   console.log('🏥 TreatmentProtocolsModal: Filtering for clinicId:', doctorProfile?.clinicId);
   console.log('📋 TreatmentProtocolsModal: Total protocols received:', savedProtocols.length);
-  console.log('🔍 TreatmentProtocolsModal: After clinic filter:', clinicFilteredProtocols.length);
-  console.log('🎯 TreatmentProtocolsModal: After system filter:', systemProtocols.length);
+  console.log('🎯 TreatmentProtocolsModal: Protocols for system:', systemProtocols.length);
+  console.log('   - STANDARD protocols:', systemProtocols.filter(p => p.clinicId === 'STANDARD').length);
+  console.log('   - Clinic-specific:', systemProtocols.filter(p => p.clinicId !== 'STANDARD').length);
 
   // Group protocols by age group for better organization
   const protocolsByAge = {
@@ -125,6 +124,21 @@ const TreatmentProtocolsModal: React.FC<TreatmentProtocolsModalProps> = ({
 
         {/* Content */}
         <div className="bg-gradient-to-r from-slate-900 via-gray-900 to-slate-900 max-h-[calc(90vh-200px)] overflow-y-auto p-6 custom-scrollbar">
+          {/* Info Box */}
+          <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">ℹ️</span>
+              <div className="text-sm text-white/80">
+                <p className="font-medium text-blue-300 mb-1">Protokol Türleri:</p>
+                <ul className="space-y-1 text-white/70">
+                  <li>🌍 <strong className="text-green-300">Varsayılan Protokoller:</strong> Tüm kliniklerde görünür (sistem standartları)</li>
+                  <li>🏥 <strong className="text-blue-300">Klinik Özel Protokoller:</strong> Sadece bu klinikteki protokoller</li>
+                  <li>📋 Varsayılan bir protokolü düzenlediğinizde, klinik özel bir kopyası oluşturulur</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
           {systemProtocols.length === 0 ? (
             <div className="text-center py-12">
               <div className="text-6xl mb-4">📋</div>
@@ -238,6 +252,15 @@ const TreatmentProtocolsModal: React.FC<TreatmentProtocolsModalProps> = ({
                                   <div className="text-xs text-gray-300 mb-1">{protocol.name}</div>
                                   <div className="text-xs text-white/60">{protocol.control}</div>
                                   <div className="text-xs text-blue-400 mt-1">Öncelik: {protocol.priority}</div>
+                                  {protocol.clinicId === 'STANDARD' ? (
+                                    <div className="inline-block px-2 py-1 bg-green-500/20 text-green-300 rounded text-xs mt-2 border border-green-500/30">
+                                      🌍 Varsayılan
+                                    </div>
+                                  ) : (
+                                    <div className="inline-block px-2 py-1 bg-blue-500/20 text-blue-300 rounded text-xs mt-2 border border-blue-500/30">
+                                      🏥 Klinik Özel
+                                    </div>
+                                  )}
                                 </td>
                                 
                                 {/* Conditions */}
@@ -268,12 +291,22 @@ const TreatmentProtocolsModal: React.FC<TreatmentProtocolsModalProps> = ({
                                 <td className="p-3 text-white">
                                   <button
                                     onClick={() => {
+                                      // Show confirmation for STANDARD protocols
+                                      if (protocol.clinicId === 'STANDARD') {
+                                        const confirmed = window.confirm(
+                                          '⚠️ Bu varsayılan bir protokoldür.\n\n' +
+                                          'Düzenlediğinizde, sadece kendi kliniğinize özel bir kopyası oluşturulacak.\n' +
+                                          'Diğer klinikler orijinal varsayılan protokolü görmeye devam edecek.\n\n' +
+                                          'Devam etmek istiyor musunuz?'
+                                        );
+                                        if (!confirmed) return;
+                                      }
                                       onEditProtocol(protocol);
                                       onClose();
                                     }}
                                     className="px-3 py-1 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-blue-300 hover:text-blue-200 transition-all duration-200 text-xs"
                                   >
-                                    ✏️ Düzenle
+                                    {protocol.clinicId === 'STANDARD' ? '📋 Kopyala & Düzenle' : '✏️ Düzenle'}
                                   </button>
                                 </td>
                               </tr>
@@ -286,6 +319,8 @@ const TreatmentProtocolsModal: React.FC<TreatmentProtocolsModalProps> = ({
                       <div className="mt-4 p-4 bg-white/5 border border-white/20 rounded-lg">
                         <div className="text-sm text-white/70">
                           <strong className="text-white">📈 Özet:</strong> {protocols.length} protokol • 
+                          <span className="text-green-300">Varsayılan: {protocols.filter(p => p.clinicId === 'STANDARD').length}</span> • 
+                          <span className="text-blue-300">Klinik Özel: {protocols.filter(p => p.clinicId !== 'STANDARD').length}</span> • 
                           Normal: {protocols.filter(p => p.symptomConditions.length === 0 && !p.toxicityRequired).length} • 
                           Koşullu: {protocols.filter(p => p.symptomConditions.length > 0 || p.toxicityRequired).length} • 
                           Ortalama Öncelik: {Math.round(protocols.reduce((sum, p) => sum + p.priority, 0) / protocols.length)}

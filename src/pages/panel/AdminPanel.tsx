@@ -172,7 +172,7 @@ export default function AdminPanel() {
       case 'patients':
         return <Patients doctorProfile={doctorProfile} />;
       case 'appointments':
-        return <Appointments />;
+        return <Appointments doctorProfile={doctorProfile} />;
       case 'anamnez':
         return <Anamnez doctorProfile={doctorProfile} />;
       case 'settings':
