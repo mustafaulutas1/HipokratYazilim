@@ -106,14 +106,21 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
         endDate = end.toISOString().slice(0, 10);
       }
       
+      // Fetch appointments with only clinicId filter to avoid composite index requirement
+      // Then filter by date on client side
       const qDay = query(
         collection(db, 'appointments'),
-        where('clinicId', '==', doctorProfile.clinicId),
-        where('dateISO', '>=', startDate),
-        where('dateISO', '<=', endDate)
+        where('clinicId', '==', doctorProfile.clinicId)
       );
       const snap = await getDocs(qDay);
-      const list = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+      
+      // Client-side filtering by date range
+      const allAppointments = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+      const list = allAppointments.filter(apt => {
+        const aptDate = apt.dateISO || '';
+        return aptDate >= startDate && aptDate <= endDate;
+      });
+      
       list.sort((a,b) => {
         const dateCompare = String(a.dateISO||'').localeCompare(String(b.dateISO||''));
         if (dateCompare !== 0) return dateCompare;
@@ -621,13 +628,14 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
           (async () => {
             if (!doctorProfile?.clinicId) return;
             
+            // Fetch with only clinicId to avoid composite index, then filter by date
             const qDay = query(
               collection(db, 'appointments'),
-              where('clinicId', '==', doctorProfile.clinicId),
-              where('dateISO', '==', dateISO)
+              where('clinicId', '==', doctorProfile.clinicId)
             );
             const snap = await getDocs(qDay);
-            const list = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+            const allAppointments = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+            const list = allAppointments.filter(apt => apt.dateISO === dateISO);
             list.sort((a,b) => String(a.start||'').localeCompare(String(b.start||'')));
             setAppointments(list);
           })();
@@ -649,13 +657,14 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
           (async () => {
             if (!doctorProfile?.clinicId) return;
             
+            // Fetch with only clinicId to avoid composite index, then filter by date
             const qDay = query(
               collection(db, 'appointments'),
-              where('clinicId', '==', doctorProfile.clinicId),
-              where('dateISO', '==', dateISO)
+              where('clinicId', '==', doctorProfile.clinicId)
             );
             const snap = await getDocs(qDay);
-            const list = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+            const allAppointments = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+            const list = allAppointments.filter(apt => apt.dateISO === dateISO);
             list.sort((a,b) => String(a.start||'').localeCompare(String(b.start||'')));
             setAppointments(list);
           })();
