@@ -21,6 +21,7 @@ interface Patient {
   visitReason: string;
   createdAt: string;
   updatedAt: string;
+  clinicId?: string;
 }
 
 interface EditPatientModalProps {

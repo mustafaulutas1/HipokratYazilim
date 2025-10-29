@@ -415,7 +415,6 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
                   <div className="space-y-1">
                     {timeSlots.map((hour) => {
                       const timeStr = `${String(hour).padStart(2, '0')}:00`;
-                      const nextTimeStr = `${String(hour + 1).padStart(2, '0')}:00`;
                       
                       return (
                         <div key={hour} className="grid grid-cols-8 gap-2">
