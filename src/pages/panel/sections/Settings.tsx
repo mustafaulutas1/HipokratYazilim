@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { useAuth } from '../../../context/AuthContext';
+import { forceLogoutService } from '../../../services/forceLogoutService';
 
 interface SessionData {
   id: string;
@@ -26,6 +27,7 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
   const [showSessionHistory, setShowSessionHistory] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [isSigningOutAll, setIsSigningOutAll] = useState(false);
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
     newPassword: '',
@@ -180,6 +182,28 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
     setShowCurrentPassword(false);
     setShowNewPassword(false);
     setShowConfirmPassword(false);
+  };
+
+  const handleSignOutAllUsers = async () => {
+    if (!confirm('⚠️ UYARI: Tüm kullanıcıları tüm cihazlardan çıkış yapmaya zorlamak istediğinizden emin misiniz? Bu işlem geri alınamaz!')) {
+      return;
+    }
+
+    setIsSigningOutAll(true);
+    try {
+      await forceLogoutService.triggerForceLogout(user?.email || 'admin', 'Tüm kullanıcılar manuel olarak çıkış yaptırıldı');
+      alert('✅ Tüm kullanıcılar başarıyla çıkış yaptırıldı!');
+    } catch (error) {
+      console.error('Kullanıcıları çıkış yaptırırken hata:', error);
+      alert('❌ Kullanıcıları çıkış yaptırırken bir hata oluştu. Lütfen tekrar deneyin.');
+    } finally {
+      setIsSigningOutAll(false);
+    }
+  };
+
+  // Check if current user is authorized admin
+  const isAuthorizedForceLogoutAdmin = () => {
+    return user?.email === 'e.turanemre@gmail.com';
   };
 
   // Gerçek oturum verilerini yükle
@@ -519,6 +543,45 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
             </button>
           </div>
         </div>
+
+        {/* Force Logout All Users - Only for authorized admin */}
+        {isAuthorizedForceLogoutAdmin() && (
+          <div className="bg-gradient-to-br from-red-900/20 to-orange-900/20 border border-red-500/30 rounded-xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h4 className="text-white font-semibold flex items-center gap-2">
+                  <span>🚨</span>
+                  Tüm Kullanıcıları Çıkış Yaptır
+                </h4>
+                <p className="text-white/70 text-sm mt-1">
+                  Tüm kullanıcıları tüm cihazlardan anında çıkış yaptırır (çevrimiçi ve çevrimdışı)
+                </p>
+                <p className="text-red-300/80 text-xs mt-2 font-medium">
+                  ⚠️ Bu işlem geri alınamaz ve tüm aktif oturumları sonlandırır!
+                </p>
+              </div>
+              <button
+                onClick={handleSignOutAllUsers}
+                disabled={isSigningOutAll}
+                className="px-6 py-3 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 disabled:cursor-not-allowed rounded-xl text-white font-semibold transition-all duration-200 hover:scale-105 shadow-lg flex items-center gap-2 whitespace-nowrap"
+              >
+                {isSigningOutAll ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Çıkış Yaptırılıyor...
+                  </>
+                ) : (
+                  <>
+                    🚪 Tümünü Çıkış Yaptır
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
 
 
         <div className="bg-white/10 rounded-xl p-6">

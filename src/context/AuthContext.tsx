@@ -38,16 +38,38 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
+  const [forceLogoutChecked, setForceLogoutChecked] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         // Kullanıcı giriş yaptığında log yaz (sadece yeni giriş ise)
         if (!user) {
           loggingService.logUserAction(currentUser.uid, currentUser.email || '', 'login');
           loggingService.logSessionStart(currentUser.uid, currentUser.email || '');
-          // Set session start time
-          setSessionStartTime(Date.now());
+          
+          // Get stored login time or use current time
+          let loginTime = forceLogoutService.getUserLoginTime(currentUser.uid);
+          if (!loginTime) {
+            loginTime = Date.now();
+            forceLogoutService.storeUserLoginTime(currentUser.uid);
+          }
+          
+          setSessionStartTime(loginTime);
+          
+          // Check if user should be logged out (for users who were offline)
+          if (!forceLogoutChecked) {
+            const shouldLogout = await forceLogoutService.shouldLogoutOnInit(loginTime);
+            if (shouldLogout) {
+              console.log('🚨 User logged in before force logout was triggered, logging out...');
+              await signOut(auth);
+              forceLogoutService.clearUserLoginTime();
+              setForceLogoutChecked(true);
+              setLoading(false);
+              return;
+            }
+            setForceLogoutChecked(true);
+          }
         }
       } else {
         // Kullanıcı çıkış yaptığında log yaz (sadece önceki user varsa ve çıkış yapılmışsa)
@@ -55,12 +77,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           // Çıkış log'u logout fonksiyonunda yazılıyor, burada tekrar yazmayalım
         }
         setSessionStartTime(null);
+        setForceLogoutChecked(false);
+        forceLogoutService.clearUserLoginTime();
       }
       setUser(currentUser);
       setLoading(false);
     });
     return unsubscribe;
-  }, [user]);
+  }, [user, forceLogoutChecked]);
 
   // Listen for force logout events
   useEffect(() => {
@@ -88,6 +112,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
       }
       
+      // Clear login time from storage
+      forceLogoutService.clearUserLoginTime();
+      
       // Firebase çıkış işlemi
       await signOut(auth);
       
@@ -98,6 +125,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Hata olsa bile session'ı temizle
       sessionStorage.clear();
       localStorage.removeItem('user_session_id');
+      forceLogoutService.clearUserLoginTime();
       throw error;
     }
   };
