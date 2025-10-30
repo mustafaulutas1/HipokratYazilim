@@ -6,6 +6,7 @@ import type { User, UserCredential } from 'firebase/auth';
 import { db } from '../firebase/config';
 import { doc, setDoc, collection, addDoc } from 'firebase/firestore';
 import { loggingService } from '../services/loggingService';
+import { forceLogoutService } from '../services/forceLogoutService';
 
 interface AuthContextType {
   user: User | null;
@@ -36,6 +37,7 @@ interface AuthProviderProps {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -44,18 +46,35 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (!user) {
           loggingService.logUserAction(currentUser.uid, currentUser.email || '', 'login');
           loggingService.logSessionStart(currentUser.uid, currentUser.email || '');
+          // Set session start time
+          setSessionStartTime(Date.now());
         }
       } else {
         // Kullanıcı çıkış yaptığında log yaz (sadece önceki user varsa ve çıkış yapılmışsa)
         if (user) {
           // Çıkış log'u logout fonksiyonunda yazılıyor, burada tekrar yazmayalım
         }
+        setSessionStartTime(null);
       }
       setUser(currentUser);
       setLoading(false);
     });
     return unsubscribe;
   }, [user]);
+
+  // Listen for force logout events
+  useEffect(() => {
+    if (!user || !sessionStartTime) return;
+
+    const unsubscribe = forceLogoutService.onForceLogoutChange((forceLogoutData) => {
+      if (forceLogoutData && forceLogoutService.shouldLogout(sessionStartTime, forceLogoutData.timestamp)) {
+        console.log('🚨 Force logout triggered, logging out user...');
+        logout().catch(console.error);
+      }
+    });
+
+    return unsubscribe;
+  }, [user, sessionStartTime]);
 
   const logout = async () => {
     try {
