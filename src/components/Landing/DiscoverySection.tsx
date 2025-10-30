@@ -70,7 +70,7 @@ const DiscoverySection: React.FC = () => {
   ];
 
   return (
-    <section ref={sectionRef} className={`${layout.section} bg-gradient-to-br from-slate-50 to-blue-50 relative rounded-[6rem]`}>
+    <section ref={sectionRef} className={`${layout.section} relative`}>
       {/* Animated background elements */}
       <div className="absolute inset-0">
         <div className="absolute top-10 right-10 w-32 h-32 bg-gradient-to-br from-blue-200 to-purple-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob"></div>

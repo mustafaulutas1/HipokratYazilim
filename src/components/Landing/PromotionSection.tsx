@@ -3,7 +3,7 @@ import { rtmLogo } from '../../assets';
 
 const Promotion = () => {
   return (
-    <section id='platform' className={`${layout.sectionReverse} bg-gradient-to-br from-slate-50 to-blue-50`}>
+    <section id='platform' className={`${layout.sectionReverse}`}>
       <div className={`${layout.sectionImgReverse}`}>
         <div className="relative w-full h-96 flex items-center justify-center">
           {/* Main platform mockup */}

@@ -192,8 +192,7 @@ const Stats = () => {
   return (
     <section className={`${styles.flexCenter} flex-wrap ${styles.paddingY} relative`} id="stats">
       {/* Enhanced background with animated gradients */}
-      <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 rounded-bl-[9rem] rounded-br-[9rem] "
-      style={{boxShadow: '-1px 6px 6px -5px rgba(0, 0, 0, 0.1)'}}></div>
+      <div className="absolute inset-0"></div>
       <div className="absolute top-0 left-0 w-full h-full">
         <div className="absolute top-20 left-20 w-32 h-32 bg-blue-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob"></div>
         <div className="absolute top-40 right-20 w-32 h-32 bg-purple-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-2000"></div>

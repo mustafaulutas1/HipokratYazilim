@@ -2,7 +2,7 @@ import styles from '../../style'
 
 const CTA = () => {
   return (
-    <section className={`${styles.flexCenter} ${styles.marginY} ${styles.padding} sm:flex-row flex-col bg-gradient-to-r from-blue-600 to-cyan-500 rounded-3xl shadow-2xl text-white`} id="contact">
+    <section className={`${styles.flexCenter} ${styles.marginY} ${styles.padding} sm:flex-row flex-col bg-gradient-to-r from-blue-600 to-cyan-500 shadow-2xl text-white`} id="contact">
       <div className='flex-1 flex flex-col'>
         <h2 className={`${styles.heading2} text-white mb-4`}>
           RTM Klinik RTM Platformu ile Başlayın!

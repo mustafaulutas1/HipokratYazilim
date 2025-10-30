@@ -167,8 +167,7 @@ const FeaturesSection = () => {
   ];
 
   return (
-    <section id='features' className={`${layout.section} rounded-[9rem] bg-gradient-to-br from-white via-blue-50/30 to-purple-50/20 relative `}
-      style={{ boxShadow: '-1px -6px 6px -5px rgba(0, 0, 0, 0.025)' }}>
+    <section id='features' className={`${layout.section} relative`}>
       {/* Animated background elements */}  
       <div className="absolute inset-0">
         <div className="absolute top-20 left-10 w-40 h-40 bg-gradient-to-br from-blue-200 to-purple-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob"></div>
