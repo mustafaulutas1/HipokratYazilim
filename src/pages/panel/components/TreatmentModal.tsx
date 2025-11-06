@@ -107,6 +107,13 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
   patient,
   onStartTreatment
 }) => {
+  console.log('🎬 TreatmentModal: Component render', { 
+    isOpen, 
+    patientId: patient?.id,
+    patientName: patient?.fullName,
+    patientClinicId: patient?.clinicId
+  });
+  
   const [,] = useState<TreatmentOptions>({});
   const [loading, setLoading] = useState(false);
   const [anamrezData, setAnamrezData] = useState<AnamrezData | null>(null);
@@ -118,6 +125,13 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
   const [selectedMainApplications, setSelectedMainApplications] = useState<string[]>([]);
   const [selectedApplicationsBySystem, setSelectedApplicationsBySystem] = useState<{[key: string]: string[]}>({});
 
+  console.log('🎬 TreatmentModal: Current state', {
+    savedProtocolsCount: savedProtocols.length,
+    anamrezDataExists: !!anamrezData,
+    fetchingProtocols,
+    fetchingAnamnez
+  });
+
   // Helper function to get patient age group
   const getPatientAgeGroup = (birthDate: string): string => {
     const age = new Date().getFullYear() - new Date(birthDate).getFullYear();
@@ -128,29 +142,88 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
 
   // Fetch saved protocols from Firestore (including patient-specific ones)
   const fetchSavedProtocols = async () => {
-    if (!patient?.clinicId) return;
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('🔍 fetchSavedProtocols: START');
+    
+    if (!patient?.clinicId) {
+      console.log('❌ fetchSavedProtocols: No clinicId found!', {
+        hasPatient: !!patient,
+        clinicId: patient?.clinicId
+      });
+      return;
+    }
 
     try {
       setFetchingProtocols(true);
-      console.log('🔍 TreatmentModal: Fetching protocols for clinicId:', patient.clinicId);
+      console.log('🔍 fetchSavedProtocols: Fetching protocols for clinicId:', patient.clinicId);
+      console.log('🔍 fetchSavedProtocols: Patient details:', {
+        id: patient.id,
+        name: patient.fullName,
+        clinicId: patient.clinicId
+      });
 
       // Fetch general clinic protocols
       const protocolsRef = collection(db, 'treatmentProtocols');
-      const q = query(
-        protocolsRef,
-        where('clinicId', '==', patient.clinicId)
-      );
-
-      const querySnapshot = await getDocs(q);
+      console.log('🔍 fetchSavedProtocols: Created collection reference');
+      
+      // Fetch ALL protocols (not filtered by clinicId yet)
+      const allProtocolsSnapshot = await getDocs(protocolsRef);
+      console.log('🔍 fetchSavedProtocols: Query executed. Total documents in collection:', allProtocolsSnapshot.size);
+      
       const protocols: SavedProtocol[] = [];
+      const clinicProtocolKeys = new Set<string>();
 
-      querySnapshot.forEach((doc) => {
+      // First pass: collect clinic-specific protocols
+      console.log('🔍 fetchSavedProtocols: First pass - collecting clinic-specific protocols...');
+      allProtocolsSnapshot.forEach((doc) => {
         const data = doc.data();
-        protocols.push({
-          id: doc.id,
-          ...data
-        } as SavedProtocol);
+        if (data.clinicId === patient.clinicId) {
+          console.log('📄 fetchSavedProtocols: Found clinic-specific protocol:', {
+            id: doc.id,
+            name: data.name,
+            diagnosisSystem: data.diagnosisSystem,
+            ageGroup: data.ageGroup
+          });
+          protocols.push({
+            id: doc.id,
+            ...data
+          } as SavedProtocol);
+          // Create unique key for protocol (diagnosisSystem + ageGroup + name)
+          const key = `${data.diagnosisSystem}_${data.ageGroup}_${data.name}`;
+          clinicProtocolKeys.add(key);
+        }
       });
+      
+      console.log(`✅ fetchSavedProtocols: Found ${protocols.length} clinic-specific protocol(s)`);
+      
+      // Second pass: add STANDARD protocols that don't have clinic-specific versions
+      console.log('🔍 fetchSavedProtocols: Second pass - collecting STANDARD protocols...');
+      allProtocolsSnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.clinicId === 'STANDARD') {
+          const key = `${data.diagnosisSystem}_${data.ageGroup}_${data.name}`;
+          if (!clinicProtocolKeys.has(key)) {
+            console.log('📄 fetchSavedProtocols: Found STANDARD protocol (no clinic override):', {
+              id: doc.id,
+              name: data.name,
+              diagnosisSystem: data.diagnosisSystem,
+              ageGroup: data.ageGroup
+            });
+            protocols.push({
+              id: doc.id,
+              ...data
+            } as SavedProtocol);
+          } else {
+            console.log('⏭️ fetchSavedProtocols: Skipping STANDARD protocol (clinic override exists):', {
+              name: data.name,
+              diagnosisSystem: data.diagnosisSystem,
+              ageGroup: data.ageGroup
+            });
+          }
+        }
+      });
+      
+      console.log('✅ fetchSavedProtocols: Processed general protocols:', protocols.length);
 
       // Fetch patient's customized protocol from patient record
       console.log('🔍 TreatmentModal: Checking patient record for customized protocol:', {
@@ -194,8 +267,8 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
         return (b.priority || 0) - (a.priority || 0);
       });
 
-      console.log('✅ TreatmentModal: Fetched protocols:', protocols.length);
-      console.log('📋 TreatmentModal: All protocols summary:', protocols.map(p => ({
+      console.log('✅ fetchSavedProtocols: TOTAL FETCHED PROTOCOLS:', protocols.length);
+      console.log('📋 fetchSavedProtocols: All protocols summary:', protocols.map(p => ({
         id: p.id,
         name: p.name,
         diagnosisSystem: p.diagnosisSystem,
@@ -204,9 +277,17 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
         isCustomized: p.isCustomized || false,
         priority: p.priority
       })));
+      
       setSavedProtocols(protocols);
+      console.log('✅ fetchSavedProtocols: State updated with protocols');
+      console.log('═══════════════════════════════════════════════════════════');
     } catch (error) {
-      console.error('❌ TreatmentModal: Error fetching protocols:', error);
+      console.error('❌ fetchSavedProtocols: Error fetching protocols:', error);
+      console.error('❌ fetchSavedProtocols: Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      console.log('═══════════════════════════════════════════════════════════');
     } finally {
       setFetchingProtocols(false);
     }
@@ -321,11 +402,20 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
 
   // Helper function to get treatments for each selected diagnosis system
   const getTreatmentsForAllSystems = () => {
-    if (!anamrezData?.selectedDiagnosisSystems || !patient) return [];
+    if (!anamrezData?.selectedDiagnosisSystems || !patient) {
+      console.log('❌ getTreatmentsForAllSystems: Missing data', {
+        hasAnamrezData: !!anamrezData,
+        hasSelectedSystems: !!anamrezData?.selectedDiagnosisSystems,
+        hasPatient: !!patient
+      });
+      return [];
+    }
 
-    console.log('🔍 TreatmentModal: Getting treatments for systems:', anamrezData.selectedDiagnosisSystems);
-    console.log('🔍 TreatmentModal: Available protocols:', savedProtocols.length);
-    console.log('🔍 TreatmentModal: All available protocols:', savedProtocols.map(p => ({
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('🔍 getTreatmentsForAllSystems: START');
+    console.log('🔍 Selected diagnosis systems:', anamrezData.selectedDiagnosisSystems);
+    console.log('🔍 Total available protocols:', savedProtocols.length);
+    console.log('🔍 All available protocols:', savedProtocols.map(p => ({
       id: p.id,
       name: p.name,
       diagnosisSystem: p.diagnosisSystem,
@@ -337,79 +427,110 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
 
     const treatmentsBySystem: { [key: string]: any } = {};
     const patientAgeGroup = getPatientAgeGroup(patient.birthDate);
+    console.log('🔍 Patient age group:', patientAgeGroup);
 
-    anamrezData.selectedDiagnosisSystems.forEach(system => {
-      console.log('🔍 TreatmentModal: Processing system:', system);
-      console.log('🔍 TreatmentModal: Patient ID:', patient.id);
-      console.log('🔍 TreatmentModal: Patient age group:', patientAgeGroup);
+    anamrezData.selectedDiagnosisSystems.forEach((system, index) => {
+      console.log('───────────────────────────────────────────────────────────');
+      console.log(`🔍 Processing system [${index + 1}/${anamrezData.selectedDiagnosisSystems.length}]:`, system);
+      console.log('🔍 Patient ID:', patient.id);
+      console.log('🔍 Patient age group:', patientAgeGroup);
 
       // Debug all protocols for this system first
       const systemProtocolsAll = savedProtocols.filter(protocol => protocol.diagnosisSystem === system);
-      console.log('🔍 TreatmentModal: All protocols for system', system, ':', systemProtocolsAll.map(p => ({
+      console.log(`🔍 Total protocols found for system "${system}":`, systemProtocolsAll.length);
+      console.log('🔍 All protocols for this system:', systemProtocolsAll.map(p => ({
         id: p.id,
         name: p.name,
         ageGroup: p.ageGroup,
         patientId: p.patientId || 'NONE',
-        isCustomized: p.isCustomized || false
+        isCustomized: p.isCustomized || false,
+        priority: p.priority
       })));
 
       // FIRST: Look for patient-specific customized protocols
+      console.log('🔍 Step 1: Looking for patient-specific protocols...');
       const patientSpecificProtocols = savedProtocols.filter(protocol => {
-        const matches = protocol.diagnosisSystem === system &&
-                       protocol.ageGroup === patientAgeGroup &&
-                       protocol.patientId === patient.id &&
-                       protocol.isCustomized === true;
+        const diagnosisSystemMatch = protocol.diagnosisSystem === system;
+        const ageGroupMatch = protocol.ageGroup === patientAgeGroup;
+        const patientIdMatch = protocol.patientId === patient.id;
+        const isCustomizedMatch = protocol.isCustomized === true;
+        const matches = diagnosisSystemMatch && ageGroupMatch && patientIdMatch && isCustomizedMatch;
 
-        console.log('🔍 TreatmentModal: Checking protocol', protocol.name, 'for patient match:', {
-          diagnosisSystemMatch: protocol.diagnosisSystem === system,
-          ageGroupMatch: protocol.ageGroup === patientAgeGroup,
-          patientIdMatch: protocol.patientId === patient.id,
-          isCustomized: protocol.isCustomized === true,
-          overallMatch: matches
-        });
+        if (protocol.diagnosisSystem === system) {
+          console.log(`  🔍 Checking protocol "${protocol.name}":`, {
+            diagnosisSystemMatch,
+            ageGroupMatch,
+            patientIdMatch,
+            isCustomizedMatch,
+            overallMatch: matches
+          });
+        }
 
         return matches;
       });
 
-      console.log('🔍 TreatmentModal: Found patient-specific protocols for', system, ':', patientSpecificProtocols.length);
+      console.log(`✅ Found ${patientSpecificProtocols.length} patient-specific protocol(s) for "${system}"`);
       if (patientSpecificProtocols.length > 0) {
-        console.log('🎯 TreatmentModal: Patient-specific protocols:', patientSpecificProtocols.map(p => ({
+        console.log('🎯 Patient-specific protocols:', patientSpecificProtocols.map(p => ({
           id: p.id,
           name: p.name,
           patientId: p.patientId,
-          isCustomized: p.isCustomized
+          isCustomized: p.isCustomized,
+          priority: p.priority
         })));
       }
 
       // SECOND: If no patient-specific found, look for general clinic protocols
+      console.log('🔍 Step 2: Looking for general clinic protocols...');
       const generalProtocols = patientSpecificProtocols.length === 0
-        ? savedProtocols.filter(protocol =>
-            protocol.diagnosisSystem === system &&
-            protocol.ageGroup === patientAgeGroup &&
-            !protocol.patientId // General clinic protocols don't have patientId
-          )
+        ? savedProtocols.filter(protocol => {
+            const diagnosisSystemMatch = protocol.diagnosisSystem === system;
+            const ageGroupMatch = protocol.ageGroup === patientAgeGroup;
+            const noPatientId = !protocol.patientId;
+            const matches = diagnosisSystemMatch && ageGroupMatch && noPatientId;
+
+            if (protocol.diagnosisSystem === system) {
+              console.log(`  🔍 Checking protocol "${protocol.name}":`, {
+                diagnosisSystemMatch,
+                ageGroupMatch,
+                noPatientId,
+                overallMatch: matches
+              });
+            }
+
+            return matches;
+          })
         : [];
 
-      console.log('🔍 TreatmentModal: Found general protocols for', system, ':', generalProtocols.length);
+      console.log(`✅ Found ${generalProtocols.length} general protocol(s) for "${system}"`);
       if (generalProtocols.length > 0) {
-        console.log('🎯 TreatmentModal: General protocols:', generalProtocols.map(p => ({
+        console.log('🎯 General protocols:', generalProtocols.map(p => ({
           id: p.id,
           name: p.name,
+          ageGroup: p.ageGroup,
+          priority: p.priority,
           isCustomized: p.isCustomized || false
         })));
       }
 
       // Use patient-specific if available, otherwise use general
       const systemProtocols = patientSpecificProtocols.length > 0 ? patientSpecificProtocols : generalProtocols;
+      console.log(`🔍 Step 3: Using ${systemProtocols.length} protocol(s) for evaluation (${patientSpecificProtocols.length > 0 ? 'patient-specific' : 'general'})`);
 
       const applicableProtocols: any[] = [];
+      console.log('🔍 Step 4: Evaluating protocol requirements...');
 
-      systemProtocols.forEach(protocol => {
+      systemProtocols.forEach((protocol, idx) => {
+        console.log(`  📋 Evaluating protocol [${idx + 1}/${systemProtocols.length}]: "${protocol.name}"`);
+        
         // Check if protocol requirements are met
         const meetsRequirements = meetsTreatmentRequirements(protocol);
 
-        console.log('🔍 TreatmentModal: Protocol', protocol.name, 'meets requirements:', meetsRequirements,
-                   'isCustomized:', protocol.isCustomized || false);
+        console.log(`  ${meetsRequirements ? '✅' : '❌'} Requirements met: ${meetsRequirements}`, {
+          protocolName: protocol.name,
+          isCustomized: protocol.isCustomized || false,
+          priority: protocol.priority
+        });
 
         if (meetsRequirements) {
           // Build treatment sequence from protocol phases
@@ -428,31 +549,112 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
               treatmentSequence: treatmentSequence
             }
           });
+          console.log(`  ✅ Added to applicable protocols`);
         }
       });
 
+      console.log(`✅ Step 4 Complete: ${applicableProtocols.length} protocol(s) meet requirements`);
+
       // Sort by priority and get the best protocol for this system
+      console.log('🔍 Step 5: Selecting final protocol...');
       if (applicableProtocols.length > 0) {
+        console.log('  ✅ Using protocols that meet requirements');
         const sortedProtocols = applicableProtocols.sort((a, b) => (b.priority || 0) - (a.priority || 0));
         treatmentsBySystem[system] = sortedProtocols[0]; // Best protocol for this system
-        console.log('✅ TreatmentModal: Selected protocol for', system, ':', sortedProtocols[0].name,
-                   'isCustomized:', sortedProtocols[0].isCustomized || false);
+        console.log(`  ✅ SELECTED for "${system}":`, {
+          name: sortedProtocols[0].name,
+          isCustomized: sortedProtocols[0].isCustomized || false,
+          priority: sortedProtocols[0].priority,
+          isFallback: false
+        });
       } else {
-        console.log('⚠️ TreatmentModal: No applicable protocols found for', system);
+        // If no protocols meet the requirements, use the first protocol for this system/age as fallback
+        console.log('  ⚠️ No applicable protocols found - attempting fallback...');
+        
+        if (systemProtocols.length > 0) {
+          console.log(`  ⚠️ Using fallback from ${systemProtocols.length} available protocol(s)`);
+          // Sort by priority and take the first one
+          const sortedForFallback = [...systemProtocols].sort((a, b) => (b.priority || 0) - (a.priority || 0));
+          const fallbackProtocol = sortedForFallback[0];
+          const treatmentSequence = buildTreatmentSequence(fallbackProtocol);
+          
+          console.log('  📋 Fallback protocol details:', {
+            name: fallbackProtocol.name,
+            priority: fallbackProtocol.priority,
+            ageGroup: fallbackProtocol.ageGroup,
+            hasPhases: !!fallbackProtocol.phases,
+            hasMainTreatments: !!fallbackProtocol.phases?.mainTreatments
+          });
+          
+          treatmentsBySystem[system] = {
+            ...fallbackProtocol,
+            system,
+            patientAgeGroup,
+            treatmentSequence,
+            isCustomized: fallbackProtocol.isCustomized || false,
+            isFallback: true, // Mark this as a fallback selection
+            ageGroupData: {
+              sessions: '',
+              frequency: fallbackProtocol.frequency,
+              treatmentSequence: treatmentSequence
+            }
+          };
+          
+          console.log(`  ✅ SELECTED (FALLBACK) for "${system}":`, {
+            name: fallbackProtocol.name,
+            isCustomized: fallbackProtocol.isCustomized || false,
+            priority: fallbackProtocol.priority,
+            isFallback: true
+          });
+        } else {
+          console.log(`  ❌ ERROR: No protocols available at all for "${system}" with age group "${patientAgeGroup}"`);
+          console.log(`  ❌ Available system protocols:`, systemProtocolsAll.map(p => ({
+            name: p.name,
+            ageGroup: p.ageGroup,
+            patientId: p.patientId || 'NONE'
+          })));
+        }
       }
     });
 
     const result = Object.values(treatmentsBySystem);
-    console.log('✅ TreatmentModal: Final treatment recommendations:', result.length);
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('✅ getTreatmentsForAllSystems: COMPLETE');
+    console.log('✅ Final treatment recommendations count:', result.length);
+    console.log('✅ Treatments by system:', Object.keys(treatmentsBySystem));
+    console.log('✅ Final result details:', result.map((r: any) => ({
+      system: r.system,
+      name: r.name,
+      isCustomized: r.isCustomized,
+      isFallback: r.isFallback || false,
+      hasMainTreatments: r.phases?.mainTreatments?.length || 0
+    })));
+    console.log('═══════════════════════════════════════════════════════════');
     return result;
   };
 
   // Fetch anamnez data and protocols when modal opens
   useEffect(() => {
     const fetchData = async () => {
-      if (!patient || !isOpen) return;
+      console.log('═══════════════════════════════════════════════════════════');
+      console.log('🔍 useEffect fetchData: TRIGGERED');
+      console.log('🔍 useEffect fetchData: isOpen:', isOpen);
+      console.log('🔍 useEffect fetchData: hasPatient:', !!patient);
+      
+      if (!patient || !isOpen) {
+        console.log('❌ useEffect fetchData: Exiting early - patient or isOpen is false');
+        console.log('═══════════════════════════════════════════════════════════');
+        return;
+      }
+      
+      console.log('🔍 useEffect fetchData: Patient details:', {
+        id: patient.id,
+        name: patient.fullName,
+        clinicId: patient.clinicId
+      });
 
       // Fetch anamnez data
+      console.log('🔍 useEffect fetchData: Fetching anamnez data...');
       setFetchingAnamnez(true);
       try {
         const anamrezQuery = query(
@@ -460,6 +662,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
           where('patientId', '==', patient.id)
         );
         const querySnapshot = await getDocs(anamrezQuery);
+        console.log('🔍 useEffect fetchData: Anamnez records found:', querySnapshot.size);
 
         if (!querySnapshot.empty) {
           const data = querySnapshot.docs[0].data();
@@ -469,15 +672,25 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
             symptomRatings: data.symptomRatings || {},
             toxicityAssessment: data.toxicityAssessment || null
           });
+          console.log('✅ useEffect fetchData: Anamnez data set:', {
+            systems: data.selectedDiagnosisSystems?.length || 0,
+            hasSymptoms: !!data.symptomRatings,
+            hasToxicity: !!data.toxicityAssessment
+          });
+        } else {
+          console.log('⚠️ useEffect fetchData: No anamnez records found');
         }
       } catch (error) {
-        console.error('Anamnez verisi yüklenirken hata:', error);
+        console.error('❌ useEffect fetchData: Error fetching anamnez:', error);
       } finally {
         setFetchingAnamnez(false);
       }
 
       // Fetch protocols
+      console.log('🔍 useEffect fetchData: About to call fetchSavedProtocols...');
       await fetchSavedProtocols();
+      console.log('✅ useEffect fetchData: fetchSavedProtocols completed');
+      console.log('═══════════════════════════════════════════════════════════');
     };
 
     fetchData();
