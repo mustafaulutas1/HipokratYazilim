@@ -230,7 +230,7 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
                 <th className="px-6 py-4 text-left text-white/80 font-semibold">TC No</th>
                 <th className="px-6 py-4 text-left text-white/80 font-semibold">Telefon</th>
                 <th className="px-6 py-4 text-left text-white/80 font-semibold">Email</th>
-                <th className="px-6 py-4 text-left text-white/80 font-semibold">Kayıt Tarihi</th>
+                <th className="px-6 py-4 text-left text-white/80 font-semibold">İkamet</th>
                 <th className="px-6 py-4 text-left text-white/80 font-semibold">Durum</th>
                 <th className="px-6 py-4 text-left text-white/80 font-semibold">İşlemler</th>
               </tr>
@@ -255,14 +255,15 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
                   <td className="px-6 py-4 text-white">{patient.phone}</td>
                   <td className="px-6 py-4 text-white">{patient.email}</td>
                   <td className="px-6 py-4 text-white">
-                    {patient.registrationDate ? formatDate(patient.registrationDate) : '-'}
+                    {(patient as any).residenceCity 
+                      ? `${(patient as any).country || 'Türkiye'} / ${(patient as any).residenceCity}` 
+                      : (patient as any).registrationDate 
+                        ? formatDate((patient as any).registrationDate) 
+                        : '-'}
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${patient.registrationDate
-                      ? 'bg-green-500/20 text-green-300'
-                      : 'bg-red-500/20 text-red-300'
-                      }`}>
-                      {patient.registrationDate ? 'Kayıtlı' : 'Kayıtsız'}
+                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-green-500/20 text-green-300">
+                      Kayıtlı
                     </span>
                   </td>
                   <td className="px-6 py-4">

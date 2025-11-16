@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import PhoneInput from '../../../components/UI/PhoneInput';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
+import { TURKIYE_CITIES } from '../../../types/TurkiyeCities';
 
 interface Patient {
   id: string;
@@ -17,7 +18,9 @@ interface Patient {
   fatherName: string;
   birthPlace: string;
   registeredProvince: string;
-  registrationDate: string;
+  registrationDate?: string;
+  country?: string;
+  residenceCity?: string;
   visitReason: string;
   createdAt: string;
   updatedAt: string;
@@ -46,7 +49,8 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
     fatherName: '',
     birthPlace: '',
     registeredProvince: '',
-    registrationDate: '',
+    country: 'Türkiye',
+    residenceCity: '',
     visitReason: ''
   });
 
@@ -69,7 +73,8 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
         fatherName: patient.fatherName || '',
         birthPlace: patient.birthPlace || '',
         registeredProvince: patient.registeredProvince || '',
-        registrationDate: patient.registrationDate || '',
+        country: patient.country || 'Türkiye',
+        residenceCity: patient.residenceCity || '',
         visitReason: patient.visitReason || ''
       });
       setErrors({});
@@ -162,6 +167,14 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
 
     if (!formData.registeredProvince.trim()) {
       newErrors.registeredProvince = 'Kayıtlı il gereklidir';
+    }
+
+    if (!formData.country.trim()) {
+      newErrors.country = 'Ülke gereklidir';
+    }
+
+    if (!formData.residenceCity.trim()) {
+      newErrors.residenceCity = 'İkamet ili gereklidir';
     }
 
     setErrors(newErrors);
@@ -429,15 +442,45 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
 
             <div>
               <label className="block text-gray-700 text-sm font-medium mb-2">
-                Kayıt Tarihi
+                Ülke *
               </label>
               <input
-                type="date"
-                name="registrationDate"
-                value={formData.registrationDate}
+                type="text"
+                name="country"
+                value={formData.country}
                 onChange={handleInputChange}
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                  errors.country ? 'border-red-500' : 'border-gray-300'
+                }`}
+                placeholder="Ülke"
               />
+              {errors.country && (
+                <p className="text-red-500 text-sm mt-1">{errors.country}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-gray-700 text-sm font-medium mb-2">
+                İkamet İli *
+              </label>
+              <select
+                name="residenceCity"
+                value={formData.residenceCity}
+                onChange={handleInputChange}
+                className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                  errors.residenceCity ? 'border-red-500' : 'border-gray-300'
+                }`}
+              >
+                <option value="">İkamet ili seçiniz</option>
+                {TURKIYE_CITIES.map((city) => (
+                  <option key={city.id} value={city.name}>
+                    {city.name}
+                  </option>
+                ))}
+              </select>
+              {errors.residenceCity && (
+                <p className="text-red-500 text-sm mt-1">{errors.residenceCity}</p>
+              )}
             </div>
           </div>
 

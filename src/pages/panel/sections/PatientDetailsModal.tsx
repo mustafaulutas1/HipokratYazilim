@@ -25,7 +25,9 @@ interface Patient {
   fatherName: string;
   birthPlace: string;
   registeredProvince: string;
-  registrationDate: string;
+  registrationDate?: string;
+  country?: string;
+  residenceCity?: string;
   visitReason: string;
   createdAt: string;
   updatedAt: string;
@@ -120,19 +122,21 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
                 <span className="font-semibold text-gray-800">{formatDate(patient.birthDate)}</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-gray-600">Kayıt Tarihi:</span>
+                <span className="text-gray-600">Ülke:</span>
                 <span className="font-semibold text-gray-800">
-                  {patient.registrationDate ? formatDate(patient.registrationDate) : 'Kayıtsız'}
+                  {patient.country || 'Türkiye'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-600">İkamet İli:</span>
+                <span className="font-semibold text-gray-800">
+                  {patient.residenceCity || '-'}
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-gray-600">Durum:</span>
-                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                  patient.registrationDate 
-                    ? 'bg-green-100 text-green-700' 
-                    : 'bg-red-100 text-red-700'
-                }`}>
-                  {patient.registrationDate ? 'Kayıtlı' : 'Kayıtsız'}
+                <span className="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                  Kayıtlı
                 </span>
               </div>
             </div>
@@ -217,18 +221,20 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
 
                 <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
                   <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                    📅 Kayıt Bilgileri
+                    📍 İkamet Bilgileri
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Kayıt Tarihi:</span>
+                      <span className="text-gray-600">Ülke:</span>
                       <span className="font-semibold text-gray-800">
-                        {patient.registrationDate ? formatDate(patient.registrationDate) : 'Kayıtsız'}
+                        {patient.country || 'Türkiye'}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Oluşturulma:</span>
-                      <span className="font-semibold text-gray-800">{formatDate(patient.createdAt)}</span>
+                      <span className="text-gray-600">İkamet İli:</span>
+                      <span className="font-semibold text-gray-800">
+                        {patient.residenceCity || '-'}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Son Güncelleme:</span>
@@ -302,9 +308,9 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
                         </p>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Son Ziyaret:</span>
+                        <span className="text-gray-600">Kayıt Tarihi:</span>
                         <span className="font-semibold text-gray-800">
-                          {patient.registrationDate ? formatDate(patient.registrationDate) : 'Henüz ziyaret yok'}
+                          {formatDate(patient.createdAt)}
                         </span>
                       </div>
                     </div>

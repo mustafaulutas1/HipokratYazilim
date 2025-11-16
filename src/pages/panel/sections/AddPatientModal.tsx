@@ -3,6 +3,7 @@ import PhoneInput from '../../../components/UI/PhoneInput';
 import { toast } from 'react-toastify';
 import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
+import { TURKIYE_CITIES } from '../../../types/TurkiyeCities';
 
 interface AddPatientModalProps {
   isOpen: boolean;
@@ -30,7 +31,8 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
     fatherName: '',
     birthPlace: '',
     registeredProvince: '',
-    registrationDate: '',
+    country: 'Türkiye',
+    residenceCity: '',
     visitReason: '',
     indirim_check: false,
     indirim_orani: 20,
@@ -132,6 +134,14 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
       newErrors.registeredProvince = 'Kayıtlı il gereklidir';
     }
 
+    if (!formData.country.trim()) {
+      newErrors.country = 'Ülke gereklidir';
+    }
+
+    if (!formData.residenceCity.trim()) {
+      newErrors.residenceCity = 'İkamet ili gereklidir';
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -183,7 +193,8 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
         fatherName: '',
         birthPlace: '',
         registeredProvince: '',
-        registrationDate: '',
+        country: 'Türkiye',
+        residenceCity: '',
         visitReason: '',
         indirim_check: false,
         indirim_orani: 20,
@@ -440,20 +451,46 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
             </div>
 
             <div>
-              <label
-                htmlFor="registrationDate"
-                className="block text-gray-700 text-sm font-medium mb-2"
-              >
-                Kayıt Tarihi
+              <label className="block text-gray-700 text-sm font-medium mb-2">
+                Ülke *
               </label>
               <input
-                type="date"
-                name="registrationDate"
-                id="registrationDate"
-                value={formData.registrationDate}
+                type="text"
+                name="country"
+                value={formData.country}
                 onChange={handleInputChange}
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+                  errors.country ? 'border-red-500' : 'border-gray-300'
+                }`}
+                placeholder="Ülke"
               />
+              {errors.country && (
+                <p className="text-red-500 text-sm mt-1">{errors.country}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-gray-700 text-sm font-medium mb-2">
+                İkamet İli *
+              </label>
+              <select
+                name="residenceCity"
+                value={formData.residenceCity}
+                onChange={handleInputChange}
+                className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+                  errors.residenceCity ? 'border-red-500' : 'border-gray-300'
+                }`}
+              >
+                <option value="">İkamet ili seçiniz</option>
+                {TURKIYE_CITIES.map((city) => (
+                  <option key={city.id} value={city.name}>
+                    {city.name}
+                  </option>
+                ))}
+              </select>
+              {errors.residenceCity && (
+                <p className="text-red-500 text-sm mt-1">{errors.residenceCity}</p>
+              )}
             </div>
           </div>
 
