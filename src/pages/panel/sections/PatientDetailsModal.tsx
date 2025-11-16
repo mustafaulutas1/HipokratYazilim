@@ -70,7 +70,6 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
     { id: 'medical', label: 'Tıbbi Bilgi', icon: '🏥' },
     { id: 'treatment', label: 'Tedavi Bilgileri', icon: '💊' },
     { id: 'address', label: 'Adres', icon: '📍' },
-    { id: 'files', label: 'Hasta Dosyaları', icon: '📁' },
     { id: 'notes', label: 'Notlar', icon: '📝' }
   ];
 
@@ -243,46 +242,24 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
             {/* Contact Information Tab */}
             {activeTab === 'contact' && (
               <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
-                    <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                      📞 İletişim Bilgileri
-                    </h3>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="text-sm text-gray-600">Telefon</label>
-                        <p className="font-semibold text-gray-800">{patient.phone}</p>
-                      </div>
-                      <div>
-                        <label className="text-sm text-gray-600">Email</label>
-                        <p className="font-semibold text-gray-800">{patient.email}</p>
-                      </div>
-                      <div>
-                        <label className="text-sm text-gray-600">Acil Telefon</label>
-                        <p className="font-semibold text-gray-800">
-                          {patient.emergencyPhone || 'Belirtilmemiş'}
-                        </p>
-                      </div>
+                <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                    📞 İletişim Bilgileri
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm text-gray-600">Telefon</label>
+                      <p className="font-semibold text-gray-800">{patient.phone}</p>
                     </div>
-                  </div>
-
-                  <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
-                    <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                      🔔 Bildirim Ayarları
-                    </h3>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-600">SMS Bildirimleri:</span>
-                        <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">
-                          Aktif
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Email Bildirimleri:</span>
-                        <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">
-                          Aktif
-                        </span>
-                      </div>
+                    <div>
+                      <label className="text-sm text-gray-600">Email</label>
+                      <p className="font-semibold text-gray-800">{patient.email}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm text-gray-600">Acil Telefon</label>
+                      <p className="font-semibold text-gray-800">
+                        {patient.emergencyPhone || 'Belirtilmemiş'}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -330,30 +307,6 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
                           {patient.registrationDate ? formatDate(patient.registrationDate) : 'Henüz ziyaret yok'}
                         </span>
                       </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
-                  <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                    📊 İstatistikler
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="text-center p-4 bg-blue-50 rounded-lg">
-                      <div className="text-2xl font-bold text-blue-600">0</div>
-                      <div className="text-sm text-gray-600">Toplam Ziyaret</div>
-                    </div>
-                    <div className="text-center p-4 bg-green-50 rounded-lg">
-                      <div className="text-2xl font-bold text-green-600">0</div>
-                      <div className="text-sm text-gray-600">Bu Ay</div>
-                    </div>
-                    <div className="text-center p-4 bg-yellow-50 rounded-lg">
-                      <div className="text-2xl font-bold text-yellow-600">0</div>
-                      <div className="text-sm text-gray-600">Bu Hafta</div>
-                    </div>
-                    <div className="text-center p-4 bg-purple-50 rounded-lg">
-                      <div className="text-2xl font-bold text-purple-600">0</div>
-                      <div className="text-sm text-gray-600">Bekleyen</div>
                     </div>
                   </div>
                 </div>
@@ -569,184 +522,8 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
                     </div>
                   </div>
                 </div>
-
-                <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
-                  <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                    🗺️ Harita
-                  </h3>
-                  <div className="h-64 bg-gray-100 rounded-lg flex items-center justify-center">
-                    <div className="text-center text-gray-500">
-                      <div className="text-4xl mb-2">🗺️</div>
-                      <p>Harita görünümü burada olacak</p>
-                    </div>
-                  </div>
-                </div>
               </div>
             )}
-
-                         {/* Patient Files Tab */}
-             {activeTab === 'files' && (
-               <div className="space-y-6">
-                 {/* File Summary */}
-                 <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
-                   <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                     📊 Dosya Özeti
-                   </h3>
-                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                     <div className="p-4 bg-blue-50 rounded-lg">
-                       <div className="text-2xl font-bold text-blue-600">13</div>
-                       <div className="text-sm text-gray-600">Toplam Geliş Kaydı</div>
-                     </div>
-                     <div className="p-4 bg-green-50 rounded-lg">
-                       <div className="text-2xl font-bold text-green-600">7</div>
-                       <div className="text-sm text-gray-600">Toplam Geliş Gün Sayısı</div>
-                     </div>
-                     <div className="p-4 bg-purple-50 rounded-lg">
-                       <div className="text-2xl font-bold text-purple-600">Ayakta</div>
-                       <div className="text-sm text-gray-600">Tedavi Tipi</div>
-                     </div>
-                   </div>
-                 </div>
-
-                 {/* Visit Details */}
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                   <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
-                     <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                       🏥 Ziyaret Detayları
-                     </h3>
-                     <div className="space-y-3">
-                       <div>
-                         <label className="text-sm text-gray-600">İlk Geliş</label>
-                         <p className="font-semibold text-gray-800">04 Mar 2025, Ayakta tedavi, Getat, Mustafa Yaşar</p>
-                       </div>
-                       <div>
-                         <label className="text-sm text-gray-600">Son Geliş</label>
-                         <p className="font-semibold text-gray-800">08 Tem 2025, Ayakta tedavi, Getat, Mustafa Yaşar</p>
-                       </div>
-                       <div>
-                         <label className="text-sm text-gray-600">Şube</label>
-                         <p className="font-semibold text-gray-800">Maslak</p>
-                       </div>
-                       <div>
-                         <label className="text-sm text-gray-600">T Klinik</label>
-                         <p className="font-semibold text-gray-800">Getat</p>
-                       </div>
-                       <div>
-                         <label className="text-sm text-gray-600">Doktoru</label>
-                         <p className="font-semibold text-gray-800">Mustafa Yaşar</p>
-                       </div>
-                       <div>
-                         <label className="text-sm text-gray-600">Geliş Nedeni</label>
-                         <p className="font-semibold text-gray-800">Tedavi</p>
-                       </div>
-                       <div>
-                         <label className="text-sm text-gray-600">Geliş No</label>
-                         <p className="font-semibold text-gray-800">39335</p>
-                       </div>
-                     </div>
-                   </div>
-
-                   <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
-                     <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                       💰 Finansal Bilgiler
-                     </h3>
-                     <div className="space-y-3">
-                       <div>
-                         <label className="text-sm text-gray-600">Bakiye</label>
-                         <p className="text-2xl font-bold text-green-600">16,760.00 TL</p>
-                       </div>
-                       <div>
-                         <label className="text-sm text-gray-600">Son Ödeme</label>
-                         <p className="font-semibold text-gray-800">08 Tem 2025</p>
-                       </div>
-                       <div>
-                         <label className="text-sm text-gray-600">Ödeme Durumu</label>
-                         <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">
-                           Güncel
-                         </span>
-                       </div>
-                     </div>
-                   </div>
-                 </div>
-
-                 {/* Procedures List */}
-                 <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
-                   <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                     🏥 Muayene, Girişim ve Operasyonlar
-                   </h3>
-                   <div className="max-h-96 overflow-y-auto">
-                     <div className="space-y-2">
-                       {[
-                         { date: '04.03.2025', name: 'Muayene', performer: 'Mustafa Yaşar' },
-                         { date: '04.03.2025', name: 'Meridyen Tarama Tek Seans', performer: 'Hatice Çalış Erden' },
-                         { date: '04.03.2025', name: 'Termal Tarama (IRIS-XP)', performer: 'Hatice Çalış Erden' },
-                         { date: '04.03.2025', name: 'Enjekte Ozon 3 Bölge ve Üzeri', performer: 'Hatice Çalış Erden' },
-                         { date: '04.03.2025', name: 'Kupa Tedavisi', performer: 'Hatice Çalış Erden' },
-                         { date: '04.03.2025', name: 'Magnetoterapi', performer: 'Hatice Çalış Erden' },
-                         { date: '04.03.2025', name: 'Major Ozon', performer: 'Hatice Çalış Erden' },
-                         { date: '04.03.2025', name: 'Minör Ozon', performer: 'Hatice Çalış Erden' },
-                         { date: '04.03.2025', name: 'Rektal Ozon', performer: 'Hatice Çalış Erden' },
-                         { date: '04.03.2025', name: 'Reçete Yazılımı (Eski hastalar için)', performer: 'Mustafa Yaşar' },
-                         { date: '20.03.2025', name: 'Tedavi Görüşmesi', performer: 'Mustafa Yaşar' },
-                         { date: '20.03.2025', name: 'Termal Tarama (IRIS-XP)', performer: 'Hatice Çalış Erden' },
-                         { date: '20.03.2025', name: 'Enjekte Ozon 3 Bölge ve Üzeri', performer: 'Hatice Çalış Erden' },
-                         { date: '15.04.2025', name: 'Kontrol Muayenesi', performer: 'Mustafa Yaşar' },
-                         { date: '15.04.2025', name: 'Meridyen Tarama Tek Seans', performer: 'Hatice Çalış Erden' },
-                         { date: '15.04.2025', name: 'Termal Tarama (IRIS-XP)', performer: 'Hatice Çalış Erden' },
-                         { date: '15.04.2025', name: 'Enjekte Ozon 3 Bölge ve Üzeri', performer: 'Hatice Çalış Erden' },
-                         { date: '15.04.2025', name: 'Kupa Tedavisi', performer: 'Hatice Çalış Erden' },
-                         { date: '15.04.2025', name: 'Magnetoterapi', performer: 'Hatice Çalış Erden' },
-                         { date: '15.04.2025', name: 'Major Ozon', performer: 'Hatice Çalış Erden' },
-                         { date: '15.04.2025', name: 'Minör Ozon', performer: 'Hatice Çalış Erden' },
-                         { date: '15.04.2025', name: 'Rektal Ozon', performer: 'Hatice Çalış Erden' },
-                         { date: '15.04.2025', name: 'Reçete Yazılımı (Eski hastalar için)', performer: 'Mustafa Yaşar' },
-                         { date: '08.07.2025', name: 'Kontrol Muayenesi', performer: 'Mustafa Yaşar' },
-                         { date: '08.07.2025', name: 'Meridyen Tarama Tek Seans', performer: 'Hatice Çalış Erden' },
-                         { date: '08.07.2025', name: 'Termal Tarama (IRIS-XP)', performer: 'Hatice Çalış Erden' },
-                         { date: '08.07.2025', name: 'Enjekte Ozon 3 Bölge ve Üzeri', performer: 'Hatice Çalış Erden' },
-                         { date: '08.07.2025', name: 'Kupa Tedavisi', performer: 'Hatice Çalış Erden' },
-                         { date: '08.07.2025', name: 'Magnetoterapi', performer: 'Hatice Çalış Erden' },
-                         { date: '08.07.2025', name: 'Major Ozon', performer: 'Hatice Çalış Erden' },
-                         { date: '08.07.2025', name: 'Minör Ozon', performer: 'Hatice Çalış Erden' },
-                         { date: '08.07.2025', name: 'Rektal Ozon', performer: 'Hatice Çalış Erden' },
-                         { date: '08.07.2025', name: 'Reçete Yazılımı (Eski hastalar için)', performer: 'Mustafa Yaşar' }
-                       ].map((proc, index) => (
-                         <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                           <div className="flex items-center gap-3">
-                             <span className="text-sm font-medium text-gray-700 bg-white px-2 py-1 rounded">
-                               {proc.date}
-                             </span>
-                             <span className="text-gray-800 font-medium">{proc.name}</span>
-                           </div>
-                           <span className="text-sm text-gray-600 bg-blue-50 px-2 py-1 rounded">
-                             {proc.performer}
-                           </span>
-                         </div>
-                       ))}
-                     </div>
-                   </div>
-                 </div>
-
-                 {/* Diagnosis */}
-                 <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
-                   <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                     🔍 Teşhis ve Notlar
-                   </h3>
-                   <div className="space-y-3">
-                     <div>
-                       <label className="text-sm text-gray-600">Ana Teşhis</label>
-                       <p className="font-semibold text-gray-800 text-lg">PANKREASTA KİTLE - DM</p>
-                     </div>
-                     <div>
-                       <label className="text-sm text-gray-600">Tedavi Durumu</label>
-                       <span className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-sm font-semibold">
-                         Devam Ediyor
-                       </span>
-                     </div>
-                   </div>
-                 </div>
-               </div>
-             )}
 
              {/* Notes Tab */}
              {activeTab === 'notes' && (
