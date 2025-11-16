@@ -5,6 +5,18 @@ import AddPatientModal from './AddPatientModal';
 import EditPatientModal from '../components/EditPatientModal';
 import PatientDetailsModal from './PatientDetailsModal';
 
+interface TreatmentOptions {
+  protocol?: string;
+  notes?: string;
+  protocolId?: string;
+  protocolName?: string;
+  isCustomized?: boolean;
+  originalProtocolId?: string;
+  selectedProtocol?: any;
+  customizedProtocol?: any;
+  selectedMainApplications?: string[];
+}
+
 interface Patient {
   id: string;
   fullName: string;
@@ -23,6 +35,9 @@ interface Patient {
   visitReason: string;
   createdAt: string;
   updatedAt: string;
+  treatmentOptions?: TreatmentOptions;
+  treatmentStartedAt?: string;
+  status?: string;
 }
 
 interface PatientsProps {

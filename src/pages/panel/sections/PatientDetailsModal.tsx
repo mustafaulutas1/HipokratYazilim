@@ -1,5 +1,17 @@
 import React, { useState } from 'react';
 
+interface TreatmentOptions {
+  protocol?: string;
+  notes?: string;
+  protocolId?: string;
+  protocolName?: string;
+  isCustomized?: boolean;
+  originalProtocolId?: string;
+  selectedProtocol?: any;
+  customizedProtocol?: any;
+  selectedMainApplications?: string[];
+}
+
 interface Patient {
   id: string;
   fullName: string;
@@ -17,6 +29,9 @@ interface Patient {
   visitReason: string;
   createdAt: string;
   updatedAt: string;
+  treatmentOptions?: TreatmentOptions;
+  treatmentStartedAt?: string;
+  status?: string;
 }
 
 interface PatientDetailsModalProps {
@@ -53,6 +68,7 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
     { id: 'personal', label: 'Kişisel Bilgi', icon: '👤' },
     { id: 'contact', label: 'İletişim', icon: '📞' },
     { id: 'medical', label: 'Tıbbi Bilgi', icon: '🏥' },
+    { id: 'treatment', label: 'Tedavi Bilgileri', icon: '💊' },
     { id: 'address', label: 'Adres', icon: '📍' },
     { id: 'files', label: 'Hasta Dosyaları', icon: '📁' },
     { id: 'notes', label: 'Notlar', icon: '📝' }
@@ -341,6 +357,191 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
                     </div>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* Treatment Information Tab */}
+            {activeTab === 'treatment' && (
+              <div className="space-y-6">
+                {patient.treatmentOptions ? (
+                  <>
+                    <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                      <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                        💊 Tedavi Protokolü
+                      </h3>
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-sm text-gray-600">Protokol Adı</label>
+                            <p className="font-semibold text-gray-800 mt-1">
+                              {patient.treatmentOptions.protocolName || 'Belirtilmemiş'}
+                            </p>
+                          </div>
+                          <div>
+                            <label className="text-sm text-gray-600">Protokol Tipi</label>
+                            <p className="font-semibold text-gray-800 mt-1">
+                              {patient.treatmentOptions.isCustomized ? (
+                                <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm">
+                                  🎨 Özelleştirilmiş
+                                </span>
+                              ) : (
+                                <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">
+                                  📋 Standart
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+
+                        {patient.treatmentStartedAt && (
+                          <div>
+                            <label className="text-sm text-gray-600">Tedavi Başlangıç Tarihi</label>
+                            <p className="font-semibold text-gray-800 mt-1">
+                              {formatDate(patient.treatmentStartedAt)}
+                            </p>
+                          </div>
+                        )}
+
+                        {patient.status && (
+                          <div>
+                            <label className="text-sm text-gray-600">Tedavi Durumu</label>
+                            <p className="font-semibold text-gray-800 mt-1">
+                              {patient.status === 'treatment_decided' && (
+                                <span className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-sm">
+                                  📋 Tedavi Belirlendi
+                                </span>
+                              )}
+                              {patient.status === 'in_treatment' && (
+                                <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">
+                                  🏥 Tedavide
+                                </span>
+                              )}
+                              {patient.status === 'treatment_completed' && (
+                                <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm">
+                                  ✅ Tamamlandı
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Selected Protocol Details */}
+                    {patient.treatmentOptions.selectedProtocol && (
+                      <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                        <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                          📊 Protokol Detayları
+                        </h3>
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="text-sm text-gray-600">Tanı Sistemi</label>
+                              <p className="font-semibold text-gray-800 mt-1">
+                                {patient.treatmentOptions.selectedProtocol.diagnosisSystem || 'Belirtilmemiş'}
+                              </p>
+                            </div>
+                            <div>
+                              <label className="text-sm text-gray-600">Yaş Grubu</label>
+                              <p className="font-semibold text-gray-800 mt-1">
+                                {patient.treatmentOptions.selectedProtocol.ageGroup || 'Belirtilmemiş'}
+                              </p>
+                            </div>
+                          </div>
+
+                          {patient.treatmentOptions.selectedProtocol.frequency && (
+                            <div>
+                              <label className="text-sm text-gray-600">Tedavi Sıklığı</label>
+                              <p className="font-semibold text-gray-800 mt-1">
+                                {patient.treatmentOptions.selectedProtocol.frequency}
+                              </p>
+                            </div>
+                          )}
+
+                          {patient.treatmentOptions.selectedProtocol.control && (
+                            <div>
+                              <label className="text-sm text-gray-600">Kontrol</label>
+                              <p className="font-semibold text-gray-800 mt-1">
+                                {patient.treatmentOptions.selectedProtocol.control}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Treatment Sequence */}
+                    {patient.treatmentOptions.selectedProtocol?.treatmentSequence && (
+                      <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                        <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                          🔄 Tedavi Sırası
+                        </h3>
+                        <div className="space-y-3">
+                          {patient.treatmentOptions.selectedProtocol.treatmentSequence.map((item: any, index: number) => (
+                            <div key={index} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                              <div className="w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">
+                                {item.order}
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-semibold">
+                                    {item.phase}
+                                  </span>
+                                </div>
+                                <p className="font-semibold text-gray-800">{item.treatment}</p>
+                                {item.dosage && (
+                                  <p className="text-sm text-gray-600 mt-1">Doz: {item.dosage}</p>
+                                )}
+                                {item.description && (
+                                  <p className="text-sm text-gray-600 mt-1">{item.description}</p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Selected Main Applications */}
+                    {patient.treatmentOptions.selectedMainApplications && patient.treatmentOptions.selectedMainApplications.length > 0 && (
+                      <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                        <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                          ✅ Seçilen Ana Uygulamalar
+                        </h3>
+                        <div className="flex flex-wrap gap-2">
+                          {patient.treatmentOptions.selectedMainApplications.map((app, index) => (
+                            <span 
+                              key={index}
+                              className="px-3 py-2 bg-green-100 text-green-700 rounded-lg text-sm font-medium"
+                            >
+                              {app}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Treatment Notes */}
+                    {patient.treatmentOptions.notes && (
+                      <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                        <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                          📝 Tedavi Notları
+                        </h3>
+                        <p className="text-gray-700 whitespace-pre-wrap">
+                          {patient.treatmentOptions.notes}
+                        </p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-center py-12">
+                    <div className="text-6xl mb-4">💊</div>
+                    <h3 className="text-gray-900 text-xl font-semibold mb-2">Henüz Tedavi Başlatılmamış</h3>
+                    <p className="text-gray-600">
+                      Bu hasta için henüz bir tedavi protokolü belirlenmemiş.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
