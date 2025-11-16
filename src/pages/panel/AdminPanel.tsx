@@ -133,10 +133,8 @@ export default function AdminPanel() {
       const userRole = doctorProfile.role || doctorProfile.userType || 'doctor';
       const userPermissions = getUserPermissions(userRole, doctorProfile.permissions);
       
-      // Set initial section based on role
-      if (userRole === 'anamnez') {
-        setCurrentSection('anamnez');
-      } else if (userPermissions.length > 0) {
+      // Set initial section to first permission (permissions are ordered by priority)
+      if (userPermissions.length > 0) {
         setCurrentSection(userPermissions[0] as PanelSection);
       } else {
         setCurrentSection('dashboard');

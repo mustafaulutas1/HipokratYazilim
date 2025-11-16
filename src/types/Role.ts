@@ -29,14 +29,14 @@ export const DEFAULT_ROLES: Omit<Role, 'id' | 'createdAt' | 'updatedAt'>[] = [
     name: 'anamnez',
     displayName: 'Anamnez Uzmanı',
     description: 'Hasta anamnez kayıtları ve değerlendirme işlemleri',
-    permissions: ['patients', 'anamnez', 'settings'],
+    permissions: ['anamnez', 'patients', 'settings'],
     isDefault: true
   },
   {
     name: 'assistant',
     displayName: 'Asistan',
     description: 'Genel destek ve yardımcı işlemler',
-    permissions: ['dashboard', 'patients', 'appointments'],
+    permissions: ['assistant-panel', 'patients', 'appointments', 'settings'],
     isDefault: true
   },
   {
