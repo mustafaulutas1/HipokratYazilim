@@ -164,12 +164,15 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
           <p className="text-white/70">Randevu takvimi ve planlama</p>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => setOpenTypeModal(true)}
-            className="px-4 py-3 bg-white/10 text-white font-semibold rounded-xl hover:bg-white/20 transition-all duration-200 border border-white/20"
-          >
-            Randevu Tipi Ekle
-          </button>
+          {/* Randevu Tipi Ekle butonu sadece resepsiyon görevlisi değilse göster */}
+          {(doctorProfile?.role !== 'desk' && doctorProfile?.userType !== 'desk') && (
+            <button
+              onClick={() => setOpenTypeModal(true)}
+              className="px-4 py-3 bg-white/10 text-white font-semibold rounded-xl hover:bg-white/20 transition-all duration-200 border border-white/20"
+            >
+              Randevu Tipi Ekle
+            </button>
+          )}
           <button
             onClick={() => setOpenAddModal(true)}
             className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-200 shadow-lg"
