@@ -20,7 +20,7 @@ const DoctorLoginForm: React.FC<DoctorLoginFormProps> = ({ }) => {
     setLoading(true);
     try {
       await login(email, password);
-      navigate('/home');
+      navigate('/panel');
     } catch (err: any) {
       setError('Giriş başarısız: ' + (err?.message || 'Bilinmeyen hata'));
     }

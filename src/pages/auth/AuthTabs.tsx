@@ -14,8 +14,8 @@ const AuthTabs: React.FC = () => {
 
   useEffect(() => {
     if (user) {
-      // Redirect to home page after login
-      navigate('/home');
+      // Redirect to panel page after login
+      navigate('/panel');
     }
   }, [user, navigate]);
 

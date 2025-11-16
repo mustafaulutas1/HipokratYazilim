@@ -36,8 +36,8 @@ const Header = () => {
           </nav>
           {/* CTA Button */}
           <div className="hidden md:block">
-            <button 
-              onClick={() => window.location.href = '/home'}
+            <button
+              onClick={() => window.location.href = '/'}
               className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-6 py-2 rounded-full font-medium hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200"
             >
               RTMSoft
@@ -69,8 +69,8 @@ const Header = () => {
                   {item.name}
                 </a>
               ))}
-              <button 
-                onClick={() => { setIsMenuOpen(false); window.location.href = '/home'; }}
+              <button
+                onClick={() => { setIsMenuOpen(false); window.location.href = '/'; }}
                 className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-6 py-2 rounded-full font-medium hover:shadow-lg transition-all duration-200"
               >
                 RTMSoft
@@ -152,14 +152,14 @@ const Hero = () => {
 
   useEffect(() => {
     setIsVisible(true);
-    
+
     const handleMouseMove = (e: MouseEvent) => {
       // Throttle mouse movement updates and normalize coordinates
       const x = Math.max(0, Math.min(100, (e.clientX / window.innerWidth) * 100));
       const y = Math.max(0, Math.min(100, (e.clientY / window.innerHeight) * 100));
       setMousePosition({ x, y });
     };
-    
+
     // Throttle the event listener
     let ticking = false;
     const throttledMouseMove = (e: MouseEvent) => {
@@ -171,7 +171,7 @@ const Hero = () => {
         ticking = true;
       }
     };
-    
+
     window.addEventListener('mousemove', throttledMouseMove);
 
     // Setup intersection observer for stats animation
@@ -204,7 +204,7 @@ const Hero = () => {
       {/* Animated Video Background */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-blue-400/20 via-cyan-300/15 to-slate-400/25 z-10"></div>
-        
+
         {/* Animated Medical Particles */}
         <div className="absolute inset-0 z-5">
           {Array.from({ length: 50 }).map((_, i) => (
@@ -222,7 +222,7 @@ const Hero = () => {
         </div>
 
         {/* Interactive Mouse Follower */}
-        <div 
+        <div
           className="absolute w-96 h-96 bg-gradient-to-r from-blue-400/10 to-cyan-400/10 rounded-full blur-3xl pointer-events-none transition-all duration-500 ease-out z-5"
           style={{
             left: `${mousePosition.x}%`,
@@ -236,7 +236,7 @@ const Hero = () => {
           <div
             key={index}
             className={`absolute ${element.position} animate-float z-20`}
-            style={{ 
+            style={{
               animationDelay: element.delay,
               animationDuration: '4s'
             }}
@@ -249,7 +249,7 @@ const Hero = () => {
 
         {/* Animated Grid Pattern */}
         <div className="absolute inset-0 opacity-5 z-5">
-          <div 
+          <div
             className="grid grid-cols-20 gap-1 h-full transform transition-transform duration-1000"
             style={{ transform: `translate(${mousePosition.x * 0.05}px, ${mousePosition.y * 0.05}px)` }}
           >
@@ -257,9 +257,9 @@ const Hero = () => {
               <div
                 key={i}
                 className="bg-white rounded-sm animate-pulse"
-                style={{ 
-                  animationDelay: `${i * 0.01}s`, 
-                  animationDuration: `${2 + Math.random() * 2}s` 
+                style={{
+                  animationDelay: `${i * 0.01}s`,
+                  animationDuration: `${2 + Math.random() * 2}s`
                 }}
               />
             ))}
@@ -274,10 +274,10 @@ const Hero = () => {
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 z-30">
         <div className="grid lg:grid-cols-3 gap-12 items-center min-h-[85vh] lg:-ml-8 xl:-ml-12">
-          
+
           {/* Left Content - Badge, Logo, and Stats */}
           <div className={`lg:col-span-2 flex flex-col items-center space-y-8 transform transition-all duration-1000 lg:-ml-24 xl:-ml-32 ${isVisible ? 'translate-x-0 opacity-100' : '-translate-x-10 opacity-0'}`}>
-            
+
             {/* Premium Badge */}
             <div className="inline-flex items-center bg-white/20 backdrop-blur-sm border border-blue-400/30 rounded-full px-6 py-3 text-sm font-medium text-blue-800 animate-fadeInUp">
               <Star className="h-4 w-4 mr-2 text-yellow-500 animate-pulse" />
@@ -292,7 +292,7 @@ const Hero = () => {
                 alt="Hipokrat Logo"
                 className="w-96 h-96 lg:w-[28rem] lg:h-[28rem] xl:w-[32rem] xl:h-[32rem] object-contain animate-fadeIn"
               />
-              
+
               {/* Subtle glow effect behind logo */}
               <div className="absolute inset-0 bg-gradient-to-r from-blue-400/20 to-cyan-400/20 rounded-full blur-3xl -z-10 animate-pulse"></div>
             </div>
@@ -357,9 +357,9 @@ const Hero = () => {
                   Dijitalleştirin
                 </span>
               </h1>
-              
+
               <p className="text-lg md:text-xl text-slate-600 leading-relaxed max-w-lg animate-fadeInUp" style={{ animationDelay: '0.4s' }}>
-                Remember Regeneration Therapy Method ile sağlık sürecinizi kolaylaştırın. 
+                Remember Regeneration Therapy Method ile sağlık sürecinizi kolaylaştırın.
                 Yapay zeka destekli kişiselleştirilmiş tedavi deneyimi.
               </p>
             </div>
@@ -382,8 +382,8 @@ const Hero = () => {
 
             {/* CTA Buttons */}
             <div className="flex flex-col sm:flex-row gap-4 animate-fadeInUp" style={{ animationDelay: '0.8s' }}>
-              <button 
-                onClick={() => window.location.href = '/home'}
+              <button
+                onClick={() => window.location.href = '/'}
                 className="group bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-8 py-4 rounded-2xl font-semibold text-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300 flex items-center justify-center"
               >
                 <span className="flex items-center">
@@ -391,7 +391,7 @@ const Hero = () => {
                   <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform duration-200" />
                 </span>
               </button>
-              
+
               <button className="group border-2 border-slate-400 text-slate-700 px-8 py-4 rounded-2xl font-semibold text-lg hover:border-blue-400 hover:text-blue-600 transition-all duration-300 flex items-center justify-center">
                 <Play className="mr-2 h-5 w-5 group-hover:scale-110 transition-transform duration-300" />
                 Demo İzle
@@ -410,10 +410,10 @@ const Hero = () => {
           </div>
         </div>
       </div>
-      
-      <AppointmentModal 
-        isOpen={showAppointmentModal} 
-        onClose={() => setShowAppointmentModal(false)} 
+
+      <AppointmentModal
+        isOpen={showAppointmentModal}
+        onClose={() => setShowAppointmentModal(false)}
       />
     </section>
   );
@@ -726,8 +726,8 @@ const Contact = () => {
               </div>
             </div>
             <div className="flex justify-center">
-              <button 
-                onClick={() => window.location.href = '/home'}
+              <button
+                onClick={() => window.location.href = '/'}
                 className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-8 py-4 rounded-full font-semibold hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300 flex items-center justify-center group"
               >
                 RTMSoft
@@ -854,7 +854,7 @@ const Footer = () => {
               </a>
             </li>
             <li>
-              <a href="/home" className="text-gray-400 hover:text-white transition-colors duration-200">
+              <a href="/" className="text-gray-400 hover:text-white transition-colors duration-200">
                 RTMSoft
               </a>
             </li>

@@ -17,12 +17,12 @@ function App() {
       <BrowserRouter>
         <PageTracker />
         <Routes>
-          <Route path="/" element={<HipokratLandingPage />} />
-          <Route path="/home" element={
+          <Route path="/" element={
             <Layout>
               <Home />
             </Layout>
           } />
+          <Route path="/hipokrat" element={<HipokratLandingPage />} />
           <Route path="/login" element={
             <Layout>
               <AuthTabs />
