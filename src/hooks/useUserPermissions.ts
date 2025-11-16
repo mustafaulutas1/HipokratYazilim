@@ -31,8 +31,8 @@ export const useUserPermissions = (userRole: string | undefined, clinicId: strin
         // If user has custom permissions, use those
         if (customPermissions && customPermissions.length > 0) {
           console.log('🔐 Using custom permissions for user:', customPermissions);
-          // Filter out dashboard for doctor role
-          const filteredPermissions = userRole === 'doctor' 
+          // Filter out dashboard for doctor and desk roles
+          const filteredPermissions = (userRole === 'doctor' || userRole === 'desk')
             ? customPermissions.filter(p => p !== 'dashboard')
             : customPermissions;
           setPermissions(filteredPermissions);
@@ -49,8 +49,8 @@ export const useUserPermissions = (userRole: string | undefined, clinicId: strin
                 console.log('🔐 Admin user detected, overriding with all static permissions:', adminPermissions);
                 setPermissions(adminPermissions);
               } else {
-                // Filter out dashboard for doctor role
-                const filteredPermissions = userRole === 'doctor' 
+                // Filter out dashboard for doctor and desk roles
+                const filteredPermissions = (userRole === 'doctor' || userRole === 'desk')
                   ? rolePermissions.filter(p => p !== 'dashboard')
                   : rolePermissions;
                 setPermissions(filteredPermissions);
@@ -59,28 +59,40 @@ export const useUserPermissions = (userRole: string | undefined, clinicId: strin
               console.warn('⚠️ Dynamic role found but no permissions, using static fallback');
               const staticPermissions = getUserPermissions(userRole);
               console.log('🔐 Using static permissions for role', userRole, ':', staticPermissions);
-              setPermissions(staticPermissions);
+              // Filter out dashboard for doctor and desk roles
+              const filteredStatic = (userRole === 'doctor' || userRole === 'desk')
+                ? staticPermissions.filter(p => p !== 'dashboard')
+                : staticPermissions;
+              setPermissions(filteredStatic);
             }
           } catch (roleError) {
             console.warn('⚠️ Could not fetch dynamic role permissions, using static fallback:', roleError);
             // Fallback to static permissions
             const staticPermissions = getUserPermissions(userRole);
             console.log('🔐 Using static permissions for role', userRole, ':', staticPermissions);
-            setPermissions(staticPermissions);
+            // Filter out dashboard for doctor and desk roles
+            const filteredStatic = (userRole === 'doctor' || userRole === 'desk')
+              ? staticPermissions.filter(p => p !== 'dashboard')
+              : staticPermissions;
+            setPermissions(filteredStatic);
           }
         } else {
           // No clinicId, use static permissions
           const staticPermissions = getUserPermissions(userRole);
           console.log('🔐 Using static permissions (no clinicId) for role', userRole, ':', staticPermissions);
-          setPermissions(staticPermissions);
+          // Filter out dashboard for doctor and desk roles
+          const filteredStatic = (userRole === 'doctor' || userRole === 'desk')
+            ? staticPermissions.filter(p => p !== 'dashboard')
+            : staticPermissions;
+          setPermissions(filteredStatic);
         }
       } catch (error) {
         console.error('❌ Error fetching user permissions:', error);
         // Final fallback
         const fallbackPermissions = getUserPermissions(userRole);
         console.log('🔐 Using fallback permissions for role', userRole, ':', fallbackPermissions);
-        // Filter out dashboard for doctor role even in fallback
-        const filteredFallback = userRole === 'doctor' 
+        // Filter out dashboard for doctor and desk roles even in fallback
+        const filteredFallback = (userRole === 'doctor' || userRole === 'desk')
           ? fallbackPermissions.filter(p => p !== 'dashboard')
           : fallbackPermissions;
         setPermissions(filteredFallback);

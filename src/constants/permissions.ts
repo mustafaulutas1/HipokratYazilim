@@ -97,7 +97,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
   doctor: ['patients', 'appointments', 'anamnez', 'treatment-protocols', 'assistant-panel', 'doctor-panel', 'settings'],
   nurse: ['dashboard', 'patients', 'appointments', 'anamnez'],
   assistant: ['assistant-panel', 'patients', 'appointments', 'settings'],
-  desk: ['dashboard', 'patients', 'appointments'],
+  desk: ['patients', 'appointments'],
   anamnez: ['anamnez', 'patients', 'settings'],
   accounting: ['dashboard', 'patients', 'accounting', 'reports'],
   pharmacy: ['dashboard', 'patients', 'pharmacy', 'prescriptions'],
@@ -127,6 +127,10 @@ export const getUserPermissions = (userRole: string, customPermissions?: string[
   if (customPermissions && customPermissions.length > 0) {
     return customPermissions;
   }
+  // For desk role, default to ['patients', 'appointments'] instead of ['dashboard']
+  if (userRole === 'desk' && !DEFAULT_ROLE_PERMISSIONS[userRole]) {
+    return ['patients', 'appointments'];
+  }
   return DEFAULT_ROLE_PERMISSIONS[userRole] || ['dashboard'];
 };
 
@@ -138,5 +142,9 @@ export const getUserPermissionsFromRole = async (userRole: string, customPermiss
   
   // For now, fallback to static permissions
   // This will be enhanced to fetch from Firestore roles
+  // For desk role, default to ['patients', 'appointments'] instead of ['dashboard']
+  if (userRole === 'desk' && !DEFAULT_ROLE_PERMISSIONS[userRole]) {
+    return ['patients', 'appointments'];
+  }
   return DEFAULT_ROLE_PERMISSIONS[userRole] || ['dashboard'];
 };

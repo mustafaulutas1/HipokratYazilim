@@ -22,7 +22,7 @@ export const DEFAULT_ROLES: Omit<Role, 'id' | 'createdAt' | 'updatedAt'>[] = [
     name: 'desk',
     displayName: 'Resepsiyon Görevlisi',
     description: 'Hasta karşılama, randevu yönetimi ve ön büro işlemleri',
-    permissions: ['dashboard', 'patients', 'appointments'],
+    permissions: ['patients', 'appointments'],
     isDefault: true
   },
   {

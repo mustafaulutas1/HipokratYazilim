@@ -137,7 +137,9 @@ export default function AdminPanel() {
       if (userPermissions.length > 0) {
         setCurrentSection(userPermissions[0] as PanelSection);
       } else {
-        setCurrentSection('dashboard');
+        // Fallback: For desk role, default to 'patients', otherwise 'dashboard'
+        const defaultSection = userRole === 'desk' ? 'patients' : 'dashboard';
+        setCurrentSection(defaultSection as PanelSection);
       }
     }
   }, [doctorProfile, panelLoading, currentSection]);
