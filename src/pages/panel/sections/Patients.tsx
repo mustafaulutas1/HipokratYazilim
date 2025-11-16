@@ -141,20 +141,27 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
     );
   }
 
+  const userRole = doctorProfile?.role || doctorProfile?.userType || 'doctor';
+  const isCallCenter = userRole === 'call-center';
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-white">Hasta Yönetimi</h1>
-          <p className="text-white/70">Hasta listesi ve bilgileri</p>
+          <p className="text-white/70">
+            {isCallCenter ? 'Hasta geçmiş kayıtları ve bilgileri' : 'Hasta listesi ve bilgileri'}
+          </p>
         </div>
-        <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-200 shadow-lg"
-        >
-          + Yeni Hasta Ekle
-        </button>
+        {!isCallCenter && (
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-200 shadow-lg"
+          >
+            + Yeni Hasta Ekle
+          </button>
+        )}
       </div>
 
       {/* Filters and Search */}
@@ -189,19 +196,20 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {[
-          { title: 'Toplam Hasta', value: patients.length.toString(), icon: '👥', color: 'from-blue-500 to-cyan-500' },
-          { title: 'Kayıtlı Hasta', value: patients.filter(p => (p as any).registrationStatus !== 'incomplete').length.toString(), icon: '✅', color: 'from-green-500 to-emerald-500' },
-          {
-            title: 'Bu Ay Yeni', value: patients.filter(p => {
-              const createdAt = new Date(p.createdAt);
-              const now = new Date();
-              return createdAt.getMonth() === now.getMonth() && createdAt.getFullYear() === now.getFullYear();
-            }).length.toString(), icon: '🆕', color: 'from-yellow-500 to-orange-500'
-          },
-          { title: 'Kayıtsız Hasta', value: patients.filter(p => (p as any).registrationStatus === 'incomplete').length.toString(), icon: '📅', color: 'from-purple-500 to-pink-500' }
-        ].map((stat, index) => (
+      {!isCallCenter && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          {[
+            { title: 'Toplam Hasta', value: patients.length.toString(), icon: '👥', color: 'from-blue-500 to-cyan-500' },
+            { title: 'Kayıtlı Hasta', value: patients.filter(p => (p as any).registrationStatus !== 'incomplete').length.toString(), icon: '✅', color: 'from-green-500 to-emerald-500' },
+            {
+              title: 'Bu Ay Yeni', value: patients.filter(p => {
+                const createdAt = new Date(p.createdAt);
+                const now = new Date();
+                return createdAt.getMonth() === now.getMonth() && createdAt.getFullYear() === now.getFullYear();
+              }).length.toString(), icon: '🆕', color: 'from-yellow-500 to-orange-500'
+            },
+            { title: 'Kayıtsız Hasta', value: patients.filter(p => (p as any).registrationStatus === 'incomplete').length.toString(), icon: '📅', color: 'from-purple-500 to-pink-500' }
+          ].map((stat, index) => (
           <div key={index} className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
             <div className="flex items-center gap-4">
               <div className={`w-12 h-12 bg-gradient-to-br ${stat.color} rounded-xl flex items-center justify-center shadow-lg`}>
@@ -214,7 +222,8 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
             </div>
           </div>
         ))}
-      </div>
+        </div>
+      )}
 
       {/* Patients Table */}
       <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl overflow-hidden">
@@ -277,18 +286,22 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
                       >
                         👁️
                       </button>
-                      <button
-                        onClick={() => {
-                          setSelectedPatient(patient);
-                          setIsEditModalOpen(true);
-                        }}
-                        className="p-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg text-green-300 hover:text-green-200 transition-all duration-200"
-                      >
-                        ✏️
-                      </button>
-                      <button className="p-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-all duration-200">
-                        🗑️
-                      </button>
+                      {!isCallCenter && (
+                        <>
+                          <button
+                            onClick={() => {
+                              setSelectedPatient(patient);
+                              setIsEditModalOpen(true);
+                            }}
+                            className="p-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg text-green-300 hover:text-green-200 transition-all duration-200"
+                          >
+                            ✏️
+                          </button>
+                          <button className="p-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-all duration-200">
+                            🗑️
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -305,24 +318,28 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
       </div>
 
       {/* Add Patient Modal */}
-      <AddPatientModal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        onPatientAdded={fetchPatients}
-        doctorProfile={doctorProfile}
-      />
+      {!isCallCenter && (
+        <AddPatientModal
+          isOpen={isAddModalOpen}
+          onClose={() => setIsAddModalOpen(false)}
+          onPatientAdded={fetchPatients}
+          doctorProfile={doctorProfile}
+        />
+      )}
 
       {/* Edit Patient Modal */}
-      <EditPatientModal
-        isOpen={isEditModalOpen}
-        onClose={() => {
-          setIsEditModalOpen(false);
-          setSelectedPatient(null);
-        }}
-        onPatientUpdated={fetchPatients}
-        patient={selectedPatient}
-        doctorProfile={doctorProfile}
-      />
+      {!isCallCenter && (
+        <EditPatientModal
+          isOpen={isEditModalOpen}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setSelectedPatient(null);
+          }}
+          onPatientUpdated={fetchPatients}
+          patient={selectedPatient}
+          doctorProfile={doctorProfile}
+        />
+      )}
 
       {/* Patient Details Modal */}
       <PatientDetailsModal

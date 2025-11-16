@@ -102,7 +102,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
   accounting: ['dashboard', 'patients', 'accounting', 'reports'],
   pharmacy: ['dashboard', 'patients', 'pharmacy', 'prescriptions'],
   treatment: ['dashboard', 'patients', 'appointments', 'treatment-protocols', 'anamnez', 'treatment-panel'],
-  'call-center': ['dashboard', 'patients', 'appointments']
+  'call-center': ['patients', 'appointments']
 };
 
 export const ROLE_TRANSLATIONS: Record<string, string> = {

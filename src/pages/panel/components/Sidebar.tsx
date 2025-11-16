@@ -222,7 +222,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
             </li>
           ) : (
             menuItems
-              .filter(item => userPermissions.includes(item.id))
+              .filter(item => {
+                // Call Center için dashboard'u filtrele
+                const userRole = doctorProfile?.role || doctorProfile?.userType || 'doctor';
+                if (userRole === 'call-center' && item.id === 'dashboard') {
+                  return false;
+                }
+                return userPermissions.includes(item.id);
+              })
               .map((item) => (
             <li key={item.id}>
               <button

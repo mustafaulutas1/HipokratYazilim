@@ -19,6 +19,16 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
   const [editedAppointment, setEditedAppointment] = useState<any | null>(null);
   const [viewedAppointment, setViewedAppointment] = useState<any | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
+  
+  // Call Center için filtreleme state'leri
+  const [filterPatientName, setFilterPatientName] = useState('');
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'confirmed' | 'pending' | 'cancelled'>('all');
+  
+  const userRole = doctorProfile?.role || doctorProfile?.userType || 'doctor';
+  const isCallCenter = userRole === 'call-center';
+  const isAdmin = userRole === 'admin';
 
   // Utils for time math
   const timeToMinutes = (t: string) => {
@@ -127,11 +137,30 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
         return String(a.start||'').localeCompare(String(b.start||''));
       });
       
-      console.log('📅 Appointments: Found appointments:', list.length);
-      setAppointments(list);
+      // Call Center için filtreleme
+      let filteredList = list;
+      if (isCallCenter) {
+        if (filterPatientName) {
+          filteredList = filteredList.filter(a => 
+            a.patientName?.toLowerCase().includes(filterPatientName.toLowerCase())
+          );
+        }
+        if (filterStartDate) {
+          filteredList = filteredList.filter(a => a.dateISO >= filterStartDate);
+        }
+        if (filterEndDate) {
+          filteredList = filteredList.filter(a => a.dateISO <= filterEndDate);
+        }
+        if (filterStatus !== 'all') {
+          filteredList = filteredList.filter(a => a.status === filterStatus);
+        }
+      }
+      
+      console.log('📅 Appointments: Found appointments:', filteredList.length);
+      setAppointments(filteredList);
     };
     fetchAppointments();
-  }, [dateISO, viewMode, selectedDate, doctorProfile?.clinicId]);
+  }, [dateISO, viewMode, selectedDate, doctorProfile?.clinicId, filterPatientName, filterStartDate, filterEndDate, filterStatus, isCallCenter]);
 
   // Segment aralığına düşen randevular - sadece başlangıç zamanı bu slot içinde olanlar
   const getAppointmentsForSegment = (segStart: number, segEnd: number) => {
@@ -164,8 +193,8 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
           <p className="text-white/70">Randevu takvimi ve planlama</p>
         </div>
         <div className="flex items-center gap-3">
-          {/* Randevu Tipi Ekle butonu sadece resepsiyon görevlisi değilse göster */}
-          {(doctorProfile?.role !== 'desk' && doctorProfile?.userType !== 'desk') && (
+          {/* Randevu Tipi Ekle butonu sadece admin görebilir */}
+          {isAdmin && (
             <button
               onClick={() => setOpenTypeModal(true)}
               className="px-4 py-3 bg-white/10 text-white font-semibold rounded-xl hover:bg-white/20 transition-all duration-200 border border-white/20"
@@ -177,10 +206,73 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
             onClick={() => setOpenAddModal(true)}
             className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-200 shadow-lg"
           >
-            + Yeni Randevu
+            + Randevu Ekle
           </button>
         </div>
       </div>
+
+      {/* Call Center için Filtreleme */}
+      {isCallCenter && (
+        <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+          <h2 className="text-xl font-bold text-white mb-4">Filtreleme</h2>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-white/80 mb-2">Hasta Adı</label>
+              <input
+                type="text"
+                value={filterPatientName}
+                onChange={(e) => setFilterPatientName(e.target.value)}
+                placeholder="Hasta adı ile ara..."
+                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-white/80 mb-2">Başlangıç Tarihi</label>
+              <input
+                type="date"
+                value={filterStartDate}
+                onChange={(e) => setFilterStartDate(e.target.value)}
+                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-white/80 mb-2">Bitiş Tarihi</label>
+              <input
+                type="date"
+                value={filterEndDate}
+                onChange={(e) => setFilterEndDate(e.target.value)}
+                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-white/80 mb-2">Durum</label>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value as any)}
+                className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
+                <option value="all">Tümü</option>
+                <option value="confirmed">Onaylanan</option>
+                <option value="pending">Beklemede</option>
+                <option value="cancelled">İptal</option>
+              </select>
+            </div>
+          </div>
+          {(filterPatientName || filterStartDate || filterEndDate || filterStatus !== 'all') && (
+            <button
+              onClick={() => {
+                setFilterPatientName('');
+                setFilterStartDate('');
+                setFilterEndDate('');
+                setFilterStatus('all');
+              }}
+              className="mt-4 px-4 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-xl text-red-300 hover:text-red-200 transition-all duration-200 text-sm font-semibold"
+            >
+              Filtreleri Temizle
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Calendar Controls */}
       <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
@@ -585,17 +677,130 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
           })()}
         </div>
 
-        {/* Upcoming Appointments */}
-        <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-          <h2 className="text-xl font-bold text-white mb-6">
-            {viewMode === 'day' ? 'Yaklaşan Randevular' : 'Randevular'}
-          </h2>
-          
-          <div className="space-y-4 max-h-[600px] overflow-y-auto">
-            {appointments.length === 0 ? (
-              <div className="text-white/40 text-center py-8">Randevu bulunamadı</div>
-            ) : (
-              appointments.slice(0, viewMode === 'day' ? 5 : 10).map((appointment) => (
+        {/* Call Center için özel bölümler */}
+        {isCallCenter ? (
+          <>
+            {/* Bugünkü Randevular */}
+            <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+              <h2 className="text-xl font-bold text-white mb-6">Bugünkü Randevular</h2>
+              <div className="space-y-4 max-h-[300px] overflow-y-auto">
+                {(() => {
+                  const today = new Date().toISOString().slice(0, 10);
+                  const todayAppointments = appointments.filter(a => a.dateISO === today);
+                  return todayAppointments.length === 0 ? (
+                    <div className="text-white/40 text-center py-8">Bugün randevu bulunamadı</div>
+                  ) : (
+                    todayAppointments.map((appointment) => (
+                      <div 
+                        key={appointment.id} 
+                        className="bg-white/5 rounded-xl p-4 cursor-pointer hover:bg-white/10 transition-colors"
+                        onClick={() => { setViewedAppointment(appointment); setOpenDetailsModal(true); }}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-white font-semibold">{appointment.patientName}</div>
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${getStatusColor(appointment.status)}`}>
+                            {appointment.status === 'confirmed' ? 'Onaylandı' :
+                             appointment.status === 'pending' ? 'Beklemede' : 'İptal'}
+                          </span>
+                        </div>
+                        <div className="text-white/70 text-sm mb-1">{appointment.start} • {appointment.typeName ?? appointment.type}</div>
+                        {appointment.notes && (
+                          <div className="text-white/60 text-xs">{appointment.notes}</div>
+                        )}
+                      </div>
+                    ))
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Onaylanan Randevular */}
+            <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+              <h2 className="text-xl font-bold text-white mb-6">Onaylanan Randevular</h2>
+              <div className="space-y-4 max-h-[300px] overflow-y-auto">
+                {(() => {
+                  const confirmedAppointments = appointments.filter(a => a.status === 'confirmed');
+                  return confirmedAppointments.length === 0 ? (
+                    <div className="text-white/40 text-center py-8">Onaylanan randevu bulunamadı</div>
+                  ) : (
+                    confirmedAppointments.map((appointment) => (
+                      <div 
+                        key={appointment.id} 
+                        className="bg-white/5 rounded-xl p-4 cursor-pointer hover:bg-white/10 transition-colors"
+                        onClick={() => { setViewedAppointment(appointment); setOpenDetailsModal(true); }}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-white font-semibold">{appointment.patientName}</div>
+                          <span className="px-2 py-1 rounded-full text-xs font-semibold border bg-green-500/20 text-green-300 border-green-500/30">
+                            Onaylandı
+                          </span>
+                        </div>
+                        <div className="text-white/70 text-sm mb-1">
+                          {new Date(appointment.dateISO).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', weekday: 'short' })} • {appointment.start}
+                        </div>
+                        <div className="text-white/60 text-xs">{appointment.typeName ?? appointment.type}</div>
+                      </div>
+                    ))
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Yaklaşan Randevular (Sadece Onaylanmamış) */}
+            <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+              <h2 className="text-xl font-bold text-white mb-6">Yaklaşan Randevular (Onaylanmamış)</h2>
+              <div className="space-y-4 max-h-[300px] overflow-y-auto">
+                {(() => {
+                  const today = new Date().toISOString().slice(0, 10);
+                  const upcomingPending = appointments
+                    .filter(a => a.status === 'pending' && a.dateISO >= today)
+                    .sort((a, b) => {
+                      const dateCompare = String(a.dateISO||'').localeCompare(String(b.dateISO||''));
+                      if (dateCompare !== 0) return dateCompare;
+                      return String(a.start||'').localeCompare(String(b.start||''));
+                    })
+                    .slice(0, 10);
+                  return upcomingPending.length === 0 ? (
+                    <div className="text-white/40 text-center py-8">Yaklaşan onaylanmamış randevu bulunamadı</div>
+                  ) : (
+                    upcomingPending.map((appointment) => (
+                      <div 
+                        key={appointment.id} 
+                        className="bg-white/5 rounded-xl p-4 cursor-pointer hover:bg-white/10 transition-colors"
+                        onClick={() => { setViewedAppointment(appointment); setOpenDetailsModal(true); }}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-white font-semibold">{appointment.patientName}</div>
+                          <span className="px-2 py-1 rounded-full text-xs font-semibold border bg-yellow-500/20 text-yellow-300 border-yellow-500/30">
+                            Beklemede
+                          </span>
+                        </div>
+                        <div className="text-white/70 text-sm mb-1">
+                          {new Date(appointment.dateISO).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', weekday: 'short' })} • {appointment.start}
+                        </div>
+                        <div className="text-white/60 text-xs">{appointment.typeName ?? appointment.type}</div>
+                        {appointment.notes && (
+                          <div className="text-white/50 text-xs mt-1 italic">Not: {appointment.notes}</div>
+                        )}
+                      </div>
+                    ))
+                  );
+                })()}
+              </div>
+            </div>
+          </>
+        ) : (
+          /* Normal Upcoming Appointments */
+          <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+            <h2 className="text-xl font-bold text-white mb-6">
+              {viewMode === 'day' ? 'Yaklaşan Randevular' : 'Randevular'}
+            </h2>
+            
+            <div className="space-y-4 max-h-[600px] overflow-y-auto">
+              {appointments.length === 0 ? (
+                <div className="text-white/40 text-center py-8">Randevu bulunamadı</div>
+              ) : (
+                appointments.slice(0, viewMode === 'day' ? 5 : 10).map((appointment) => (
                 <div 
                   key={appointment.id} 
                   className="bg-white/5 rounded-xl p-4 cursor-pointer hover:bg-white/10 transition-colors"
@@ -620,6 +825,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* Modals */}
