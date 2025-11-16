@@ -42,11 +42,19 @@ export const useUserPermissions = (userRole: string | undefined, clinicId: strin
             const rolePermissions = await getRolePermissions(userRole, clinicId);
             if (rolePermissions && rolePermissions.length > 0) {
               console.log('🔐 Got dynamic permissions for role', userRole, ':', rolePermissions);
-              // Filter out dashboard for doctor role
-              const filteredPermissions = userRole === 'doctor' 
-                ? rolePermissions.filter(p => p !== 'dashboard')
-                : rolePermissions;
-              setPermissions(filteredPermissions);
+              
+              // Admin always gets all permissions from static definition
+              if (userRole === 'admin') {
+                const adminPermissions = getUserPermissions('admin');
+                console.log('🔐 Admin user detected, overriding with all static permissions:', adminPermissions);
+                setPermissions(adminPermissions);
+              } else {
+                // Filter out dashboard for doctor role
+                const filteredPermissions = userRole === 'doctor' 
+                  ? rolePermissions.filter(p => p !== 'dashboard')
+                  : rolePermissions;
+                setPermissions(filteredPermissions);
+              }
             } else {
               console.warn('⚠️ Dynamic role found but no permissions, using static fallback');
               const staticPermissions = getUserPermissions(userRole);

@@ -41,15 +41,19 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
         customPermissions: doctorProfile?.permissions,
         resolvedRole: userRole,
         finalPermissions: userPermissions,
-        hasAssistantPanel: userPermissions.includes('assistant-panel')
+        hasAssistantPanel: userPermissions.includes('assistant-panel'),
+        hasDoctorPanel: userPermissions.includes('doctor-panel')
       });
       
-      // Check if assistant-panel is missing
-      if (!userPermissions.includes('assistant-panel')) {
-        console.warn('⚠️ assistant-panel permission missing for user role:', userRole);
-        console.log('📋 Available menu items that will show:', 
-          menuItems.filter(item => userPermissions.includes(item.id)).map(item => item.label)
-        );
+      console.log('📋 Available menu items that will show:', 
+        menuItems.filter(item => userPermissions.includes(item.id)).map(item => item.label)
+      );
+      
+      // Check if doctor-panel is missing for admin
+      if (userRole === 'admin' && !userPermissions.includes('doctor-panel')) {
+        console.error('❌ CRITICAL: Admin user missing doctor-panel permission!');
+        console.log('Expected permissions:', ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'prescriptions', 'reports', 'assistant-panel', 'doctor-panel', 'treatment-panel']);
+        console.log('Actual permissions:', userPermissions);
       }
     }
   }, [doctorProfile, userRole, userPermissions, permissionsLoading]);
