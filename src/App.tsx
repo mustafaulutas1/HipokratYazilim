@@ -7,6 +7,7 @@ import Home from './pages/Landingpage';
 import AuthTabs from './pages/auth/AuthTabs';
 import ProfilePage from './pages/ProfilePage';
 import AdminPanel from './pages/panel/AdminPanel';
+import DoctorRegisterPage from './pages/DoctorRegisterPage';
 import { AuthProvider } from './context/AuthContext';
 import PageTracker from './components/PageTracker';
 // deploy comment
@@ -38,6 +39,7 @@ function App() {
               <AdminPanel />
             </Layout>
           } />
+          <Route path="/doctor-register" element={<DoctorRegisterPage />} />
         </Routes>
         <ToastContainer
           position="top-right"

@@ -77,7 +77,7 @@ const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
     }
   };
 
-  // Initialize default roles if they don't exist
+  // Initialize default roles if they don't exist or update them
   const initializeDefaultRoles = async () => {
     if (!doctorProfile?.clinicId) return;
     
@@ -103,6 +103,47 @@ const RoleManagementModal: React.FC<RoleManagementModalProps> = ({
           }
         }
         console.log('Default roles initialization completed');
+      } else {
+        // Update existing default roles with new permissions
+        console.log('Updating default roles...');
+        const existingRoles = new Map<string, any>();
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          existingRoles.set(data.name, { id: doc.id, ...data });
+        });
+
+        for (const defaultRole of DEFAULT_ROLES) {
+          const existingRole = existingRoles.get(defaultRole.name);
+          if (existingRole) {
+            // Update existing role with new permissions
+            try {
+              const roleRef = doc(db, 'roles', existingRole.id);
+              await updateDoc(roleRef, {
+                displayName: defaultRole.displayName,
+                description: defaultRole.description,
+                permissions: defaultRole.permissions,
+                updatedAt: new Date().toISOString()
+              });
+              console.log(`Updated default role: ${defaultRole.displayName}`);
+            } catch (roleError) {
+              console.error(`Error updating role ${defaultRole.name}:`, roleError);
+            }
+          } else {
+            // Add missing default role
+            try {
+              await addDoc(collection(db, 'roles'), {
+                ...defaultRole,
+                clinicId: 'default',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              });
+              console.log(`Added missing default role: ${defaultRole.displayName}`);
+            } catch (roleError) {
+              console.error(`Error adding role ${defaultRole.name}:`, roleError);
+            }
+          }
+        }
+        console.log('Default roles update completed');
       }
     } catch (error) {
       console.error('Error initializing default roles:', error);

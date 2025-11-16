@@ -36,7 +36,7 @@ interface DoctorProfile {
 export default function AdminPanel() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const [currentSection, setCurrentSection] = useState<PanelSection>('dashboard');
+  const [currentSection, setCurrentSection] = useState<PanelSection | null>(null);
   const [doctorProfile, setDoctorProfile] = useState<DoctorProfile | null>(null);
   const [isDoctor, setIsDoctor] = useState(false);
   const [panelLoading, setPanelLoading] = useState(true);
@@ -127,9 +127,26 @@ export default function AdminPanel() {
     checkUserAccess();
   }, [user, loading, navigate]);
 
+  // Set initial section based on user role
+  useEffect(() => {
+    if (doctorProfile && !panelLoading && currentSection === null) {
+      const userRole = doctorProfile.role || doctorProfile.userType || 'doctor';
+      const userPermissions = getUserPermissions(userRole, doctorProfile.permissions);
+      
+      // Set initial section based on role
+      if (userRole === 'anamnez') {
+        setCurrentSection('anamnez');
+      } else if (userPermissions.length > 0) {
+        setCurrentSection(userPermissions[0] as PanelSection);
+      } else {
+        setCurrentSection('dashboard');
+      }
+    }
+  }, [doctorProfile, panelLoading, currentSection]);
+
   // Check if user has access to current section and redirect if needed
   useEffect(() => {
-    if (doctorProfile && !panelLoading) {
+    if (doctorProfile && !panelLoading && currentSection) {
       const userRole = doctorProfile.role || doctorProfile.userType || 'doctor';
       const userPermissions = getUserPermissions(userRole, doctorProfile.permissions);
       
@@ -149,6 +166,14 @@ export default function AdminPanel() {
   };
 
   const renderSection = () => {
+    if (!currentSection) {
+      return (
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-cyan-400"></div>
+        </div>
+      );
+    }
+
     // Get user permissions
     const userRole = doctorProfile?.role || doctorProfile?.userType || 'doctor';
     const userPermissions = getUserPermissions(userRole, doctorProfile?.permissions);

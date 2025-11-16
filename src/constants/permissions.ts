@@ -98,7 +98,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
   nurse: ['dashboard', 'patients', 'appointments', 'anamnez'],
   assistant: ['dashboard', 'patients', 'appointments', 'assistant-panel'],
   desk: ['dashboard', 'patients', 'appointments'],
-  anamnez: ['dashboard', 'patients', 'anamnez'],
+  anamnez: ['patients', 'anamnez', 'settings'],
   accounting: ['dashboard', 'patients', 'accounting', 'reports'],
   pharmacy: ['dashboard', 'patients', 'pharmacy', 'prescriptions'],
   treatment: ['dashboard', 'patients', 'appointments', 'treatment-protocols', 'anamnez', 'treatment-panel'],

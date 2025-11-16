@@ -29,7 +29,7 @@ export const DEFAULT_ROLES: Omit<Role, 'id' | 'createdAt' | 'updatedAt'>[] = [
     name: 'anamnez',
     displayName: 'Anamnez Uzmanı',
     description: 'Hasta anamnez kayıtları ve değerlendirme işlemleri',
-    permissions: ['dashboard', 'patients', 'anamnez'],
+    permissions: ['patients', 'anamnez', 'settings'],
     isDefault: true
   },
   {
