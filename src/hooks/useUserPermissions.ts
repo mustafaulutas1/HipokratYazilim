@@ -31,14 +31,22 @@ export const useUserPermissions = (userRole: string | undefined, clinicId: strin
         // If user has custom permissions, use those
         if (customPermissions && customPermissions.length > 0) {
           console.log('🔐 Using custom permissions for user:', customPermissions);
-          setPermissions(customPermissions);
+          // Filter out dashboard for doctor role
+          const filteredPermissions = userRole === 'doctor' 
+            ? customPermissions.filter(p => p !== 'dashboard')
+            : customPermissions;
+          setPermissions(filteredPermissions);
         } else if (clinicId) {
           // Try to get permissions from dynamic role system
           try {
             const rolePermissions = await getRolePermissions(userRole, clinicId);
             if (rolePermissions && rolePermissions.length > 0) {
               console.log('🔐 Got dynamic permissions for role', userRole, ':', rolePermissions);
-              setPermissions(rolePermissions);
+              // Filter out dashboard for doctor role
+              const filteredPermissions = userRole === 'doctor' 
+                ? rolePermissions.filter(p => p !== 'dashboard')
+                : rolePermissions;
+              setPermissions(filteredPermissions);
             } else {
               console.warn('⚠️ Dynamic role found but no permissions, using static fallback');
               const staticPermissions = getUserPermissions(userRole);
@@ -63,7 +71,11 @@ export const useUserPermissions = (userRole: string | undefined, clinicId: strin
         // Final fallback
         const fallbackPermissions = getUserPermissions(userRole);
         console.log('🔐 Using fallback permissions for role', userRole, ':', fallbackPermissions);
-        setPermissions(fallbackPermissions);
+        // Filter out dashboard for doctor role even in fallback
+        const filteredFallback = userRole === 'doctor' 
+          ? fallbackPermissions.filter(p => p !== 'dashboard')
+          : fallbackPermissions;
+        setPermissions(filteredFallback);
       } finally {
         setLoading(false);
       }

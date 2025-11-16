@@ -86,7 +86,6 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
       fetchPatients();
     }
   }, [doctorProfile?.clinicId]);
-
   // Calculate age from birth date
   const calculateAge = (birthDate: string) => {
     const today = new Date();
