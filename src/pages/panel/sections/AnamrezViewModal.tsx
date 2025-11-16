@@ -444,39 +444,40 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div className="bg-white/95 backdrop-blur-xl border border-gray-200 rounded-2xl max-w-7xl w-full h-[85vh] overflow-hidden shadow-2xl anamnez-view-modal-content">
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
+        <div className="bg-white/95 backdrop-blur-xl border border-gray-200 rounded-xl sm:rounded-2xl max-w-7xl w-full h-[95vh] sm:h-[90vh] md:h-[85vh] overflow-hidden shadow-2xl anamnez-view-modal-content">
           {/* Header */}
-          <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 sticky top-0 z-10">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-800">📄 Anamnez Görüntüleme</h2>
-                <p className="text-gray-600 mt-1">
-                  Hasta: {patient.fullName} - TC: {patient.tcNo}
+          <div className="p-3 sm:p-4 md:p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 sticky top-0 z-10">
+            <div className="flex items-start sm:items-center justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800 truncate">📄 Anamnez Görüntüleme</h2>
+                <p className="text-xs sm:text-sm text-gray-600 mt-1 truncate">
+                  {patient.fullName} - {patient.tcNo}
                 </p>
                 {patient.anamrezCompletedAt && (
-                  <p className="text-green-600 text-sm mt-1">
-                    ✅ Tamamlandı: {new Date(patient.anamrezCompletedAt).toLocaleDateString('tr-TR')} - {patient.anamrezCompletedBy}
+                  <p className="text-green-600 text-xs sm:text-sm mt-1 truncate">
+                    ✅ {new Date(patient.anamrezCompletedAt).toLocaleDateString('tr-TR')}
                   </p>
                 )}
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 flex-shrink-0">
                 {/* PDF Download Button */}
                 {anamrezData && (
                   <button
                     onClick={generatePDF}
-                    className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors duration-200 font-medium shadow-md hover:shadow-lg"
+                    className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors duration-200 font-medium shadow-md hover:shadow-lg text-xs sm:text-sm"
+                    title="PDF Olarak İndir"
                   >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="sm:w-4 sm:h-4">
                       <path d="M12 16L7 11L8.4 9.6L11 12.2V4H13V12.2L15.6 9.6L17 11L12 16Z" fill="currentColor"/>
                       <path d="M5 20V18H19V20H5Z" fill="currentColor"/>
                     </svg>
-                    PDF Olarak İndir
+                    <span className="hidden sm:inline">PDF</span>
                   </button>
                 )}
                 <button
                   onClick={onClose}
-                  className="text-gray-500 hover:text-gray-700 transition-colors text-xl font-bold"
+                  className="text-gray-500 hover:text-gray-700 transition-colors text-lg sm:text-xl font-bold px-2"
                 >
                   ✕
                 </button>
@@ -489,24 +490,24 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
             </div>
           ) : (
-            <div className="flex" style={{height: 'calc(85vh - 120px)'}}>
-              {/* Navigation Sidebar */}
-              <div className="w-64 bg-gray-50 border-r border-gray-200 overflow-y-auto flex-shrink-0">
-                <div className="p-4">
-                  <h3 className="text-sm font-semibold text-gray-800 mb-4">Bölümler</h3>
-                  <nav className="space-y-2">
+            <div className="flex flex-col md:flex-row" style={{height: 'calc(95vh - 80px)'}}>
+              {/* Navigation Sidebar - Horizontal on mobile, vertical on desktop */}
+              <div className="w-full md:w-56 lg:w-64 bg-gray-50 border-b md:border-b-0 md:border-r border-gray-200 overflow-x-auto md:overflow-y-auto flex-shrink-0">
+                <div className="p-2 sm:p-3 md:p-4">
+                  <h3 className="text-xs sm:text-sm font-semibold text-gray-800 mb-2 md:mb-4 hidden md:block">Bölümler</h3>
+                  <nav className="flex md:flex-col gap-1 md:gap-2 overflow-x-auto md:overflow-x-visible pb-2 md:pb-0">
                     {sections.map((section) => (
                       <button
                         key={section.id}
                         onClick={() => handleSectionChange(section.id)}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-3 ${
+                        className={`flex-shrink-0 md:w-full text-left px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 flex items-center gap-2 whitespace-nowrap ${
                           activeSection === section.id
                             ? 'bg-blue-100 text-blue-700 border border-blue-200'
                             : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
                         }`}
                       >
-                        <span className="text-base">{section.icon}</span>
-                        {section.label}
+                        <span className="text-sm sm:text-base">{section.icon}</span>
+                        <span className="hidden sm:inline">{section.label}</span>
                       </button>
                     ))}
                   </nav>
@@ -514,18 +515,18 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
               </div>
 
               {/* Content Area */}
-              <div className="flex-1 overflow-y-auto p-6" style={{maxHeight: 'calc(85vh - 120px)'}}>
+              <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6" style={{maxHeight: 'calc(95vh - 160px)'}}>
                 {anamrezData ? (
                   <>
                     {/* Patient Info Section */}
                     {activeSection === 'patient-info' && (
-                      <div className="space-y-6">
-                        <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                      <div className="space-y-4 sm:space-y-6">
+                        <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-4 sm:mb-6 flex items-center gap-2">
                           👤 Hasta Bilgileri
                         </h3>
                         
-                        <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-white rounded-lg sm:rounded-xl p-4 sm:p-6 border border-gray-200 shadow-sm">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                             <div>
                               <label className="block text-gray-600 text-sm font-medium mb-2">Ad Soyad</label>
                               <div className="text-gray-900 font-semibold">{patient.fullName}</div>
@@ -550,16 +551,16 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                               <label className="block text-gray-600 text-sm font-medium mb-2">Acil Telefon</label>
                               <div className="text-gray-900 font-semibold">{patient.emergencyPhone}</div>
                             </div>
-                            <div className="md:col-span-2">
+                            <div className="sm:col-span-2">
                               <label className="block text-gray-600 text-sm font-medium mb-2">Adres</label>
-                              <div className="text-gray-900 font-semibold">{patient.address}</div>
+                              <div className="text-gray-900 font-semibold text-sm sm:text-base">{patient.address}</div>
                             </div>
-                            <div className="md:col-span-2">
+                            <div className="sm:col-span-2">
                               <label className="block text-gray-600 text-sm font-medium mb-2">Başvuru Nedeni</label>
-                              <div className="text-gray-900 font-semibold">{patient.visitReason}</div>
+                              <div className="text-gray-900 font-semibold text-sm sm:text-base">{patient.visitReason}</div>
                             </div>
                             {anamrezData.selectedDoctor && (
-                              <div className="md:col-span-2">
+                              <div className="sm:col-span-2">
                                 <label className="block text-gray-600 text-sm font-medium mb-2">Tercih Edilen Doktor</label>
                                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                                   <div className="flex items-center gap-3">
@@ -583,12 +584,12 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
 
                     {/* Diagnosis & Complaint Section */}
                     {activeSection === 'diagnosis' && (
-                      <div className="space-y-6">
-                        <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                      <div className="space-y-4 sm:space-y-6">
+                        <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-4 sm:mb-6 flex items-center gap-2">
                           🔍 Tanı & Şikayet
                         </h3>
                         
-                        <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                        <div className="bg-white rounded-lg sm:rounded-xl p-4 sm:p-6 border border-gray-200 shadow-sm">
                           <h4 className="font-bold text-gray-800 mb-4">Seçilen Tanı Sistemleri</h4>
                           <div className="flex flex-wrap gap-2 mb-6">
                             {anamrezData.selectedDiagnosisSystems?.map((system, index) => (
@@ -613,13 +614,13 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
 
                     {/* Medical History Section */}
                     {activeSection === 'medical-history' && (
-                      <div className="space-y-6">
-                        <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                      <div className="space-y-4 sm:space-y-6">
+                        <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-4 sm:mb-6 flex items-center gap-2">
                           📋 Tıbbi Geçmiş
                         </h3>
                         
-                        <div className="grid grid-cols-1 gap-6">
-                          <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                        <div className="grid grid-cols-1 gap-4 sm:gap-6">
+                          <div className="bg-white rounded-lg sm:rounded-xl p-4 sm:p-6 border border-gray-200 shadow-sm">
                             <h4 className="font-bold text-gray-800 mb-4">Hastalık Geçmişi</h4>
                             <div className="text-gray-700 leading-relaxed whitespace-pre-wrap">
                               {anamrezData.pastMedicalHistory || 'Belirtilmemiş'}
