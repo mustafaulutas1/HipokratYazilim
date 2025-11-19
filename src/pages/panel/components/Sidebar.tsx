@@ -4,9 +4,11 @@ import { rtmLogo } from '../../../assets';
 import { getRoleDisplayName } from '../../../constants/permissions';
 import { useUserPermissions } from '../../../hooks/useUserPermissions';
 
+type PanelSection = 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
+
 interface SidebarProps {
-  currentSection: 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
-  onSectionChange: (section: 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel') => void;
+  currentSection: PanelSection | null;
+  onSectionChange: (section: PanelSection) => void;
   doctorProfile: {
     clinicId?: string;
     fullName?: string;
@@ -233,7 +235,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
               .map((item) => (
             <li key={item.id}>
               <button
-                onClick={() => onSectionChange(item.id as typeof currentSection)}
+                onClick={() => onSectionChange(item.id as PanelSection)}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all duration-200 group ${
                   currentSection === item.id
                     ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg'
