@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { deleteDoc, doc } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
+import { deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { toast } from 'react-toastify';
 import { db } from '../../../firebase/config';
 
@@ -8,11 +8,22 @@ interface AppointmentDetailsModalProps {
   onClose: () => void;
   appointment: any | null;
   onDeleted?: () => void;
+  onStatusUpdated?: () => void;
 }
 
-const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpen, onClose, appointment, onDeleted }) => {
+const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpen, onClose, appointment, onDeleted, onStatusUpdated }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [currentStatus, setCurrentStatus] = useState(appointment?.status || 'pending');
+  const [isAnimating, setIsAnimating] = useState(false);
+  
+  // Sync local status with appointment prop
+  useEffect(() => {
+    if (appointment?.status) {
+      setCurrentStatus(appointment.status);
+    }
+  }, [appointment?.status]);
   
   if (!isOpen || !appointment) return null;
 
@@ -86,6 +97,35 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
     }
   };
 
+  const handleStatusToggle = async () => {
+    if (!appointment.id) return;
+    
+    const newStatus = currentStatus === 'pending' ? 'confirmed' : 'pending';
+    
+    // Trigger animation
+    setIsAnimating(true);
+    setTimeout(() => setIsAnimating(false), 600);
+    
+    // Immediately update local state for instant UI feedback
+    setCurrentStatus(newStatus);
+    
+    setIsUpdatingStatus(true);
+    try {
+      await updateDoc(doc(db, 'appointments', appointment.id), {
+        status: newStatus
+      });
+      toast.success(`Randevu durumu "${newStatus === 'confirmed' ? 'Onaylandı' : 'Beklemede'}" olarak güncellendi!`);
+      onStatusUpdated?.();
+    } catch (error) {
+      console.error('Error updating appointment status:', error);
+      toast.error('Randevu durumu güncellenirken bir hata oluştu!');
+      // Revert on error
+      setCurrentStatus(currentStatus === 'pending' ? 'confirmed' : 'pending');
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
   return (
     <div 
       className={`fixed inset-0 z-50 ${isOpen ? '' : 'hidden'}`}
@@ -97,18 +137,21 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
         <div className="w-full max-w-2xl bg-gradient-to-br from-white/98 to-gray-50/98 backdrop-blur-xl border border-white/30 rounded-3xl shadow-2xl transform animate-scaleIn overflow-hidden">
           
           {/* Header with Status */}
-          <div className={`px-6 py-4 bg-gradient-to-r ${getStatusColor(appointment.status)} relative overflow-hidden`}>
+          <div className={`px-6 py-4 bg-gradient-to-r ${getStatusColor(currentStatus)} relative overflow-hidden transition-all duration-500 ease-in-out ${isAnimating ? 'scale-[1.02]' : 'scale-100'}`}>
             <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-transparent"></div>
+            {isAnimating && (
+              <div className="absolute inset-0 bg-white/30 animate-pulse"></div>
+            )}
             <div className="relative flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center shadow-lg">
+                <div className={`w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center shadow-lg transition-transform duration-500 ${isAnimating ? 'rotate-[360deg] scale-110' : 'rotate-0 scale-100'}`}>
                   <span className="text-white text-lg">👁️</span>
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-white mb-1">Randevu Detayları</h2>
                   <div className="flex items-center gap-2">
-                    <span className="text-2xl">{getStatusIcon(appointment.status)}</span>
-                    <span className="text-white/90 font-semibold text-sm">{getStatusText(appointment.status)}</span>
+                    <span className={`text-2xl transition-all duration-500 ${isAnimating ? 'scale-125 rotate-12' : 'scale-100 rotate-0'}`}>{getStatusIcon(currentStatus)}</span>
+                    <span className={`text-white/90 font-semibold text-sm transition-all duration-500 ${isAnimating ? 'scale-105' : 'scale-100'}`}>{getStatusText(currentStatus)}</span>
                   </div>
                 </div>
               </div>
@@ -228,10 +271,10 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
                 <div className="text-xs text-gray-500 font-semibold">Süre</div>
                 <div className="text-xs font-bold text-gray-700">{duration} dk</div>
               </div>
-              <div className="text-center p-3 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border border-gray-200">
-                <div className="text-lg mb-1">📊</div>
+              <div className={`text-center p-3 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border border-gray-200 transition-all duration-500 ${isAnimating ? 'scale-105 shadow-lg' : 'scale-100'}`}>
+                <div className={`text-lg mb-1 transition-transform duration-500 ${isAnimating ? 'scale-125' : 'scale-100'}`}>📊</div>
                 <div className="text-xs text-gray-500 font-semibold">Durum</div>
-                <div className="text-xs font-bold text-gray-700">{getStatusText(appointment.status)}</div>
+                <div className={`text-xs font-bold text-gray-700 transition-all duration-500 ${isAnimating ? 'scale-110' : 'scale-100'}`}>{getStatusText(currentStatus)}</div>
               </div>
               <div className="text-center p-3 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border border-gray-200">
                 <div className="text-lg mb-1">📋</div>
@@ -243,7 +286,7 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
 
           {/* Footer */}
           <div className="px-6 py-4 bg-gradient-to-r from-gray-50 to-gray-100 border-t border-gray-200">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center gap-3">
               <button 
                 onClick={() => setShowDeleteConfirm(true)}
                 className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 active:scale-95 flex items-center gap-2"
@@ -251,12 +294,35 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
                 <span>🗑️</span>
                 Randevuyu Sil
               </button>
-              <button 
-                onClick={onClose}
-                className="px-8 py-3 bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 active:scale-95"
-              >
-                Kapat
-              </button>
+              <div className="flex gap-3">
+                <button 
+                  onClick={handleStatusToggle}
+                  disabled={isUpdatingStatus || currentStatus === 'cancelled'}
+                  className={`px-6 py-3 ${
+                    currentStatus === 'pending' 
+                      ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700' 
+                      : 'bg-gradient-to-r from-yellow-500 to-orange-600 hover:from-yellow-600 hover:to-orange-700'
+                  } text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 active:scale-95 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 ${isAnimating ? 'scale-110 shadow-2xl' : ''}`}
+                >
+                  {isUpdatingStatus ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Güncelleniyor...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className={`transition-transform duration-300 ${isAnimating ? 'rotate-[360deg]' : 'rotate-0'}`}>{currentStatus === 'pending' ? '✅' : '⏳'}</span>
+                      <span>{currentStatus === 'pending' ? 'Onayla' : 'Beklet'}</span>
+                    </>
+                  )}
+                </button>
+                <button 
+                  onClick={onClose}
+                  className="px-8 py-3 bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 active:scale-95"
+                >
+                  Kapat
+                </button>
+              </div>
             </div>
           </div>
         </div>

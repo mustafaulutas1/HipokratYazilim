@@ -414,7 +414,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
             durationMinutes: selectedTypeObj.durationMinutes,
             dateISO,
             start: startTime,
-            status: 'confirmed',
+            status: 'pending',
             doctorId: doctorId || null,
             notes: notes || '',
             clinicId: doctorProfile?.clinicId || 'default-clinic',

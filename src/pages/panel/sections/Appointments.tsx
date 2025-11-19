@@ -26,6 +26,9 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
   const [filterEndDate, setFilterEndDate] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'confirmed' | 'pending' | 'cancelled'>('all');
   
+  // Calendar için hasta filtreleme
+  const [calendarPatientFilter, setCalendarPatientFilter] = useState('');
+  
   const userRole = doctorProfile?.role || doctorProfile?.userType || 'doctor';
   const isCallCenter = userRole === 'call-center';
   const isAdmin = userRole === 'admin';
@@ -59,6 +62,15 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
   // 5 dk grid kaldırıldı; saatlik satırlar üzerinden oransal bloklar gösterilecek
 
   const dateISO = useMemo(() => selectedDate.toISOString().slice(0, 10), [selectedDate]);
+
+  // Filter appointments by patient name for calendar view
+  const filteredAppointments = useMemo(() => {
+    if (!calendarPatientFilter.trim()) return appointments;
+    const searchTerm = calendarPatientFilter.toLowerCase().trim();
+    return appointments.filter(apt => 
+      apt.patientName?.toLowerCase().includes(searchTerm)
+    );
+  }, [appointments, calendarPatientFilter]);
 
   // Get week range for weekly view
   const getWeekRange = (date: Date) => {
@@ -164,7 +176,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
 
   // Segment aralığına düşen randevular - sadece başlangıç zamanı bu slot içinde olanlar
   const getAppointmentsForSegment = (segStart: number, segEnd: number) => {
-    return appointments
+    return filteredAppointments
       .map(a => {
         const dur: number = (a.durationMinutes ?? a.duration ?? 0);
         const s = timeToMinutes(a.start ?? a.time);
@@ -276,6 +288,41 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
 
       {/* Calendar Controls */}
       <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+        {/* Patient Filter for Calendar */}
+        <div className="mb-6">
+          <div className="flex items-center gap-4">
+            <div className="flex-1 max-w-md">
+              <label className="block text-sm font-semibold text-white/80 mb-2">🔍 Hasta Ara</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={calendarPatientFilter}
+                  onChange={(e) => setCalendarPatientFilter(e.target.value)}
+                  placeholder="Hasta adıyla filtrele..."
+                  className="w-full px-4 py-2.5 pl-10 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-200"
+                />
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50">👤</span>
+                {calendarPatientFilter && (
+                  <button
+                    onClick={() => setCalendarPatientFilter('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-white transition-colors"
+                    title="Temizle"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+            {calendarPatientFilter && (
+              <div className="pt-6">
+                <div className="px-4 py-2 bg-green-500/20 border border-green-500/30 rounded-xl text-green-300 text-sm font-semibold">
+                  {filteredAppointments.length} randevu bulundu
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
             <button
@@ -531,7 +578,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
                             const isPast = day < new Date(new Date().setHours(0, 0, 0, 0));
                             
                             // Bu saat aralığındaki randevular
-                            const slotAppointments = appointments.filter(a => {
+                            const slotAppointments = filteredAppointments.filter(a => {
                               if (a.dateISO !== dayISO) return false;
                               const aptHour = parseInt(a.start?.split(':')[0] || '0');
                               return aptHour === hour;
@@ -578,7 +625,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
                     <div className="text-white/70 text-xs font-semibold text-center py-2">Toplam</div>
                     {weekDays.map((day) => {
                       const dayISO = day.toISOString().slice(0, 10);
-                      const dayAppointments = appointments.filter(a => a.dateISO === dayISO);
+                      const dayAppointments = filteredAppointments.filter(a => a.dateISO === dayISO);
                       return (
                         <div key={`total-${dayISO}`} className="text-center py-2 bg-white/5 rounded-lg">
                           <div className="text-white font-bold">{dayAppointments.length}</div>
@@ -632,7 +679,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
                       const currentDay = new Date(calendarStart);
                       currentDay.setDate(calendarStart.getDate() + weekIdx * 7 + dayIdx);
                       const dayISO = currentDay.toISOString().slice(0, 10);
-                      const dayAppointments = appointments.filter(a => a.dateISO === dayISO);
+                      const dayAppointments = filteredAppointments.filter(a => a.dateISO === dayISO);
                       const isCurrentMonth = currentDay.getMonth() === selectedDate.getMonth();
                       const isToday = currentDay.toDateString() === new Date().toDateString();
                       const isPast = currentDay < new Date(new Date().setHours(0, 0, 0, 0));
@@ -686,7 +733,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
               <div className="space-y-4 max-h-[300px] overflow-y-auto">
                 {(() => {
                   const today = new Date().toISOString().slice(0, 10);
-                  const todayAppointments = appointments.filter(a => a.dateISO === today);
+                  const todayAppointments = filteredAppointments.filter(a => a.dateISO === today);
                   return todayAppointments.length === 0 ? (
                     <div className="text-white/40 text-center py-8">Bugün randevu bulunamadı</div>
                   ) : (
@@ -719,7 +766,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
               <h2 className="text-xl font-bold text-white mb-6">Onaylanan Randevular</h2>
               <div className="space-y-4 max-h-[300px] overflow-y-auto">
                 {(() => {
-                  const confirmedAppointments = appointments.filter(a => a.status === 'confirmed');
+                  const confirmedAppointments = filteredAppointments.filter(a => a.status === 'confirmed');
                   return confirmedAppointments.length === 0 ? (
                     <div className="text-white/40 text-center py-8">Onaylanan randevu bulunamadı</div>
                   ) : (
@@ -752,7 +799,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
               <div className="space-y-4 max-h-[300px] overflow-y-auto">
                 {(() => {
                   const today = new Date().toISOString().slice(0, 10);
-                  const upcomingPending = appointments
+                  const upcomingPending = filteredAppointments
                     .filter(a => a.status === 'pending' && a.dateISO >= today)
                     .sort((a, b) => {
                       const dateCompare = String(a.dateISO||'').localeCompare(String(b.dateISO||''));
@@ -797,10 +844,12 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
             </h2>
             
             <div className="space-y-4 max-h-[600px] overflow-y-auto">
-              {appointments.length === 0 ? (
-                <div className="text-white/40 text-center py-8">Randevu bulunamadı</div>
+              {filteredAppointments.length === 0 ? (
+                <div className="text-white/40 text-center py-8">
+                  {calendarPatientFilter ? 'Aradığınız kriterlere uygun randevu bulunamadı' : 'Randevu bulunamadı'}
+                </div>
               ) : (
-                appointments.slice(0, viewMode === 'day' ? 5 : 10).map((appointment) => (
+                filteredAppointments.slice(0, viewMode === 'day' ? 5 : 10).map((appointment) => (
                 <div 
                   key={appointment.id} 
                   className="bg-white/5 rounded-xl p-4 cursor-pointer hover:bg-white/10 transition-colors"
@@ -863,6 +912,23 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
         appointment={viewedAppointment}
         onDeleted={() => {
           // refresh appointments after delete
+          (async () => {
+            if (!doctorProfile?.clinicId) return;
+            
+            // Fetch with only clinicId to avoid composite index, then filter by date
+            const qDay = query(
+              collection(db, 'appointments'),
+              where('clinicId', '==', doctorProfile.clinicId)
+            );
+            const snap = await getDocs(qDay);
+            const allAppointments = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+            const list = allAppointments.filter(apt => apt.dateISO === dateISO);
+            list.sort((a,b) => String(a.start||'').localeCompare(String(b.start||'')));
+            setAppointments(list);
+          })();
+        }}
+        onStatusUpdated={() => {
+          // refresh appointments after status update
           (async () => {
             if (!doctorProfile?.clinicId) return;
             
