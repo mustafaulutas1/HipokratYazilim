@@ -35,15 +35,15 @@ interface WaitingPatient {
   anamrezCompletedAt?: string;
   anamrezCompletedBy?: string;
   createdAt: string;
+  updatedAt?: string;
   selectedDiagnosisSystems?: string[];
   assignedDoctorId?: string;
   assignedDoctorName?: string;
   assignedAt?: string;
   status?: string;
   paymentCompleted?: boolean;
-  priority?: 'normal' | 'urgent' | 'emergency';
-  updatedAt?: string;
   treatmentCompletedAt?: string;
+  priority?: 'normal' | 'urgent' | 'emergency';
 }
 
 interface AnamrezRecord {

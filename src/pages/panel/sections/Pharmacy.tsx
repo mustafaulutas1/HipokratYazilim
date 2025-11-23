@@ -1107,64 +1107,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                   </div>
                 </>
               )
-              ) : activeTab === 'patients' ? (
-                /* Patients Waiting for Pharmacy */
-                <div className="space-y-4">
-                  {waitingPatients.length === 0 ? (
-                    <div className="text-center py-12">
-                      <div className="text-6xl mb-4">👥</div>
-                      <h3 className="text-xl font-semibold text-white mb-2">
-                        Bekleyen Hasta Yok
-                      </h3>
-                      <p className="text-white/60">
-                        Şu anda eczanede bekleyen hasta bulunmamaktadır.
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      <h3 className="text-lg font-semibold text-white mb-4">
-                        👥 Bekleyen Hastalar ({waitingPatients.length})
-                      </h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {waitingPatients.map((patient) => (
-                          <div
-                            key={patient.id}
-                            className="bg-white/5 border border-white/20 rounded-xl p-6 transition-all duration-200 hover:bg-white/10"
-                          >
-                            <div className="flex items-center gap-4 mb-4">
-                              <div className="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center text-xl text-white">
-                                👤
-                              </div>
-                              <div>
-                                <h4 className="text-lg font-semibold text-white">{patient.fullName}</h4>
-                                <p className="text-white/60 text-sm">TC: {patient.tcNo}</p>
-                              </div>
-                            </div>
-                            <div className="space-y-2 mb-4">
-                              <div className="flex items-center justify-between text-sm">
-                                <span className="text-white/60">Geliş Tarihi:</span>
-                                <span className="text-white">{new Date(patient.createdAt).toLocaleDateString('tr-TR')}</span>
-                              </div>
-                              <div className="flex items-center justify-between text-sm">
-                                <span className="text-white/60">Tedavi Bitiş:</span>
-                                <span className="text-white">{patient.treatmentCompletedAt ? new Date(patient.treatmentCompletedAt).toLocaleDateString('tr-TR') : '-'}</span>
-                              </div>
-                            </div>
-                            <button
-                              className="w-full py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-all duration-200 flex items-center justify-center gap-2"
-                              onClick={() => {
-                                alert('İlaç satışı özelliği yakında eklenecek: ' + patient.fullName);
-                              }}
-                            >
-                              💊 İlaç Satışı Yap
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-              ) : (
+              ) : activeTab === 'devices' ? (
                 filteredAndSortedDevices.length === 0 ? (
                   <div className="text-center py-12">
                     <div className="text-6xl mb-4">🏥</div>
@@ -1278,7 +1221,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                     </div>
                   </>
                 )
-              )}
+              ) : null}
             </div>
           </div>
           )}
