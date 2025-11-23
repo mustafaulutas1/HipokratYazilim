@@ -177,7 +177,24 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
         updatedAt: new Date().toISOString(),
       };
 
-      await addDoc(collection(db, 'patients'), patientData);
+      // Add patient and get the document reference
+      const patientDocRef = await addDoc(collection(db, 'patients'), patientData);
+
+      // Create initial pending anamnez record for the new patient
+      try {
+        await addDoc(collection(db, 'anamrezRecords'), {
+          patientId: patientDocRef.id,
+          patientName: formData.fullName,
+          clinicId: doctorProfile?.clinicId || 'default-clinic',
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+        toast.success('Hasta ve anamnez kaydı başarıyla oluşturuldu!');
+      } catch (anamrezError) {
+        console.error('Error creating initial anamnez:', anamrezError);
+        toast.warning('Hasta eklendi, ancak anamnez kaydı oluşturulamadı.');
+      }
 
       // Reset form
       setFormData({

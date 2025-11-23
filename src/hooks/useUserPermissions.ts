@@ -43,11 +43,11 @@ export const useUserPermissions = (userRole: string | undefined, clinicId: strin
             if (rolePermissions && rolePermissions.length > 0) {
               console.log('🔐 Got dynamic permissions for role', userRole, ':', rolePermissions);
               
-              // Admin always gets all permissions from static definition
-              if (userRole === 'admin') {
-                const adminPermissions = getUserPermissions('admin');
-                console.log('🔐 Admin user detected, overriding with all static permissions:', adminPermissions);
-                setPermissions(adminPermissions);
+              // Admin and Assistant always get all permissions from static definition
+              if (userRole === 'admin' || userRole === 'assistant') {
+                const allPermissions = getUserPermissions(userRole);
+                console.log(`🔐 ${userRole} user detected, overriding with all static permissions:`, allPermissions);
+                setPermissions(allPermissions);
               } else {
                 // Filter out dashboard for doctor and desk roles
                 const filteredPermissions = (userRole === 'doctor' || userRole === 'desk')
