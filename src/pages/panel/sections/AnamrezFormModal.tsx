@@ -720,29 +720,29 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   };
 
   // File upload handlers for device scan
-  const handleDeviceScanFileUpload = (file: File) => {
-    setDeviceScanFile(file);
-    // For device scan, we'll store the file URL directly in formData.conventionalTreatment
-    setFormData(prev => ({
-      ...prev,
-      conventionalTreatment: {
-        ...prev.conventionalTreatment,
-        deviceScanFileUrl: 'pending' // Temporary indicator
-      }
-    }));
-  };
+  // const handleDeviceScanFileUpload = (file: File) => {
+  //   setDeviceScanFile(file);
+  //   // For device scan, we'll store the file URL directly in formData.conventionalTreatment
+  //   setFormData(prev => ({
+  //     ...prev,
+  //     conventionalTreatment: {
+  //       ...prev.conventionalTreatment,
+  //       deviceScanFileUrl: 'pending' // Temporary indicator
+  //     }
+  //   }));
+  // };
 
-  const handleDeviceScanFileRemove = () => {
-    setDeviceScanFile(null);
-    // Remove file URL from formData.conventionalTreatment
-    setFormData(prev => ({
-      ...prev,
-      conventionalTreatment: {
-        ...prev.conventionalTreatment,
-        deviceScanFileUrl: ''
-      }
-    }));
-  };
+  // const handleDeviceScanFileRemove = () => {
+  //   setDeviceScanFile(null);
+  //   // Remove file URL from formData.conventionalTreatment
+  //   setFormData(prev => ({
+  //     ...prev,
+  //     conventionalTreatment: {
+  //       ...prev.conventionalTreatment,
+  //       deviceScanFileUrl: ''
+  //     }
+  //   }));
+  // };
 
   const validateCurrentPage = () => {
     const newErrors: Record<string, string> = {};

@@ -42,6 +42,8 @@ interface WaitingPatient {
   status?: string;
   paymentCompleted?: boolean;
   priority?: 'normal' | 'urgent' | 'emergency';
+  updatedAt?: string;
+  treatmentCompletedAt?: string;
 }
 
 interface AnamrezRecord {
