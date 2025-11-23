@@ -70,7 +70,10 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
   const [isDoctorSelectionModalOpen, setIsDoctorSelectionModalOpen] = useState(false);
   const [patientToAssign, setPatientToAssign] = useState<WaitingPatient | null>(null);
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
-  const [activeListType, setActiveListType] = useState<'anamnez_completed' | 'waiting_accounting' | 'treatment_completed' | 'emergency'>('anamnez_completed');
+  const [activeListType, setActiveListType] = useState<'anamnez_completed' | 'with_doctor' | 'waiting_accounting' | 'treatment_continue' | 'pharmacy_waiting' | 'treatment_completed' | 'emergency'>('anamnez_completed');
+  const [withDoctorPatients, setWithDoctorPatients] = useState<WaitingPatient[]>([]);
+  const [treatmentContinuePatients, setTreatmentContinuePatients] = useState<WaitingPatient[]>([]);
+  const [pharmacyWaitingPatients, setPharmacyWaitingPatients] = useState<WaitingPatient[]>([]);
 
   useEffect(() => {
     const fetchDoctorData = async () => {
@@ -173,6 +176,17 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
           setWaitingPatients(completedPatients);
         }
 
+        // Fetch patients currently with doctor
+        const withDoctorFiltered = allClinicPatients.filter(patient =>
+          patient.assignedDoctorId &&
+          ['assigned_to_doctor', 'in_treatment'].includes(patient.status || '')
+        ).sort((a, b) => {
+          const dateA = new Date(a.assignedAt || a.createdAt || 0).getTime();
+          const dateB = new Date(b.assignedAt || b.createdAt || 0).getTime();
+          return dateB - dateA;
+        });
+        setWithDoctorPatients(withDoctorFiltered);
+
         // Fetch patients waiting for accounting (treatment decided but not paid)
         const accountingPatientsFiltered = allClinicPatients.filter(patient =>
           patient.status === 'treatment_decided' &&
@@ -183,6 +197,26 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
           return dateB - dateA;
         });
         setAccountingPatients(accountingPatientsFiltered);
+
+        // Fetch patients continuing treatment
+        const treatmentContinueFiltered = allClinicPatients.filter(patient =>
+          patient.status === 'treatment_continue'
+        ).sort((a, b) => {
+          const dateA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+          const dateB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+          return dateB - dateA;
+        });
+        setTreatmentContinuePatients(treatmentContinueFiltered);
+
+        // Fetch patients waiting for pharmacy (status: pharmacy_waiting)
+        const pharmacyWaitingFiltered = allClinicPatients.filter(patient =>
+          patient.status === 'pharmacy_waiting'
+        ).sort((a, b) => {
+          const dateA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+          const dateB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+          return dateB - dateA;
+        });
+        setPharmacyWaitingPatients(pharmacyWaitingFiltered);
 
         // Fetch fully completed treatments (paid and discharged)
         const treatmentCompletedFiltered = allClinicPatients.filter(patient =>
@@ -422,6 +456,17 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
         setWaitingPatients(completedPatients);
       }
 
+      // Fetch patients currently with doctor
+      const withDoctorFiltered = allClinicPatients.filter(patient =>
+        patient.assignedDoctorId &&
+        ['assigned_to_doctor', 'in_treatment'].includes(patient.status || '')
+      ).sort((a, b) => {
+        const dateA = new Date(a.assignedAt || a.createdAt || 0).getTime();
+        const dateB = new Date(b.assignedAt || b.createdAt || 0).getTime();
+        return dateB - dateA;
+      });
+      setWithDoctorPatients(withDoctorFiltered);
+
       // Fetch patients waiting for accounting (treatment decided but not paid)
       const accountingPatientsFiltered = allClinicPatients.filter(patient =>
         patient.status === 'treatment_decided' &&
@@ -432,6 +477,16 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
         return dateB - dateA;
       });
       setAccountingPatients(accountingPatientsFiltered);
+
+      // Fetch patients continuing treatment
+      const treatmentContinueFiltered = allClinicPatients.filter(patient =>
+        patient.status === 'treatment_continue'
+      ).sort((a, b) => {
+        const dateA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+        const dateB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+        return dateB - dateA;
+      });
+      setTreatmentContinuePatients(treatmentContinueFiltered);
 
       // Fetch fully completed treatments (paid and discharged)
       const treatmentCompletedFiltered = allClinicPatients.filter(patient =>
@@ -543,8 +598,14 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
     switch (activeListType) {
       case 'anamnez_completed':
         return waitingPatients;
+      case 'with_doctor':
+        return withDoctorPatients;
       case 'waiting_accounting':
         return accountingPatients;
+      case 'treatment_continue':
+        return treatmentContinuePatients;
+      case 'pharmacy_waiting':
+        return pharmacyWaitingPatients;
       case 'treatment_completed':
         return treatmentCompletedPatients;
       case 'emergency':
@@ -558,8 +619,14 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
     switch (activeListType) {
       case 'anamnez_completed':
         return 'Doktora Gönderilecek Hastalar';
+      case 'with_doctor':
+        return 'Doktor İle Görüşmede Olanlar';
       case 'waiting_accounting':
         return 'Muhasebede Bekleyen Hastalar';
+      case 'treatment_continue':
+        return 'Tedavisi Devam Eden Hastalar';
+      case 'pharmacy_waiting':
+        return 'Eczanede Bekleyen Hastalar';
       case 'treatment_completed':
         return 'Tedavi Tamamlanan Hastalar';
       case 'emergency':
@@ -573,8 +640,14 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
     switch (activeListType) {
       case 'anamnez_completed':
         return '📤';
+      case 'with_doctor':
+        return '👨‍⚕️';
       case 'waiting_accounting':
         return '💰';
+      case 'treatment_continue':
+        return '🏥';
+      case 'pharmacy_waiting':
+        return '💊';
       case 'treatment_completed':
         return '🏁';
       case 'emergency':
@@ -699,6 +772,18 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
           </button>
 
           <button
+            onClick={() => setActiveListType('with_doctor')}
+            className={`px-4 py-2 rounded-xl font-medium text-sm transition-all duration-200 flex items-center gap-2 ${
+              activeListType === 'with_doctor'
+                ? 'bg-indigo-500/30 border-2 border-indigo-400 text-indigo-200'
+                : 'bg-white/5 border border-white/20 text-white/70 hover:bg-white/10'
+            }`}
+          >
+            <span className="text-lg">👨‍⚕️</span>
+            Doktor İle Görüşmede ({withDoctorPatients.length})
+          </button>
+
+          <button
             onClick={() => setActiveListType('waiting_accounting')}
             className={`px-4 py-2 rounded-xl font-medium text-sm transition-all duration-200 flex items-center gap-2 ${
               activeListType === 'waiting_accounting'
@@ -708,6 +793,30 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
           >
             <span className="text-lg">💰</span>
             Muhasebede Bekleyenler ({accountingPatients.length})
+          </button>
+
+          <button
+            onClick={() => setActiveListType('treatment_continue')}
+            className={`px-4 py-2 rounded-xl font-medium text-sm transition-all duration-200 flex items-center gap-2 ${
+              activeListType === 'treatment_continue'
+                ? 'bg-cyan-500/30 border-2 border-cyan-400 text-cyan-200'
+                : 'bg-white/5 border border-white/20 text-white/70 hover:bg-white/10'
+            }`}
+          >
+            <span className="text-lg">🏥</span>
+            Tedavisi Devam Edenler ({treatmentContinuePatients.length})
+          </button>
+
+          <button
+            onClick={() => setActiveListType('pharmacy_waiting')}
+            className={`px-4 py-2 rounded-xl font-medium text-sm transition-all duration-200 flex items-center gap-2 ${
+              activeListType === 'pharmacy_waiting'
+                ? 'bg-purple-500/30 border-2 border-purple-400 text-purple-200'
+                : 'bg-white/5 border border-white/20 text-white/70 hover:bg-white/10'
+            }`}
+          >
+            <span className="text-lg">💊</span>
+            Eczanede Bekleyenler ({pharmacyWaitingPatients.length})
           </button>
 
           <button
@@ -769,9 +878,24 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
                           </span>
                         </>
                       )}
+                      {activeListType === 'with_doctor' && (
+                        <span className="text-xs bg-indigo-500/30 text-indigo-200 px-2 py-1 rounded-full flex items-center gap-1">
+                          👨‍⚕️ {patient.assignedDoctorName || 'Doktor Atanmış'}
+                        </span>
+                      )}
                       {activeListType === 'waiting_accounting' && (
                         <span className="text-xs bg-yellow-500/30 text-yellow-200 px-2 py-1 rounded-full">
                           Tedavi Kararı Verildi
+                        </span>
+                      )}
+                      {activeListType === 'treatment_continue' && (
+                        <span className="text-xs bg-cyan-500/30 text-cyan-200 px-2 py-1 rounded-full">
+                          Tedavi Devam Ediyor
+                        </span>
+                      )}
+                      {activeListType === 'pharmacy_waiting' && (
+                        <span className="text-xs bg-purple-500/30 text-purple-200 px-2 py-1 rounded-full">
+                          Eczane Sırasında
                         </span>
                       )}
                       {activeListType === 'treatment_completed' && (
@@ -822,7 +946,10 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
                     )}
                     <p className="text-white/50 text-xs mt-1">
                       {activeListType === 'anamnez_completed' && `Anamnez Tamamlanma: ${formatDate(patient.anamrezCompletedAt || patient.createdAt)}`}
+                      {activeListType === 'with_doctor' && `Görüşme Başlangıcı: ${formatDate(patient.assignedAt || patient.createdAt)}`}
                       {activeListType === 'waiting_accounting' && `Tedavi Kararı: ${formatDate(patient.createdAt)}`}
+                      {activeListType === 'treatment_continue' && `Tedavi Başlangıcı: ${formatDate(patient.updatedAt || patient.createdAt)}`}
+                      {activeListType === 'pharmacy_waiting' && `Eczaneye Sevk: ${formatDate(patient.treatmentCompletedAt || patient.updatedAt || patient.createdAt)}`}
                       {activeListType === 'treatment_completed' && `Taburcu: ${formatDate(patient.createdAt)}`}
                       {activeListType === 'emergency' && `Acil Kayıt: ${formatDate(patient.createdAt)}`}
                     </p>
@@ -834,13 +961,6 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
                         className="px-3 py-1 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-blue-200 text-sm transition-all duration-200"
                       >
                         Doktora Gönder
-                      </button>
-                    )}
-                    {activeListType === 'waiting_accounting' && (
-                      <button
-                        className="px-3 py-1 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg text-green-200 text-sm transition-all duration-200"
-                      >
-                        Ödeme Al
                       </button>
                     )}
                     {activeListType === 'emergency' && (
@@ -864,13 +984,19 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
                 <div className="text-6xl mb-4">{getCurrentListIcon()}</div>
                 <h4 className="text-white/80 text-lg font-semibold mb-2">
                   {activeListType === 'anamnez_completed' && 'Gönderilecek Hasta Yok'}
+                  {activeListType === 'with_doctor' && 'Doktorla Görüşen Hasta Yok'}
                   {activeListType === 'waiting_accounting' && 'Tedavi Kararı Verilen Hasta Yok'}
+                  {activeListType === 'treatment_continue' && 'Tedavisi Devam Eden Hasta Yok'}
+                  {activeListType === 'pharmacy_waiting' && 'Eczanede Bekleyen Hasta Yok'}
                   {activeListType === 'treatment_completed' && 'Tedavi Tamamlanan Hasta Yok'}
                   {activeListType === 'emergency' && 'Acil Durum Hastası Yok'}
                 </h4>
                 <p className="text-white/60">
                   {activeListType === 'anamnez_completed' && 'Anamnezi tamamlanmış ve doktora gönderilmeyi bekleyen hasta bulunmuyor.'}
+                  {activeListType === 'with_doctor' && 'Şu anda doktorla görüşen hasta bulunmuyor.'}
                   {activeListType === 'waiting_accounting' && 'Doktor tarafından tedavi kararı verilmiş hasta bulunmuyor.'}
+                  {activeListType === 'treatment_continue' && 'Ödemesi yapılmış ve tedavisi devam eden hasta bulunmuyor.'}
+                  {activeListType === 'pharmacy_waiting' && 'Eczanede işlem bekleyen hasta bulunmuyor.'}
                   {activeListType === 'treatment_completed' && 'Tedavisi tamamen bitmiş hasta bulunmuyor.'}
                   {activeListType === 'emergency' && 'Acil durum hastası bulunmuyor.'}
                 </p>

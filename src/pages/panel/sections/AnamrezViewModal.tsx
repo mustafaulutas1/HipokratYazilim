@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
-import jsPDF from 'jspdf';
 import { DIAGNOSIS_SPECIFIC_QUESTIONS } from '../../../constants';
 
 // Use shared diagnosis structure from constants
@@ -21,6 +20,7 @@ interface Patient {
   anamrezCompletedAt?: string;
   anamrezCompletedBy?: string;
   createdAt: string;
+  doctorProfile?: any;
 }
 
 interface AnamrezViewModalProps {
@@ -106,279 +106,237 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
 }) => {
   const [anamrezData, setAnamrezData] = useState<AnamrezData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [doctorProfile, setDoctorProfile] = useState<any>(null);
   const [activeSection, setActiveSection] = useState('patient-info');
 
-  // PDF Generation Function
-  const generatePDF = () => {
+  // Print Function (Replaces PDF Generation)
+  const handlePrint = () => {
     if (!patient || !anamrezData) return;
 
-    // Create PDF with UTF-8 support
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4',
-      putOnlyUsedFonts: true,
-      compress: true
-    });
-    
-    let yPosition = 20;
-    const pageHeight = pdf.internal.pageSize.height;
-    const lineHeight = 8;
-    const margin = 20;
-    const maxWidth = pdf.internal.pageSize.width - 2 * margin;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Lütfen açılır pencerelere izin verin.');
+      return;
+    }
 
-    // Helper function to properly convert Turkish text for PDF compatibility
-    const convertTurkishForPDF = (text: string): string => {
-      if (!text) return '';
-      
-      // Convert to string first
-      let convertedText = String(text);
-      
-      // Use multiple replace operations for all Turkish character variants
-      convertedText = convertedText
-        // Handle ç/Ç
-        .replace(/[çĉčć]/gi, 'c')
-        .replace(/[ÇĈČĆ]/gi, 'C')
-        // Handle ğ/Ğ  
-        .replace(/[ğĝģ]/gi, 'g')
-        .replace(/[ĞĜĢ]/gi, 'G')
-        // Handle ı/İ/I
-        .replace(/[ıĩīįì]/gi, 'i')
-        .replace(/[İĨĪĮÌÍÎÏ]/gi, 'I')
-        // Handle ö/Ö
-        .replace(/[öõōőòóôø]/gi, 'o')
-        .replace(/[ÖÕŌŐÒÓÔØ]/gi, 'O')
-        // Handle ş/Ş
-        .replace(/[şśšŝș]/gi, 's')
-        .replace(/[ŞŚŠŜȘ]/gi, 'S')
-        // Handle ü/Ü
-        .replace(/[üũūűùúû]/gi, 'u')
-        .replace(/[ÜŨŪŰÙÚÛ]/gi, 'U')
-        // Handle Unicode escape sequences that might appear
-        .replace(/\\u011f/gi, 'g')  // ğ
-        .replace(/\\u011e/gi, 'G')  // Ğ
-        .replace(/\\u0131/gi, 'i')  // ı
-        .replace(/\\u0130/gi, 'I')  // İ
-        .replace(/\\u015f/gi, 's')  // ş
-        .replace(/\\u015e/gi, 'S')  // Ş
-        .replace(/\\u00fc/gi, 'u')  // ü
-        .replace(/\\u00dc/gi, 'U')  // Ü
-        .replace(/\\u00f6/gi, 'o')  // ö
-        .replace(/\\u00d6/gi, 'O')  // Ö
-        .replace(/\\u00e7/gi, 'c')  // ç
-        .replace(/\\u00c7/gi, 'C'); // Ç
-      
-      return convertedText.trim();
+    const logoHtml = doctorProfile?.logoUrl 
+      ? `<div style="text-align: center; margin-bottom: 30px;"><img src="${doctorProfile.logoUrl}" style="max-height: 100px; max-width: 100%; object-fit: contain;" /></div>` 
+      : '';
+
+    const symptomLabels: Record<string, string> = {
+      'uykuHali': 'Uyku Hali', 'gozdeUcusmalar': 'Gözde Uçuşmalar', 'carpinti': 'Çarpıntı',
+      'siskinlik': 'Şişkinlik', 'adetDuzensizligi': 'Adet Düzensizliği', 'dengeKaybi': 'Denge Kaybı',
+      'yayginKasAgrisi': 'Yaygın Kas Ağrısı', 'nefesAlmadaGucluk': 'Nefes Almada Güçlük', 'ustume': 'Üşüme',
+      'terleme': 'Terleme', 'stres': 'Stres', 'agriliAdet': 'Ağrılı Adet', 'uykuDuzensizligi': 'Uyku Düzensizliği',
+      'oksuruk': 'Öksürük', 'balgam': 'Balgam', 'kasilmaVeKramplar': 'Kasılma Ve Kramplar',
+      'elAyakUyusmalari': 'El Ayak Uyuşmaları', 'unutkanlik': 'Unutkanlık', 'kasinti': 'Kaşıntı',
+      'idrarKacirma': 'İdrar Kaçırma', 'idrardaYanma': 'İdrarda Yanma', 'geceIdraraKalkma': 'Gece İdrara Kalkma',
+      'kesikKesikIdrar': 'Kesik Kesik İdrar', 'kabizlik': 'Kabızlık', 'karindaGaz': 'Karında Gaz',
+      'belAgrisi': 'Bel Ağrısı', 'ishal': 'İshal', 'boyunAgrisi': 'Boyun Ağrısı', 'yayginOdem': 'Yaygın Ödem',
+      'basur': 'Basur', 'eklemAgrilari': 'Eklem Ağrıları', 'algiBozuklugu': 'Algı Bozukluğu',
+      'halsizlikYorgunluk': 'Halsizlik / Yorgunluk', 'yorgunUyanma': 'Yorgun Uyanma', 'basDonmesi': 'Baş Dönmesi',
+      'basAgrisi': 'Baş Ağrısı', 'mideAgisi': 'Mide Ağısı', 'mideYanmasi': 'Mide Yanması'
     };
 
-    // Helper function to add text and handle page breaks
-    const addText = (text: string, fontSize: number = 10, isBold: boolean = false) => {
-      if (yPosition > pageHeight - 30) {
-        pdf.addPage();
-        yPosition = 20;
-      }
-      
-      pdf.setFontSize(fontSize);
-      pdf.setFont('helvetica', isBold ? 'bold' : 'normal');
-      
-      // Convert Turkish characters to PDF-safe equivalents
-      const safeText = convertTurkishForPDF(text);
-      
-      // Split text into lines that fit within the page width
-      const lines = pdf.splitTextToSize(safeText, maxWidth);
-      
-      // Check if we need a new page for all lines
-      if (yPosition + (lines.length * lineHeight) > pageHeight - 30) {
-        pdf.addPage();
-        yPosition = 20;
-      }
-      
-      // Add text
-      pdf.text(lines, margin, yPosition);
-      yPosition += lines.length * lineHeight;
+    const lifestyleLabels: Record<string, string> = {
+      'education': 'Eğitim Durumu', 'profession': 'Mesleği', 'exerciseFrequency': 'Spor Yapma Sıklığı',
+      'dailySleepHours': 'Günlük Uyku Saati', 'monthlyVegetableConsumption': 'Aylık Sebze Tüketimi',
+      'monthlyRedMeatConsumption': 'Aylık Kırmızı Et Tüketimi', 'monthlyChickenConsumption': 'Aylık Tavuk Eti Tüketimi',
+      'dailyWaterConsumption': 'Günlük Su Tüketimi', 'smokingFrequency': 'Sigara İçme Sıklığı',
+      'alcoholFrequency': 'Alkol Kullanma Sıklığı'
     };
 
-    // Helper function to add section header
-    const addSectionHeader = (title: string) => {
-      yPosition += 10;
-      if (yPosition > pageHeight - 40) {
-        pdf.addPage();
-        yPosition = 20;
-      }
-      addText(title, 14, true);
-      yPosition += 5;
-    };
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Anamnez Raporu - ${patient.fullName}</title>
+          <style>
+            @media print {
+              @page { size: A4; margin: 15mm; }
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              .no-break { break-inside: avoid; }
+            }
+            body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 12px; line-height: 1.5; color: #333; max-width: 210mm; margin: 0 auto; padding: 20px; background: white; }
+            h1 { text-align: center; font-size: 22px; margin-bottom: 30px; color: #1a365d; text-transform: uppercase; letter-spacing: 1px; }
+            .section { margin-bottom: 25px; break-inside: avoid; }
+            .section-title { font-size: 14px; font-weight: 700; color: #2c5282; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 12px; text-transform: uppercase; }
+            .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+            .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+            .field { margin-bottom: 4px; }
+            .label { font-weight: 600; color: #718096; font-size: 10px; display: block; margin-bottom: 2px; text-transform: uppercase; }
+            .value { color: #2d3748; font-weight: 500; font-size: 12px; }
+            .full-width { grid-column: span 2; }
+            .text-content { white-space: pre-wrap; background: #f8fafc; padding: 10px; border-radius: 4px; border: 1px solid #edf2f7; font-size: 12px; }
+            .tag { display: inline-block; padding: 2px 8px; background: #ebf8ff; color: #2b6cb0; border-radius: 4px; font-size: 11px; margin-right: 5px; margin-bottom: 5px; border: 1px solid #bee3f8; }
+            .score-item { display: flex; justify-content: space-between; align-items: center; padding: 6px; border-bottom: 1px solid #f7fafc; }
+            .score-item:last-child { border-bottom: none; }
+            .score-val { font-weight: bold; padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+            .score-low { background: #f0fff4; color: #276749; }
+            .score-med { background: #fffaf0; color: #9c4221; }
+            .score-high { background: #fff5f5; color: #c53030; }
+            .check-item { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+            .check-icon { color: #38a169; font-weight: bold; }
+            .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #edf2f7; text-align: center; color: #a0aec0; font-size: 10px; }
+          </style>
+        </head>
+        <body>
+          ${logoHtml}
+          <h1>ANAMNEZ RAPORU</h1>
+          
+          <div class="section">
+            <div class="section-title">Hasta Bilgileri</div>
+            <div class="grid">
+              <div class="field"><span class="label">Ad Soyad</span><span class="value">${patient.fullName}</span></div>
+              <div class="field"><span class="label">TC Kimlik No</span><span class="value">${patient.tcNo}</span></div>
+              <div class="field"><span class="label">Doğum Tarihi</span><span class="value">${patient.birthDate}</span></div>
+              <div class="field"><span class="label">Cinsiyet</span><span class="value">${patient.gender}</span></div>
+              <div class="field"><span class="label">Telefon</span><span class="value">${patient.phone}</span></div>
+              <div class="field"><span class="label">Acil Durum Tel</span><span class="value">${patient.emergencyPhone}</span></div>
+              <div class="field full-width"><span class="label">Adres</span><span class="value">${patient.address}</span></div>
+              <div class="field full-width"><span class="label">Başvuru Nedeni</span><span class="value">${patient.visitReason}</span></div>
+              ${anamrezData.selectedDoctor ? `
+              <div class="field full-width" style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #e2e8f0;">
+                <span class="label">İlgilenen Doktor</span>
+                <span class="value">Dr. ${anamrezData.selectedDoctor.name} (${anamrezData.selectedDoctor.specialization})</span>
+              </div>` : ''}
+            </div>
+          </div>
 
-    // Title
-    addText('ANAMNEZ RAPORU', 16, true);
-    yPosition += 10;
+          <div class="section">
+            <div class="section-title">Tıbbi Geçmiş</div>
+            <div class="grid">
+              <div class="field full-width">
+                <span class="label">Şikayet Detayları</span>
+                <div class="text-content">${anamrezData.complaintDetails || '-'}</div>
+              </div>
+              <div class="field full-width">
+                <span class="label">Hastalık Geçmişi</span>
+                <div class="text-content">${anamrezData.pastMedicalHistory || '-'}</div>
+              </div>
+              <div class="field full-width">
+                <span class="label">Aile Öyküsü</span>
+                <div class="text-content">${anamrezData.familyHistory || '-'}</div>
+              </div>
+              <div class="field full-width">
+                <span class="label">Ameliyatlar</span>
+                <div class="text-content">${anamrezData.hasSurgery === 'var' ? anamrezData.surgicalHistory : 'Ameliyat geçmişi yok'}</div>
+              </div>
+              <div class="field full-width">
+                <span class="label">Alerjiler</span>
+                <div class="text-content">${anamrezData.allergies || '-'}</div>
+              </div>
+            </div>
+          </div>
 
-    // Patient Information
-    addSectionHeader('HASTA BİLGİLERİ');
-    addText(`Ad Soyad: ${patient.fullName}`);
-    addText(`TC Kimlik No: ${patient.tcNo}`);
-    addText(`Telefon: ${patient.phone}`);
-    addText(`Doğum Tarihi: ${patient.birthDate}`);
-    addText(`Cinsiyet: ${patient.gender}`);
-    addText(`Adres: ${patient.address}`);
-    addText(`Acil Durum Telefonu: ${patient.emergencyPhone}`);
-    addText(`Başvuru Nedeni: ${patient.visitReason}`);
-    if (anamrezData.selectedDoctor) {
-      addText(`Tercih Edilen Doktor: Dr. ${anamrezData.selectedDoctor.name}`);
-      addText(`Uzmanlık: ${anamrezData.selectedDoctor.specialization}`);
-      addText(`Bölüm: ${anamrezData.selectedDoctor.department}`);
-      addText(`E-posta: ${anamrezData.selectedDoctor.email}`);
-    }
-    if (patient.anamrezCompletedAt) {
-      addText(`Anamnez Tamamlanma Tarihi: ${new Date(patient.anamrezCompletedAt).toLocaleDateString('tr-TR')}`);
-      addText(`Anamnez Tamamlayan: ${patient.anamrezCompletedBy}`);
-    }
+          ${anamrezData.symptomRatings && Object.keys(anamrezData.symptomRatings).length > 0 ? `
+          <div class="section no-break">
+            <div class="section-title">Semptom Değerlendirmesi</div>
+            <div class="grid-3" style="border: 1px solid #e2e8f0; border-radius: 4px; padding: 10px;">
+              ${Object.entries(anamrezData.symptomRatings).map(([key, value]) => {
+                const scoreClass = value <= 3 ? 'score-low' : value <= 6 ? 'score-med' : 'score-high';
+                return `
+                  <div class="score-item">
+                    <span>${symptomLabels[key] || key}</span>
+                    <span class="score-val ${scoreClass}">${value}/10</span>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>` : ''}
 
-    // Medical History
-    addSectionHeader('TIBBİ GEÇMİŞ');
-    addText(`Şikayet Detayları: ${anamrezData.complaintDetails || 'Belirtilmemiş'}`);
-    addText(`Geçmiş Hastalık Öyküsü: ${anamrezData.pastMedicalHistory || 'Belirtilmemiş'}`);
-    addText(`Aile Öyküsü: ${anamrezData.familyHistory || 'Belirtilmemiş'}`);
-    addText(`Ameliyat Öyküsü: ${anamrezData.hasSurgery === 'var' ? anamrezData.surgicalHistory : 'Ameliyat geçmişi yok'}`);
-    addText(`Alerjiler: ${anamrezData.allergies || 'Belirtilmemiş'}`);
+          ${anamrezData.selectedDiagnosisSystems && anamrezData.selectedDiagnosisSystems.length > 0 ? `
+          <div class="section no-break">
+            <div class="section-title">Sistem Sorgulaması</div>
+            ${anamrezData.selectedDiagnosisSystems.map(diagnosis => {
+              const questionSet = DIAGNOSIS_SPECIFIC_QUESTIONS[diagnosis];
+              if (!questionSet) return '';
+              return `
+                <div style="margin-bottom: 15px;">
+                  <div style="font-weight:bold; font-size:11px; color:#4a5568; margin-bottom:5px;">${questionSet.label}</div>
+                  <div class="grid-3" style="background:#f7fafc; padding:8px; border-radius:4px;">
+                    ${questionSet.questions.map(question => {
+                      const rating = anamrezData.diagnosisResponses?.[diagnosis]?.[question] || 0;
+                      const scoreClass = rating <= 3 ? 'score-low' : rating <= 6 ? 'score-med' : 'score-high';
+                      return `
+                        <div class="score-item">
+                          <span style="font-size:10px;">${question}</span>
+                          <span class="score-val ${scoreClass}">${rating}/10</span>
+                        </div>
+                      `;
+                    }).join('')}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>` : ''}
 
-    // Symptom Ratings
-    addSectionHeader('SEMPTOM DEĞERLENDİRMESİ');
-    if (anamrezData.symptomRatings && Object.keys(anamrezData.symptomRatings).length > 0) {
-      const symptomLabels: Record<string, string> = {
-        'uykuHali': 'Uyku Hali', 'gozdeUcusmalar': 'Gözde Uçuşmalar', 'carpinti': 'Çarpıntı',
-        'siskinlik': 'Şişkinlik', 'adetDuzensizligi': 'Adet Düzensizliği', 'dengeKaybi': 'Denge Kaybı',
-        'yayginKasAgrisi': 'Yaygın Kas Ağrısı', 'nefesAlmadaGucluk': 'Nefes Almada Güçlük', 'ustume': 'Üşüme',
-        'terleme': 'Terleme', 'stres': 'Stres', 'agriliAdet': 'Ağrılı Adet', 'uykuDuzensizligi': 'Uyku Düzensizliği',
-        'oksuruk': 'Öksürük', 'balgam': 'Balgam', 'kasilmaVeKramplar': 'Kasılma Ve Kramplar',
-        'elAyakUyusmalari': 'El Ayak Uyuşmaları', 'unutkanlik': 'Unutkanlık', 'kasinti': 'Kaşıntı',
-        'idrarKacirma': 'İdrar Kaçırma', 'idrardaYanma': 'İdrarda Yanma', 'geceIdraraKalkma': 'Gece İdrara Kalkma',
-        'kesikKesikIdrar': 'Kesik Kesik İdrar', 'kabizlik': 'Kabızlık', 'karindaGaz': 'Karında Gaz',
-        'belAgrisi': 'Bel Ağrısı', 'ishal': 'İshal', 'boyunAgrisi': 'Boyun Ağrısı', 'yayginOdem': 'Yaygın Ödem',
-        'basur': 'Basur', 'eklemAgrilari': 'Eklem Ağrıları', 'algiBozuklugu': 'Algı Bozukluğu',
-        'halsizlikYorgunluk': 'Halsizlik / Yorgunluk', 'yorgunUyanma': 'Yorgun Uyanma', 'basDonmesi': 'Baş Dönmesi',
-        'basAgrisi': 'Baş Ağrısı', 'mideAgisi': 'Mide Ağısı', 'mideYanmasi': 'Mide Yanması'
-      };
+          <div class="section no-break">
+            <div class="section-title">Yaşam Tarzı</div>
+            <div class="grid">
+              ${Object.entries(anamrezData.additionalQuestions || {}).map(([key, value]) => {
+                if (!value) return '';
+                return `<div class="field"><span class="label">${lifestyleLabels[key] || key}</span><span class="value">${value}</span></div>`;
+              }).join('')}
+            </div>
+          </div>
 
-      Object.entries(anamrezData.symptomRatings).forEach(([key, value]) => {
-        const label = symptomLabels[key] || key;
-        addText(`${label}: ${value}/10`);
-      });
-    }
+          ${anamrezData.toxicityAssessment ? `
+          <div class="section no-break">
+            <div class="section-title">Toksisite Değerlendirmesi</div>
+            <div style="display:flex; gap:20px; margin-bottom:15px; background:${anamrezData.toxicityAssessment.hasToxicity ? '#fff5f5' : '#f0fff4'}; padding:10px; border-radius:4px;">
+              <div><span class="label">Durum</span><span class="value" style="color:${anamrezData.toxicityAssessment.hasToxicity ? '#c53030' : '#276749'}; font-weight:bold;">${anamrezData.toxicityAssessment.hasToxicity ? 'YÜKSEK TOKSİSİTE' : 'NORMAL'}</span></div>
+              <div><span class="label">Toplam Puan</span><span class="value">${anamrezData.toxicityAssessment.totalScore}</span></div>
+              <div><span class="label">Semptom Sayısı</span><span class="value">${anamrezData.toxicityAssessment.ratedSymptomsCount}</span></div>
+            </div>
+            ${anamrezData.toxicityAssessment.toxicityScores ? `
+              <div class="grid-3">
+                ${Object.entries(anamrezData.toxicityAssessment.toxicityScores).map(([key, value]) => {
+                  const scoreClass = value <= 3 ? 'score-low' : value <= 6 ? 'score-med' : 'score-high';
+                  return `<div class="score-item"><span>${symptomLabels[key] || key}</span><span class="score-val ${scoreClass}">${value}/10</span></div>`;
+                }).join('')}
+              </div>
+            ` : ''}
+          </div>` : ''}
 
-    // System Questions
-    addSectionHeader('SİSTEM SORULARI');
-    if (anamrezData.selectedDiagnosisSystems && anamrezData.selectedDiagnosisSystems.length > 0) {
-      anamrezData.selectedDiagnosisSystems.forEach((diagnosis) => {
-        const questionSet = DIAGNOSIS_SPECIFIC_QUESTIONS[diagnosis];
-        if (questionSet) {
-          addText(`${questionSet.label}:`, 12, true);
-          questionSet.questions.forEach((question) => {
-            const rating = anamrezData.diagnosisResponses?.[diagnosis]?.[question] || 0;
-            addText(`  • ${question}: ${rating}/10`);
-          });
-          yPosition += 5;
-        }
-      });
-    }
+          ${(anamrezData.optionalScans?.meridianScan?.enabled || anamrezData.optionalScans?.thermalScan?.enabled || anamrezData.optionalScans?.toxicityScan?.enabled) ? `
+          <div class="section no-break">
+            <div class="section-title">Opsiyonel Taramalar</div>
+            <div style="display:flex; flex-direction:column; gap:5px;">
+              ${anamrezData.optionalScans.meridianScan?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Meridyen Tarama Tek Seans</div>' : ''}
+              ${anamrezData.optionalScans.thermalScan?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Termal Tarama (IRIS-XP)</div>' : ''}
+              ${anamrezData.optionalScans.toxicityScan?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Toksisite Ölçümü (TEK SEANS)</div>' : ''}
+            </div>
+          </div>` : ''}
 
-    // Lifestyle Questions
-    addSectionHeader('YAŞAM TARZI SORULARI');
-    if (anamrezData.additionalQuestions) {
-      const questionLabels: Record<string, string> = {
-        'education': 'Eğitim Durumu', 'profession': 'Mesleği', 'exerciseFrequency': 'Spor Yapma Sıklığı',
-        'dailySleepHours': 'Günlük Uyku Saati', 'monthlyVegetableConsumption': 'Aylık Sebze Tüketimi',
-        'monthlyRedMeatConsumption': 'Aylık Kırmızı Et Tüketimi', 'monthlyChickenConsumption': 'Aylık Tavuk Eti Tüketimi',
-        'dailyWaterConsumption': 'Günlük Su Tüketimi', 'smokingFrequency': 'Sigara İçme Sıklığı',
-        'alcoholFrequency': 'Alkol Kullanma Sıklığı'
-      };
+          <div class="section">
+            <div class="section-title">Konvansiyonel Tedavi</div>
+            <div class="grid">
+              <div class="field full-width">
+                <span class="label">Kullandığı İlaçlar</span>
+                <div class="text-content">${anamrezData.conventionalTreatment?.currentMedications || '-'}</div>
+              </div>
+              <div class="field full-width">
+                <span class="label">Diğer Tedaviler</span>
+                <div class="text-content">${anamrezData.conventionalTreatment?.otherTreatments || '-'}</div>
+              </div>
+            </div>
+          </div>
 
-      Object.entries(anamrezData.additionalQuestions).forEach(([key, value]) => {
-        if (value) {
-          const label = questionLabels[key] || key;
-          addText(`${label}: ${value}`);
-        }
-      });
-    }
+          <div class="footer">
+            Rapor Tarihi: ${new Date().toLocaleDateString('tr-TR')} ${new Date().toLocaleTimeString('tr-TR')} | 
+            ${anamrezData.completedBy?.name} tarafından oluşturulmuştur.
+          </div>
 
-    // Custom Questions
-    if (anamrezData.customQuestions && anamrezData.customQuestions.length > 0) {
-      addSectionHeader('EK SORULAR');
-      anamrezData.customQuestions.forEach((customQ, index) => {
-        addText(`${index + 1}. ${customQ.question}`);
-        addText(`Cevap: ${customQ.answer}`);
-        yPosition += 3;
-      });
-    }
+          <script>
+            window.onload = function() { window.print(); }
+          </script>
+        </body>
+      </html>
+    `;
 
-    // Toxicity Assessment
-    addSectionHeader('TOKSİSİTE DEĞERLENDİRMESİ');
-    if (anamrezData.toxicityAssessment) {
-      addText(`Toplam Puan: ${anamrezData.toxicityAssessment.totalScore || 0}`);
-      addText(`Değerlendirilen Semptom Sayısı: ${anamrezData.toxicityAssessment.ratedSymptomsCount || 0}`);
-      addText(`Yüksek Toksisite: ${anamrezData.toxicityAssessment.hasToxicity ? 'VAR' : 'YOK'}`);
-      
-      if (anamrezData.toxicityAssessment.toxicityScores && Object.keys(anamrezData.toxicityAssessment.toxicityScores).length > 0) {
-        addText('Toksisite Semptom Puanları:', 12, true);
-        const symptomLabels: Record<string, string> = {
-          'uykuHali': 'Uyku Hali', 'gozdeUcusmalar': 'Gözde Uçuşmalar', 'carpinti': 'Çarpıntı',
-          'siskinlik': 'Şişkinlik', 'adetDuzensizligi': 'Adet Düzensizliği', 'dengeKaybi': 'Denge Kaybı',
-          'yayginKasAgrisi': 'Yaygın Kas Ağrısı', 'nefesAlmadaGucluk': 'Nefes Almada Güçlük', 'ustume': 'Üşüme',
-          'terleme': 'Terleme', 'stres': 'Stres', 'agriliAdet': 'Ağrılı Adet', 'uykuDuzensizligi': 'Uyku Düzensizliği',
-          'oksuruk': 'Öksürük', 'balgam': 'Balgam', 'kasilmaVeKramplar': 'Kasılma Ve Kramplar',
-          'elAyakUyusmalari': 'El Ayak Uyuşmaları', 'unutkanlik': 'Unutkanlık', 'kasinti': 'Kaşıntı',
-          'idrarKacirma': 'İdrar Kaçırma', 'idrardaYanma': 'İdrarda Yanma', 'geceIdraraKalkma': 'Gece İdrara Kalkma',
-          'kesikKesikIdrar': 'Kesik Kesik İdrar', 'kabizlik': 'Kabızlık', 'karindaGaz': 'Karında Gaz',
-          'belAgrisi': 'Bel Ağrısı', 'ishal': 'İshal', 'boyunAgrisi': 'Boyun Ağrısı', 'yayginOdem': 'Yaygın Ödem',
-          'basur': 'Basur', 'eklemAgrilari': 'Eklem Ağrıları', 'algiBozuklugu': 'Algı Bozukluğu',
-          'halsizlikYorgunluk': 'Halsizlik / Yorgunluk', 'yorgunUyanma': 'Yorgun Uyanma', 'basDOnmesi': 'Baş Dönmesi',
-          'basAgrisi': 'Baş Ağrısı', 'mideAgisi': 'Mide Ağısı', 'mideYanmasi': 'Mide Yanması'
-        };
-
-        Object.entries(anamrezData.toxicityAssessment.toxicityScores).forEach(([key, value]) => {
-          const label = symptomLabels[key] || key;
-          addText(`  • ${label}: ${value}/10`);
-        });
-      }
-    }
-
-    // Optional Scans
-    if (anamrezData.optionalScans && (
-      anamrezData.optionalScans.meridianScan?.enabled ||
-      anamrezData.optionalScans.thermalScan?.enabled ||
-      anamrezData.optionalScans.toxicityScan?.enabled
-    )) {
-      addSectionHeader('OPSİYONEL TARAMALAR');
-      if (anamrezData.optionalScans.meridianScan?.enabled) {
-        addText('✓ Meridyen Tarama Tek Seans');
-      }
-      if (anamrezData.optionalScans.thermalScan?.enabled) {
-        addText('✓ Termal Tarama (IRIS-XP)');
-      }
-      if (anamrezData.optionalScans.toxicityScan?.enabled) {
-        addText('✓ Toksisite Ölçümü (TEK SEANS)');
-      }
-    }
-
-    // Conventional Treatment
-    addSectionHeader('KONVANSİYONEL TIP TEDAVİSİ');
-    addText(`Kullandığı İlaçlar: ${anamrezData.conventionalTreatment?.currentMedications || 'Belirtilmemiş'}`);
-    addText(`Aldığı Diğer Tedaviler: ${anamrezData.conventionalTreatment?.otherTreatments || 'Belirtilmemiş'}`);
-
-    // Completion Info
-    addSectionHeader('TAMAMLANMA BİLGİLERİ');
-    addText(`Tamamlayan: ${anamrezData.completedBy?.name} (${anamrezData.completedBy?.role})`);
-    addText(`E-posta: ${anamrezData.completedBy?.email}`);
-    addText(`Tarih: ${new Date(anamrezData.createdAt).toLocaleDateString('tr-TR')} ${new Date(anamrezData.createdAt).toLocaleTimeString('tr-TR')}`);
-
-    // Save PDF with Turkish character-safe filename
-    const safeName = convertTurkishForPDF(patient.fullName)
-      .replace(/\s+/g, '_')
-      .replace(/[^a-zA-Z0-9_]/g, ''); // Remove any other special characters
-    
-    const dateStr = new Date().toLocaleDateString('tr-TR').replace(/\./g, '-');
-    const fileName = `Anamnez_${safeName}_${dateStr}.pdf`;
-    pdf.save(fileName);
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
   };
 
   useEffect(() => {
@@ -397,6 +355,56 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
           const data = querySnapshot.docs[0].data() as AnamrezData;
           data.id = querySnapshot.docs[0].id;
           setAnamrezData(data);
+
+          // Fetch doctor profile for logo if clinicId exists
+          if (patient.clinicId) {
+            console.log('Fetching doctor profile for clinicId:', patient.clinicId);
+            try {
+              // 1. Try fetching as a Doctor document directly (if clinicId is actually a doctorId)
+              let doctorDoc = await getDoc(doc(db, 'doctors', patient.clinicId));
+              
+              if (doctorDoc.exists()) {
+                 console.log('Found in doctors collection by ID');
+                 setDoctorProfile(doctorDoc.data());
+                 return;
+              }
+
+              // 2. Try fetching as a Clinic User document directly
+              let clinicUserDoc = await getDoc(doc(db, 'clinicUsers', patient.clinicId));
+              if (clinicUserDoc.exists()) {
+                 console.log('Found in clinicUsers collection by ID');
+                 setDoctorProfile(clinicUserDoc.data());
+                 return;
+              }
+
+              // 3. If clinicId is a shared ID (e.g. a unique code), search for it in 'doctors' collection
+              const doctorsQuery = query(collection(db, 'doctors'), where('clinicId', '==', patient.clinicId));
+              const doctorsSnapshot = await getDocs(doctorsQuery);
+              if (!doctorsSnapshot.empty) {
+                  console.log('Found in doctors collection by clinicId query');
+                  // Use the first doctor found as the "clinic owner" profile for the logo
+                  setDoctorProfile(doctorsSnapshot.docs[0].data());
+                  return;
+              }
+
+              // 4. Search in 'clinicUsers' collection
+              const clinicUsersQuery = query(collection(db, 'clinicUsers'), where('clinicId', '==', patient.clinicId));
+              const clinicUsersSnapshot = await getDocs(clinicUsersQuery);
+               if (!clinicUsersSnapshot.empty) {
+                  console.log('Found in clinicUsers collection by clinicId query');
+                  // Use the first user found, or filter for role='doctor'/'admin' if needed
+                  setDoctorProfile(clinicUsersSnapshot.docs[0].data());
+                  return;
+              }
+
+              console.warn('Doctor profile not found anywhere for clinicId:', patient.clinicId);
+
+            } catch (err) {
+              console.error('Doktor bilgisi çekilirken hata:', err);
+            }
+          } else {
+             console.warn('Patient has no clinicId, skipping doctor profile fetch.');
+          }
         }
       } catch (error) {
         console.error('Anamnez verisi yüklenirken hata:', error);
@@ -464,7 +472,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                 {/* PDF Download Button */}
                 {anamrezData && (
                   <button
-                    onClick={generatePDF}
+                    onClick={handlePrint}
                     className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors duration-200 font-medium shadow-md hover:shadow-lg text-xs sm:text-sm"
                     title="PDF Olarak İndir"
                   >
@@ -472,7 +480,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                       <path d="M12 16L7 11L8.4 9.6L11 12.2V4H13V12.2L15.6 9.6L17 11L12 16Z" fill="currentColor"/>
                       <path d="M5 20V18H19V20H5Z" fill="currentColor"/>
                     </svg>
-                    <span className="hidden sm:inline">PDF</span>
+                    <span className="hidden sm:inline">Yazdır / PDF</span>
                   </button>
                 )}
                 <button

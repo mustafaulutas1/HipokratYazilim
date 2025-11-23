@@ -54,13 +54,47 @@ interface SavedMedicalDevice extends MedicalDevice {
   id: string;
 }
 
+interface TreatmentPhase {
+  treatment: string;
+  dosage: string;
+}
+
+interface SavedProtocol {
+  phases: {
+    remember?: TreatmentPhase;
+    regeneration1?: TreatmentPhase;
+    regeneration2?: TreatmentPhase;
+    regeneration3?: TreatmentPhase;
+    regeneration4?: TreatmentPhase;
+    mainTreatments: { treatment: string; description: string }[];
+  };
+}
+
+interface PharmacyPatient {
+  id: string;
+  fullName: string;
+  tcNo: string;
+  status: string;
+  updatedAt: string;
+  createdAt: string;
+  treatmentCompletedAt?: string;
+  treatmentOptions?: {
+    protocolName?: string;
+    selectedProtocol?: SavedProtocol;
+    customizedProtocol?: SavedProtocol;
+  };
+}
+
 const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorProfile }) => {
-  const [activeTab, setActiveTab] = useState<'medications' | 'devices'>('medications');
+  const [activeTab, setActiveTab] = useState<'medications' | 'devices' | 'patients'>('medications');
   const [savedMedications, setSavedMedications] = useState<SavedMedication[]>([]);
   const [savedDevices, setSavedDevices] = useState<SavedMedicalDevice[]>([]);
+  const [waitingPatients, setWaitingPatients] = useState<PharmacyPatient[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingMedication, setEditingMedication] = useState<SavedMedication | null>(null);
   const [editingDevice, setEditingDevice] = useState<SavedMedicalDevice | null>(null);
+  const [selectedPatientForSale, setSelectedPatientForSale] = useState<PharmacyPatient | null>(null);
+  const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showPriceUpdateSection, setShowPriceUpdateSection] = useState(false);
   const [percentageIncrease, setPercentageIncrease] = useState<string>('');
@@ -240,66 +274,106 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     }
   };
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!doctorProfile?.clinicId) return;
+  const fetchPatients = async () => {
+    if (!doctorProfile?.clinicId) return;
+    try {
+      const patientsRef = collection(db, 'patients');
+      const patientsQuery = query(
+        patientsRef,
+        where('clinicId', '==', doctorProfile.clinicId),
+        where('status', '==', 'pharmacy_waiting')
+      );
       
-      try {
-        setLoading(true);
-        console.log('🔍 Pharmacy: Fetching data for clinicId:', doctorProfile.clinicId);
-        
-        // Fetch medications
-        const medicationsRef = collection(db, 'medications');
-        const medicationsQuery = query(
-          medicationsRef,
-          where('clinicId', '==', doctorProfile.clinicId)
-        );
-        
-        const medicationsSnapshot = await getDocs(medicationsQuery);
-        const medications: SavedMedication[] = [];
-        
-        medicationsSnapshot.forEach((doc) => {
-          medications.push({
-            id: doc.id,
-            ...doc.data()
-          } as SavedMedication);
-        });
-        
-        medications.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        setSavedMedications(medications);
+      const patientsSnapshot = await getDocs(patientsQuery);
+      const patients: PharmacyPatient[] = [];
+      
+      patientsSnapshot.forEach((doc) => {
+        patients.push({
+          id: doc.id,
+          ...doc.data()
+        } as PharmacyPatient);
+      });
+      
+      patients.sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime());
+      setWaitingPatients(patients);
+    } catch (error) {
+      console.error('Error fetching patients:', error);
+    }
+  };
 
-        // Fetch devices
-        const devicesRef = collection(db, 'medicalDevices');
-        const devicesQuery = query(
-          devicesRef,
-          where('clinicId', '==', doctorProfile.clinicId)
-        );
-        
-        const devicesSnapshot = await getDocs(devicesQuery);
-        const devices: SavedMedicalDevice[] = [];
-        
-        devicesSnapshot.forEach((doc) => {
-          devices.push({
-            id: doc.id,
-            ...doc.data()
-          } as SavedMedicalDevice);
-        });
-        
-        devices.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        setSavedDevices(devices);
-        
-        console.log('✅ Pharmacy: Fetched medications:', medications.length, 'devices:', devices.length);
-      } catch (error) {
-        console.error('❌ Pharmacy: Error fetching data:', error);
-      } finally {
-        setLoading(false);
+  useEffect(() => {
+    if (doctorProfile?.clinicId) {
+      fetchMedications();
+      fetchDevices();
+      fetchPatients();
+    }
+  }, [doctorProfile?.clinicId]);
+
+  const getPrescribedMedicines = (patient: PharmacyPatient) => {
+    const protocol = patient.treatmentOptions?.customizedProtocol || patient.treatmentOptions?.selectedProtocol;
+    if (!protocol?.phases) return [];
+
+    const medicines: { name: string; dosage: string; type: string }[] = [];
+
+    const addMed = (name: string, dosage: string, type: string) => {
+      if (name && name !== '-') {
+        medicines.push({ name, dosage, type });
       }
     };
 
-    if (doctorProfile?.clinicId) {
-      fetchData();
+    if (protocol.phases.remember) addMed(protocol.phases.remember.treatment, protocol.phases.remember.dosage, 'Remember');
+    if (protocol.phases.regeneration1) addMed(protocol.phases.regeneration1.treatment, protocol.phases.regeneration1.dosage, 'Regeneration 1');
+    if (protocol.phases.regeneration2) addMed(protocol.phases.regeneration2.treatment, protocol.phases.regeneration2.dosage, 'Regeneration 2');
+    if (protocol.phases.regeneration3) addMed(protocol.phases.regeneration3.treatment, protocol.phases.regeneration3.dosage, 'Regeneration 3');
+    if (protocol.phases.regeneration4) addMed(protocol.phases.regeneration4.treatment, protocol.phases.regeneration4.dosage, 'Regeneration 4');
+
+    return medicines;
+  };
+
+  const handleOpenSaleModal = (patient: PharmacyPatient) => {
+    setSelectedPatientForSale(patient);
+    setIsSaleModalOpen(true);
+  };
+
+  const handleCompleteSale = async (soldItems: any[]) => {
+    if (!selectedPatientForSale) return;
+
+    try {
+      setLoading(true);
+      
+      // Update stock
+      for (const item of soldItems) {
+        if (item.medicationId) {
+          const medRef = doc(db, 'medications', item.medicationId);
+          await updateDoc(medRef, {
+            stockQuantity: item.newStock
+          });
+        }
+      }
+
+      // Update patient
+      const patientRef = doc(db, 'patients', selectedPatientForSale.id);
+      await updateDoc(patientRef, {
+        status: 'treatment_completed', // Completed lifecycle
+        pharmacySaleCompletedAt: new Date().toISOString(),
+        pharmacySaleDate: new Date().toISOString(),
+        pharmacySoldItems: soldItems
+      });
+
+      alert('Satış ve stok düşümü başarıyla tamamlandı!');
+      setIsSaleModalOpen(false);
+      setSelectedPatientForSale(null);
+      
+      fetchMedications();
+      fetchPatients();
+
+    } catch (error) {
+      console.error('Error completing sale:', error);
+      alert('Satış işlemi sırasında bir hata oluştu.');
+    } finally {
+      setLoading(false);
     }
-  }, [doctorProfile?.clinicId]);
+  };
 
   const saveMedication = async () => {
     if (!formData.name.trim()) {
@@ -692,6 +766,26 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
           >
             🏥 Tıbbi Cihazlar
           </button>
+          <button
+            onClick={() => {
+              setActiveTab('patients');
+              setShowAddForm(false);
+              setSearchTerm('');
+              setFilterCategory('all');
+            }}
+            className={`px-8 py-3 rounded-xl font-medium transition-all duration-200 relative ${
+              activeTab === 'patients'
+                ? 'bg-gradient-to-r from-cyan-600 to-cyan-700 text-white shadow-lg'
+                : 'bg-white/10 text-white/70 hover:bg-white/20'
+            }`}
+          >
+            👥 Bekleyen Hastalar
+            {waitingPatients.length > 0 && (
+              <span className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white text-xs font-bold flex items-center justify-center rounded-full border-2 border-[#1a1f37]">
+                {waitingPatients.length}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 
@@ -724,7 +818,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                 <div className="text-white/70 text-sm">Yakında Bitiyor</div>
               </div>
             </div>
-          ) : (
+          ) : activeTab === 'devices' ? (
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="bg-gradient-to-r from-purple-500/20 to-purple-600/20 border border-purple-500/30 rounded-2xl p-4">
                 <div className="text-purple-300 text-2xl mb-1">🏥</div>
@@ -750,9 +844,25 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                 <div className="text-white/70 text-sm">Bakım Takipli</div>
               </div>
             </div>
+          ) : (
+            // Patient Stats
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-gradient-to-r from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 rounded-2xl p-4">
+                <div className="text-cyan-300 text-2xl mb-1">👥</div>
+                <div className="text-white text-2xl font-bold">{waitingPatients.length}</div>
+                <div className="text-white/70 text-sm">Bekleyen Hastalar</div>
+              </div>
+              
+              <div className="bg-gradient-to-r from-green-500/20 to-emerald-600/20 border border-green-500/30 rounded-2xl p-4">
+                <div className="text-green-300 text-2xl mb-1">💊</div>
+                <div className="text-white text-2xl font-bold">{savedMedications.length}</div>
+                <div className="text-white/70 text-sm">Mevcut İlaç Çeşidi</div>
+              </div>
+            </div>
           )}
 
           {/* Action Buttons and Filters */}
+          {activeTab !== 'patients' && (
           <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
             <div className="mb-6 flex flex-wrap items-center gap-3">
               <button
@@ -997,6 +1107,63 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                   </div>
                 </>
               )
+              ) : activeTab === 'patients' ? (
+                /* Patients Waiting for Pharmacy */
+                <div className="space-y-4">
+                  {waitingPatients.length === 0 ? (
+                    <div className="text-center py-12">
+                      <div className="text-6xl mb-4">👥</div>
+                      <h3 className="text-xl font-semibold text-white mb-2">
+                        Bekleyen Hasta Yok
+                      </h3>
+                      <p className="text-white/60">
+                        Şu anda eczanede bekleyen hasta bulunmamaktadır.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <h3 className="text-lg font-semibold text-white mb-4">
+                        👥 Bekleyen Hastalar ({waitingPatients.length})
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {waitingPatients.map((patient) => (
+                          <div
+                            key={patient.id}
+                            className="bg-white/5 border border-white/20 rounded-xl p-6 transition-all duration-200 hover:bg-white/10"
+                          >
+                            <div className="flex items-center gap-4 mb-4">
+                              <div className="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center text-xl text-white">
+                                👤
+                              </div>
+                              <div>
+                                <h4 className="text-lg font-semibold text-white">{patient.fullName}</h4>
+                                <p className="text-white/60 text-sm">TC: {patient.tcNo}</p>
+                              </div>
+                            </div>
+                            <div className="space-y-2 mb-4">
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-white/60">Geliş Tarihi:</span>
+                                <span className="text-white">{new Date(patient.createdAt).toLocaleDateString('tr-TR')}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-white/60">Tedavi Bitiş:</span>
+                                <span className="text-white">{patient.treatmentCompletedAt ? new Date(patient.treatmentCompletedAt).toLocaleDateString('tr-TR') : '-'}</span>
+                              </div>
+                            </div>
+                            <button
+                              className="w-full py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-all duration-200 flex items-center justify-center gap-2"
+                              onClick={() => {
+                                alert('İlaç satışı özelliği yakında eklenecek: ' + patient.fullName);
+                              }}
+                            >
+                              💊 İlaç Satışı Yap
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
               ) : (
                 filteredAndSortedDevices.length === 0 ? (
                   <div className="text-center py-12">
@@ -1114,9 +1281,67 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
               )}
             </div>
           </div>
+          )}
+
+          {/* Patients Waiting for Pharmacy */}
+          {activeTab === 'patients' && (
+            <div className="space-y-4">
+              {waitingPatients.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-6xl mb-4">👥</div>
+                  <h3 className="text-xl font-semibold text-white mb-2">
+                    Bekleyen Hasta Yok
+                  </h3>
+                  <p className="text-white/60">
+                    Şu anda eczanede bekleyen hasta bulunmamaktadır.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <h3 className="text-lg font-semibold text-white mb-4">
+                    👥 Bekleyen Hastalar ({waitingPatients.length})
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {waitingPatients.map((patient) => (
+                      <div
+                        key={patient.id}
+                        className="bg-white/5 border border-white/20 rounded-xl p-6 transition-all duration-200 hover:bg-white/10"
+                      >
+                        <div className="flex items-center gap-4 mb-4">
+                          <div className="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center text-xl text-white">
+                            👤
+                          </div>
+                          <div>
+                            <h4 className="text-lg font-semibold text-white">{patient.fullName}</h4>
+                            <p className="text-white/60 text-sm">TC: {patient.tcNo}</p>
+                          </div>
+                        </div>
+                        <div className="space-y-2 mb-4">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-white/60">Geliş Tarihi:</span>
+                            <span className="text-white">{new Date(patient.createdAt).toLocaleDateString('tr-TR')}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-white/60">Tedavi Bitiş:</span>
+                            <span className="text-white">{patient.treatmentCompletedAt ? new Date(patient.treatmentCompletedAt).toLocaleDateString('tr-TR') : '-'}</span>
+                          </div>
+                        </div>
+                        <button
+                          className="w-full py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-all duration-200 flex items-center justify-center gap-2"
+                          onClick={() => handleOpenSaleModal(patient)}
+                        >
+                          💊 İlaç Satışı Yap
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </>
       ) : (
-        /* Add/Edit Form */
+            /* Add/Edit Form */
         <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-xl font-bold text-white">
@@ -1523,6 +1748,143 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
               </div>
             </div>
           )}
+        </div>
+      )}
+      {/* Sale Modal */}
+      {isSaleModalOpen && selectedPatientForSale && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1a1f37] border border-white/10 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl p-6">
+            <div className="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
+              <div>
+                <h2 className="text-2xl font-bold text-white">💊 Reçete ve İlaç Satışı</h2>
+                <p className="text-white/60">Hasta: {selectedPatientForSale.fullName}</p>
+              </div>
+              <button 
+                onClick={() => setIsSaleModalOpen(false)}
+                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+              >
+                <span className="text-2xl">✕</span>
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              {/* Medicines List */}
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-4">Reçete Edilen İlaçlar</h3>
+                <div className="bg-white/5 rounded-xl overflow-hidden">
+                  <table className="w-full text-left">
+                    <thead className="bg-white/5 text-white/60 text-sm">
+                      <tr>
+                        <th className="p-4">Tip</th>
+                        <th className="p-4">İlaç Adı (Reçete)</th>
+                        <th className="p-4">Dozaj</th>
+                        <th className="p-4">Eşleşen Stok İlacı</th>
+                        <th className="p-4">Fiyat</th>
+                        <th className="p-4">Durum</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/10">
+                      {getPrescribedMedicines(selectedPatientForSale).length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="p-8 text-center text-white/50">
+                            Bu protokolde ilaç tanımlanmamış.
+                          </td>
+                        </tr>
+                      ) : (
+                        getPrescribedMedicines(selectedPatientForSale).map((med, index) => {
+                          // Find matching medication in stock (loose match)
+                          const match = savedMedications.find(sm => 
+                            sm.name.toLowerCase().includes(med.name.toLowerCase()) || 
+                            med.name.toLowerCase().includes(sm.name.toLowerCase())
+                          );
+                          
+                          return (
+                            <tr key={index} className="text-white/80 hover:bg-white/5">
+                              <td className="p-4 text-sm text-white/50">{med.type}</td>
+                              <td className="p-4 font-medium">{med.name}</td>
+                              <td className="p-4 text-sm">{med.dosage}</td>
+                              <td className="p-4">
+                                {match ? (
+                                  <div className="flex items-center gap-2 text-green-400">
+                                    <span>✅ {match.name}</span>
+                                    <span className="text-xs bg-green-500/20 px-2 py-0.5 rounded">Stok: {match.stockQuantity}</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-red-400">❌ Stokta Bulunamadı</span>
+                                )}
+                              </td>
+                              <td className="p-4">
+                                {match ? `${match.price.toFixed(2)} TL` : '-'}
+                              </td>
+                              <td className="p-4">
+                                {match && match.stockQuantity > 0 ? (
+                                  <span className="text-green-400 text-sm">Satılabilir</span>
+                                ) : match ? (
+                                  <span className="text-red-400 text-sm">Stok Yetersiz</span>
+                                ) : (
+                                  <span className="text-gray-500 text-sm">Eşleşme Yok</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              
+              {/* Summary & Actions */}
+              <div className="flex justify-end items-center gap-6 pt-4 border-t border-white/10">
+                <div className="text-right">
+                   <p className="text-white/60 text-sm">Toplam Tutar</p>
+                   <p className="text-2xl font-bold text-white">
+                     {getPrescribedMedicines(selectedPatientForSale).reduce((total, med) => {
+                       const match = savedMedications.find(sm => 
+                          sm.name.toLowerCase().includes(med.name.toLowerCase()) || 
+                          med.name.toLowerCase().includes(sm.name.toLowerCase())
+                       );
+                       return total + (match ? match.price : 0);
+                     }, 0).toFixed(2)} TL
+                   </p>
+                </div>
+                <button
+                  onClick={() => {
+                     const prescribed = getPrescribedMedicines(selectedPatientForSale);
+                     const soldItems = prescribed.map(med => {
+                        const match = savedMedications.find(sm => 
+                          sm.name.toLowerCase().includes(med.name.toLowerCase()) || 
+                          med.name.toLowerCase().includes(sm.name.toLowerCase())
+                        );
+                        if (match && match.stockQuantity > 0) {
+                          return {
+                            name: med.name,
+                            medicationId: match.id,
+                            price: match.price,
+                            originalStock: match.stockQuantity,
+                            newStock: match.stockQuantity - 1
+                          };
+                        }
+                        return null;
+                     }).filter(Boolean);
+
+                     if (soldItems.length === 0) {
+                       alert('Satışı yapılacak eşleşen stok ilacı bulunamadı.');
+                       return;
+                     }
+
+                     if (window.confirm(`${soldItems.length} adet ilaç için satış işlemini onaylıyor musunuz? Stoktan düşülecektir.`)) {
+                        handleCompleteSale(soldItems);
+                     }
+                  }}
+                  className="px-8 py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-green-500/25 flex items-center gap-2"
+                >
+                  <span>💳 Satışı Tamamla</span>
+                </button>
+              </div>
+
+            </div>
+          </div>
         </div>
       )}
     </div>

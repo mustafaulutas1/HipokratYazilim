@@ -1956,17 +1956,20 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                                   <div className="flex items-center justify-between">
                                     <span className="text-xs text-gray-500">Hiç yok</span>
                                     <div className="flex gap-1">
-                                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((ratingValue) => (
+                                      {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((ratingValue) => (
                                         <button
                                           key={ratingValue}
                                           type="button"
                                           onClick={() => {
                                             // Toggle: if same rating clicked, unselect (set to 0), otherwise set new rating
+                                            // If 0 is clicked, it sets to 0.
                                             const newRating = rating === ratingValue ? 0 : ratingValue;
-                                            handleToxicityRatingChange(key, newRating);
+                                            handleToxicityRatingChange(key, ratingValue === 0 ? 0 : newRating);
                                           }}
                                           className={`w-8 h-8 rounded-full text-xs font-semibold transition-all duration-200 ${rating === ratingValue
-                                            ? ratingValue <= 3
+                                            ? ratingValue === 0
+                                              ? 'bg-gray-500 text-white shadow-lg scale-110'
+                                              : ratingValue <= 3
                                               ? 'bg-green-500 text-white shadow-lg scale-110'
                                               : ratingValue <= 6
                                                 ? 'bg-yellow-500 text-white shadow-lg scale-110'
@@ -2215,22 +2218,6 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                     </div>
                   </div>
 
-                  {/* PDF Upload Section */}
-                  <div className="mt-6 bg-white rounded-xl p-6 border border-gray-200">
-                    <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                      📄 Cihaz Taraması
-                    </h4>
-                    <p className="text-sm text-gray-600 mb-4">
-                      Cihaz taraması her hasta için yapılacak ve tarama sonucu PDF olarak doğrudan veri tabanına yüklenecektir.
-                    </p>
-
-                    <FileUpload
-                      onFileUpload={handleDeviceScanFileUpload}
-                      onFileRemove={handleDeviceScanFileRemove}
-                      uploadedFileUrl={formData.conventionalTreatment.deviceScanFileUrl}
-                      fileName={deviceScanFile ? deviceScanFile.name : ''}
-                    />
-                  </div>
                 </div>
               </>
             )}

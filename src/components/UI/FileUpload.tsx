@@ -45,8 +45,9 @@ const FileUpload: React.FC<FileUploadProps> = ({
     setUploadError(null);
     
     // Validate file type
-    if (file.type !== 'application/pdf') {
-      setUploadError('Sadece PDF dosyaları yüklenebilir.');
+    const validTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
+    if (!validTypes.includes(file.type)) {
+      setUploadError('Sadece PDF, PNG, JPG veya JPEG dosyaları yüklenebilir.');
       return;
     }
     
@@ -85,7 +86,7 @@ const FileUpload: React.FC<FileUploadProps> = ({
             </div>
             <div>
               <p className="font-medium text-gray-800">{fileName}</p>
-              <p className="text-xs text-gray-500">PDF dosyası yüklendi</p>
+              <p className="text-xs text-gray-500">Dosya yüklendi</p>
             </div>
           </div>
           <button
@@ -105,14 +106,14 @@ const FileUpload: React.FC<FileUploadProps> = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
           </div>
-          <p className="font-medium text-gray-700 mb-1">PDF dosyası yükle</p>
-          <p className="text-sm text-gray-500 mb-4">PDF dosyasını sürükleyin veya seçin</p>
+          <p className="font-medium text-gray-700 mb-1">Dosya yükle</p>
+          <p className="text-sm text-gray-500 mb-4">PDF veya resim dosyasını sürükleyin veya seçin</p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <label className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors">
               Dosya Seç
               <input
                 type="file"
-                accept=".pdf,application/pdf"
+                accept=".pdf,application/pdf,image/png,image/jpeg,image/jpg"
                 onChange={handleFileInput}
                 className="hidden"
               />

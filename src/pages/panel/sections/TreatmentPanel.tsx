@@ -95,8 +95,8 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
         
         // Filter patients with payment_completed status (ready for treatment)
         const pendingTreatments = allClinicPatients.filter(patient =>
-          patient.status === 'payment_completed' &&
-          patient.paymentCompleted === true
+          (patient.status === 'payment_completed' && patient.paymentCompleted === true) ||
+          patient.status === 'treatment_continue'
         ).sort((a, b) => {
           const dateA = new Date(a.paymentDate || a.updatedAt || a.createdAt).getTime();
           const dateB = new Date(b.paymentDate || b.updatedAt || b.createdAt).getTime();
@@ -210,7 +210,7 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
       };
 
       if (treatmentApplied) {
-        updateData.status = 'treatment_completed';
+        updateData.status = 'pharmacy_waiting'; // Changed from treatment_completed to send to pharmacy
         updateData.treatmentCompletedAt = new Date().toISOString();
         updateData.treatmentApplied = true;
         if (treatmentNotes.trim()) {

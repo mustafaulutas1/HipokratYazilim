@@ -211,7 +211,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         paymentAmount: parseFloat(paymentAmount),
         paymentDate: new Date().toISOString(),
         paymentMethod: paymentMethod,
-        status: 'payment_completed',
+        status: 'treatment_continue', // Send to treatment continue (TreatmentPanel)
         updatedAt: new Date().toISOString()
       });
 

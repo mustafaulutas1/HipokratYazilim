@@ -4,6 +4,9 @@ import { db } from '../../../firebase/config';
 import { useAuth } from '../../../context/AuthContext';
 import { forceLogoutService } from '../../../services/forceLogoutService';
 
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import FileUpload from '../../../components/UI/FileUpload';
+
 interface SessionData {
   id: string;
   deviceName: string;
@@ -44,8 +47,11 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
     specialization: doctorProfile?.specialization || '',
     hospital: doctorProfile?.hospital || '',
     department: doctorProfile?.department || '',
-    phone: doctorProfile?.phone || ''
+    phone: doctorProfile?.phone || '',
+    logoUrl: doctorProfile?.logoUrl || ''
   });
+
+  const [logoFile, setLogoFile] = useState<File | null>(null);
 
   // doctorProfile değiştiğinde profileData'yı güncelle
   useEffect(() => {
@@ -55,10 +61,20 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
         specialization: doctorProfile.specialization || '',
         hospital: doctorProfile.hospital || '',
         department: doctorProfile.department || '',
-        phone: doctorProfile.phone || ''
+        phone: doctorProfile.phone || '',
+        logoUrl: doctorProfile.logoUrl || ''
       });
     }
   }, [doctorProfile]);
+
+  const handleLogoUpload = (file: File) => {
+    setLogoFile(file);
+  };
+
+  const handleLogoRemove = () => {
+    setLogoFile(null);
+    setProfileData(prev => ({ ...prev, logoUrl: '' }));
+  };
 
   const tabs = [
     { id: 'profile', label: 'Profil', icon: '👤' },
@@ -82,12 +98,23 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
       const doctorRef = doc(db, 'doctors', user.uid);
       const clinicUserRef = doc(db, 'clinicUsers', user.uid);
 
+      let uploadedLogoUrl = profileData.logoUrl;
+
+      // Upload logo if changed
+      if (logoFile) {
+        const storage = getStorage();
+        const logoRef = ref(storage, `clinic_logos/${user.uid}_${Date.now()}_${logoFile.name}`);
+        await uploadBytes(logoRef, logoFile);
+        uploadedLogoUrl = await getDownloadURL(logoRef);
+      }
+
       const updateData = {
         fullName: profileData.fullName.trim(),
         specialization: profileData.specialization.trim(),
         hospital: profileData.hospital.trim(),
         department: profileData.department.trim(),
         phone: profileData.phone.trim(),
+        logoUrl: uploadedLogoUrl,
         updatedAt: new Date().toISOString()
       };
 
@@ -497,6 +524,45 @@ const Settings: React.FC<SettingsProps> = ({ doctorProfile }) => {
             placeholder="0555 123 45 67"
             className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
           />
+        </div>
+        <div className="col-span-1 md:col-span-2">
+          <label className="block text-white/80 font-semibold mb-2">Klinik Logosu</label>
+          {isEditing ? (
+            <div className="bg-white/10 rounded-xl p-4">
+              <FileUpload
+                onFileUpload={handleLogoUpload}
+                onFileRemove={handleLogoRemove}
+                uploadedFileUrl={profileData.logoUrl}
+                fileName={logoFile ? logoFile.name : (profileData.logoUrl ? 'Mevcut Logo' : '')}
+              />
+              <p className="text-white/50 text-xs mt-2">
+                PDF çıktılarında kullanılacak logo. PNG, JPG veya JPEG formatında yükleyebilirsiniz.
+              </p>
+            </div>
+          ) : (
+            <div className="flex items-center gap-4 bg-white/10 rounded-xl p-4 border border-white/20">
+              {profileData.logoUrl ? (
+                <>
+                  <div className="w-24 h-24 bg-white rounded-lg p-2 flex items-center justify-center overflow-hidden">
+                    <img 
+                      src={profileData.logoUrl} 
+                      alt="Klinik Logosu" 
+                      className="max-w-full max-h-full object-contain"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-white font-medium">Klinik Logosu Yüklü</p>
+                    <p className="text-white/60 text-sm">Bu logo tüm PDF çıktılarında kullanılacaktır.</p>
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center gap-3 text-white/60">
+                  <span className="text-2xl">🖼️</span>
+                  <span>Logo yüklenmemiş</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
