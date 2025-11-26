@@ -12,6 +12,8 @@ interface AppointmentModalProps {
   doctorId?: string;
   editedAppointment?: any | null;
   doctorProfile?: any;
+  initialDate?: Date;
+  initialTime?: string; // Format: "HH:MM"
 }
 
 interface PatientDoc { id: string; fullName: string; }
@@ -28,7 +30,7 @@ function minutesToTime(mins: number) {
 }
 // generateTimes kaldırıldı (artık custom saat bileşeni var)
 
-const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, onAdded, doctorId, editedAppointment, doctorProfile }) => {
+const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, onAdded, doctorId, editedAppointment, doctorProfile, initialDate, initialTime }) => {
   const [patients, setPatients] = useState<PatientDoc[]>([]);
   const [types, setTypes] = useState<TypeDoc[]>([]);
   const [patientOpen, setPatientOpen] = useState<boolean>(false);
@@ -179,8 +181,18 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
       setUseQuickReservation(false);
       setQuickName('');
       setQuickPhone('');
+
+      // Set initial date and time if provided (from slot click)
+      if (initialDate) {
+        setSelectedDate(initialDate);
+      }
+      if (initialTime) {
+        const [hh, mm] = initialTime.split(':').map((n: string) => parseInt(n, 10));
+        setStartHour(hh);
+        setStartMinute(mm);
+      }
     }
-  }, [isOpen, editedAppointment]);
+  }, [isOpen, editedAppointment, initialDate, initialTime]);
 
   // Gün randevularını çek (disable için). Edit modda mevcut id'yi hariç tut.
   useEffect(() => {

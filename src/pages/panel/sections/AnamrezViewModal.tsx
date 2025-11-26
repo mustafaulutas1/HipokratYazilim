@@ -27,6 +27,7 @@ interface AnamrezViewModalProps {
   isOpen: boolean;
   onClose: () => void;
   patient: Patient | null;
+  anamrezRecord?: any;
 }
 
 interface AnamrezData {
@@ -102,12 +103,24 @@ interface AnamrezData {
 const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
   isOpen,
   onClose,
-  patient
+  patient,
+  anamrezRecord
 }) => {
   const [anamrezData, setAnamrezData] = useState<AnamrezData | null>(null);
+  const [allAnamrezRecords, setAllAnamrezRecords] = useState<AnamrezData[]>([]);
+  const [selectedRecordIndex, setSelectedRecordIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [doctorProfile, setDoctorProfile] = useState<any>(null);
   const [activeSection, setActiveSection] = useState('patient-info');
+
+  // If an anamrezRecord is passed directly, use it
+  useEffect(() => {
+    if (anamrezRecord && isOpen) {
+      setAnamrezData(anamrezRecord as AnamrezData);
+      setAllAnamrezRecords([anamrezRecord as AnamrezData]);
+      setSelectedRecordIndex(0);
+    }
+  }, [anamrezRecord, isOpen]);
 
   // Print Function (Replaces PDF Generation)
   const handlePrint = () => {
@@ -341,8 +354,10 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
 
   useEffect(() => {
     const fetchAnamrezData = async () => {
+      // Skip fetching if anamrezRecord is already passed
+      if (anamrezRecord) return;
       if (!patient || !isOpen) return;
-      
+
       setLoading(true);
       try {
         const anamrezQuery = query(
@@ -350,11 +365,25 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
           where('patientId', '==', patient.id)
         );
         const querySnapshot = await getDocs(anamrezQuery);
-        
+
         if (!querySnapshot.empty) {
-          const data = querySnapshot.docs[0].data() as AnamrezData;
-          data.id = querySnapshot.docs[0].id;
-          setAnamrezData(data);
+          // Get ALL anamnez records for this patient
+          const allRecords = querySnapshot.docs
+            .map(doc => {
+              const data = doc.data() as AnamrezData;
+              data.id = doc.id;
+              return data;
+            })
+            // Filter only completed records
+            .filter(record => (record as any).status === 'completed')
+            // Sort by creation date (newest first)
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+          setAllAnamrezRecords(allRecords);
+          if (allRecords.length > 0) {
+            setAnamrezData(allRecords[0]);
+            setSelectedRecordIndex(0);
+          }
 
           // Fetch doctor profile for logo if clinicId exists
           if (patient.clinicId) {
@@ -420,9 +449,19 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setActiveSection('patient-info');
-      setAnamrezData(null);
+      if (!anamrezRecord) {
+        setAnamrezData(null);
+        setAllAnamrezRecords([]);
+        setSelectedRecordIndex(0);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, anamrezRecord]);
+
+  // Handle record selection change
+  const handleRecordChange = (index: number) => {
+    setSelectedRecordIndex(index);
+    setAnamrezData(allAnamrezRecords[index]);
+  };
 
   if (!isOpen || !patient) return null;
 
@@ -462,9 +501,28 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                 <p className="text-xs sm:text-sm text-gray-600 mt-1 truncate">
                   {patient.fullName} - {patient.tcNo}
                 </p>
-                {patient.anamrezCompletedAt && (
+                {/* Record selector when multiple anamnez records exist */}
+                {allAnamrezRecords.length > 1 && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-xs text-gray-500">Anamnez Kaydı:</span>
+                    <select
+                      value={selectedRecordIndex}
+                      onChange={(e) => handleRecordChange(Number(e.target.value))}
+                      className="text-xs sm:text-sm px-2 py-1 border border-gray-300 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {allAnamrezRecords.map((record, index) => (
+                        <option key={record.id} value={index}>
+                          {new Date(record.createdAt).toLocaleDateString('tr-TR')} - #{index + 1}
+                          {(record as any).appointmentDate && ` (Randevu: ${new Date((record as any).appointmentDate).toLocaleDateString('tr-TR')})`}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-xs text-gray-400">({allAnamrezRecords.length} kayıt)</span>
+                  </div>
+                )}
+                {allAnamrezRecords.length === 1 && anamrezData && (
                   <p className="text-green-600 text-xs sm:text-sm mt-1 truncate">
-                    ✅ {new Date(patient.anamrezCompletedAt).toLocaleDateString('tr-TR')}
+                    ✅ {new Date(anamrezData.createdAt).toLocaleDateString('tr-TR')}
                   </p>
                 )}
               </div>

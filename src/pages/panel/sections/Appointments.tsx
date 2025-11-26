@@ -19,6 +19,8 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
   const [editedAppointment, setEditedAppointment] = useState<any | null>(null);
   const [viewedAppointment, setViewedAppointment] = useState<any | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [selectedSlotDate, setSelectedSlotDate] = useState<Date | undefined>(undefined);
+  const [selectedSlotTime, setSelectedSlotTime] = useState<string | undefined>(undefined);
   
   // Call Center için filtreleme state'leri
   const [filterPatientName, setFilterPatientName] = useState('');
@@ -44,6 +46,14 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
     return `${h}:${m}`;
   };
 
+  // Helper function to format date as YYYY-MM-DD in local timezone (avoids UTC timezone issues)
+  const formatDateISO = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const WORK_START = '08:00';
   const WORK_END = '17:30';
   const hourSlots = useMemo(() => {
@@ -61,7 +71,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
 
   // 5 dk grid kaldırıldı; saatlik satırlar üzerinden oransal bloklar gösterilecek
 
-  const dateISO = useMemo(() => selectedDate.toISOString().slice(0, 10), [selectedDate]);
+  const dateISO = useMemo(() => formatDateISO(selectedDate), [selectedDate]);
 
   // Filter appointments by patient name for calendar view
   const filteredAppointments = useMemo(() => {
@@ -120,12 +130,12 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
         startDate = endDate = dateISO;
       } else if (viewMode === 'week') {
         const { start, end } = getWeekRange(selectedDate);
-        startDate = start.toISOString().slice(0, 10);
-        endDate = end.toISOString().slice(0, 10);
+        startDate = formatDateISO(start);
+        endDate = formatDateISO(end);
       } else { // month
         const { start, end } = getMonthRange(selectedDate);
-        startDate = start.toISOString().slice(0, 10);
-        endDate = end.toISOString().slice(0, 10);
+        startDate = formatDateISO(start);
+        endDate = formatDateISO(end);
       }
       
       // Fetch appointments with only clinicId filter to avoid composite index requirement
@@ -215,7 +225,11 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
             </button>
           )}
           <button
-            onClick={() => setOpenAddModal(true)}
+            onClick={() => {
+              setSelectedSlotDate(undefined);
+              setSelectedSlotTime(undefined);
+              setOpenAddModal(true);
+            }}
             className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-200 shadow-lg"
           >
             + Randevu Ekle
@@ -513,7 +527,12 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
                       <button
                         aria-label="Yeni randevu ekle"
                         disabled={isPast}
-                        onClick={() => { setEditedAppointment(null); setOpenAddModal(true); }}
+                        onClick={() => {
+                          setEditedAppointment(null);
+                          setSelectedSlotDate(selectedDate);
+                          setSelectedSlotTime(minutesToTime(bp));
+                          setOpenAddModal(true);
+                        }}
                         className={`p-2 rounded-lg transition-colors duration-150 leading-none ${
                           isPast
                             ? 'bg-gray-500/10 border border-gray-500/20 text-gray-500 cursor-not-allowed'
@@ -574,7 +593,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
                           
                           {/* Her gün için slot */}
                           {weekDays.map((day) => {
-                            const dayISO = day.toISOString().slice(0, 10);
+                            const dayISO = formatDateISO(day);
                             const isPast = day < new Date(new Date().setHours(0, 0, 0, 0));
                             
                             // Bu saat aralığındaki randevular
@@ -624,7 +643,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
                   <div className="grid grid-cols-8 gap-2 mt-2 pt-2 border-t border-white/10">
                     <div className="text-white/70 text-xs font-semibold text-center py-2">Toplam</div>
                     {weekDays.map((day) => {
-                      const dayISO = day.toISOString().slice(0, 10);
+                      const dayISO = formatDateISO(day);
                       const dayAppointments = filteredAppointments.filter(a => a.dateISO === dayISO);
                       return (
                         <div key={`total-${dayISO}`} className="text-center py-2 bg-white/5 rounded-lg">
@@ -678,7 +697,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
                     {Array.from({ length: 7 }, (_, dayIdx) => {
                       const currentDay = new Date(calendarStart);
                       currentDay.setDate(calendarStart.getDate() + weekIdx * 7 + dayIdx);
-                      const dayISO = currentDay.toISOString().slice(0, 10);
+                      const dayISO = formatDateISO(currentDay);
                       const dayAppointments = filteredAppointments.filter(a => a.dateISO === dayISO);
                       const isCurrentMonth = currentDay.getMonth() === selectedDate.getMonth();
                       const isToday = currentDay.toDateString() === new Date().toDateString();
@@ -732,7 +751,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
               <h2 className="text-xl font-bold text-white mb-6">Bugünkü Randevular</h2>
               <div className="space-y-4 max-h-[300px] overflow-y-auto">
                 {(() => {
-                  const today = new Date().toISOString().slice(0, 10);
+                  const today = formatDateISO(new Date());
                   const todayAppointments = filteredAppointments.filter(a => a.dateISO === today);
                   return todayAppointments.length === 0 ? (
                     <div className="text-white/40 text-center py-8">Bugün randevu bulunamadı</div>
@@ -798,7 +817,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
               <h2 className="text-xl font-bold text-white mb-6">Yaklaşan Randevular (Onaylanmamış)</h2>
               <div className="space-y-4 max-h-[300px] overflow-y-auto">
                 {(() => {
-                  const today = new Date().toISOString().slice(0, 10);
+                  const today = formatDateISO(new Date());
                   const upcomingPending = filteredAppointments
                     .filter(a => a.status === 'pending' && a.dateISO >= today)
                     .sort((a, b) => {
@@ -880,12 +899,17 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
       {/* Modals */}
       <AppointmentModal
         isOpen={openAddModal}
-        onClose={() => { setOpenAddModal(false); setEditedAppointment(null); }}
+        onClose={() => {
+          setOpenAddModal(false);
+          setEditedAppointment(null);
+          setSelectedSlotDate(undefined);
+          setSelectedSlotTime(undefined);
+        }}
         onAdded={() => {
           // refresh after add
           (async () => {
             if (!doctorProfile?.clinicId) return;
-            
+
             // Fetch with only clinicId to avoid composite index, then filter by date
             const qDay = query(
               collection(db, 'appointments'),
@@ -900,6 +924,8 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
         }}
         editedAppointment={editedAppointment}
         doctorProfile={doctorProfile}
+        initialDate={selectedSlotDate}
+        initialTime={selectedSlotTime}
       />
       <AppointmentTypeManager
         isOpen={openTypeModal}

@@ -39,6 +39,8 @@ interface AnamrezFormModalProps {
   patient: Patient | null;
   doctorProfile: any;
   onAnamrezCompleted: () => void;
+  anamrezRecordId?: string;
+  appointmentId?: string;
 }
 
 type SymptomKey =
@@ -231,7 +233,9 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   onClose,
   patient,
   doctorProfile,
-  onAnamrezCompleted
+  onAnamrezCompleted,
+  anamrezRecordId,
+  appointmentId
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -950,14 +954,28 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
           role: doctorProfile?.userType || '',
           email: doctorProfile?.email || ''
         },
-        createdAt: new Date().toISOString(),
+        status: 'completed',
         updatedAt: new Date().toISOString()
       };
 
-      // Save anamnez record to separate collection
-      await addDoc(collection(db, 'anamrezRecords'), anamrezData);
+      // If we have an existing anamnez record ID, update it instead of creating new
+      if (anamrezRecordId) {
+        // Update existing anamnez record
+        const anamrezRef = doc(db, 'anamrezRecords', anamrezRecordId);
+        await updateDoc(anamrezRef, {
+          ...anamrezData,
+          appointmentId: appointmentId || '',
+        });
+      } else {
+        // Create new anamnez record (legacy flow)
+        await addDoc(collection(db, 'anamrezRecords'), {
+          ...anamrezData,
+          createdAt: new Date().toISOString(),
+          appointmentId: appointmentId || '',
+        });
+      }
 
-      // Update patient's anamnez completion status
+      // Update patient's anamnez completion status (keep for backwards compatibility)
       const patientRef = doc(db, 'patients', patient.id);
       await updateDoc(patientRef, {
         isAnamnezCompleted: true,

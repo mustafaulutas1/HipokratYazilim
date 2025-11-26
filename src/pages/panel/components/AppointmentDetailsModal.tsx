@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { deleteDoc, doc, updateDoc, collection, addDoc, query, where, getDocs } from 'firebase/firestore';
 import { toast } from 'react-toastify';
 import { db } from '../../../firebase/config';
 
@@ -99,21 +99,52 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
 
   const handleStatusToggle = async () => {
     if (!appointment.id) return;
-    
+
     const newStatus = currentStatus === 'pending' ? 'confirmed' : 'pending';
-    
+
     // Trigger animation
     setIsAnimating(true);
     setTimeout(() => setIsAnimating(false), 600);
-    
+
     // Immediately update local state for instant UI feedback
     setCurrentStatus(newStatus);
-    
+
     setIsUpdatingStatus(true);
     try {
       await updateDoc(doc(db, 'appointments', appointment.id), {
         status: newStatus
       });
+
+      // Create pending anamnez record when appointment is confirmed
+      if (newStatus === 'confirmed' && appointment.patientId) {
+        try {
+          // Check if anamnez already exists for this appointment
+          const existingAnamrezQuery = query(
+            collection(db, 'anamrezRecords'),
+            where('appointmentId', '==', appointment.id)
+          );
+          const existingSnapshot = await getDocs(existingAnamrezQuery);
+
+          // Only create if doesn't exist
+          if (existingSnapshot.empty) {
+            await addDoc(collection(db, 'anamrezRecords'), {
+              appointmentId: appointment.id,
+              appointmentDate: appointment.dateISO,
+              patientId: appointment.patientId,
+              patientName: appointment.patientName || '',
+              clinicId: appointment.clinicId || '',
+              status: 'pending',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            });
+            toast.success('Anamnez kaydı oluşturuldu!');
+          }
+        } catch (anamrezError) {
+          console.error('Error creating anamnez:', anamrezError);
+          toast.warning('Randevu onaylandı, ancak anamnez kaydı oluşturulamadı.');
+        }
+      }
+
       toast.success(`Randevu durumu "${newStatus === 'confirmed' ? 'Onaylandı' : 'Beklemede'}" olarak güncellendi!`);
       onStatusUpdated?.();
     } catch (error) {

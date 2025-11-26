@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import AnamrezFormModal from './AnamrezFormModal';
 import AnamrezViewModal from './AnamrezViewModal';
@@ -28,33 +28,39 @@ interface AnamrezRecord {
   id: string;
   patientId: string;
   patientName: string;
-  chiefComplaint: string;
-  historyOfPresentIllness: string;
-  pastMedicalHistory: string;
-  medications: string;
-  allergies: string;
-  familyHistory: string;
-  socialHistory: string;
-  systemsReview: string;
-  vitalSigns: {
-    bloodPressure: string;
-    pulse: string;
-    temperature: string;
-    respiratoryRate: string;
-    weight: string;
-    height: string;
+  appointmentId?: string;
+  appointmentDate?: string;
+  status: 'pending' | 'completed';
+  // Form saves as complaintDetails, not chiefComplaint
+  complaintDetails?: string;
+  chiefComplaint?: string;
+  historyOfPresentIllness?: string;
+  pastMedicalHistory?: string;
+  medications?: string;
+  allergies?: string;
+  familyHistory?: string;
+  socialHistory?: string;
+  systemsReview?: string;
+  vitalSigns?: {
+    bloodPressure?: string;
+    pulse?: string;
+    temperature?: string;
+    respiratoryRate?: string;
+    weight?: string;
+    height?: string;
   };
-  physicalExamination: string;
-  nurseId: string;
-  nurseName: string;
+  physicalExamination?: string;
+  nurseId?: string;
+  nurseName?: string;
   createdAt: string;
   updatedAt: string;
 }
 
 const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [completedPatients, setCompletedPatients] = useState<Patient[]>([]);
-  const [anamrezRecords, setAnamrezRecords] = useState<AnamrezRecord[]>([]);
+  const [pendingAnamrezRecords, setPendingAnamrezRecords] = useState<AnamrezRecord[]>([]);
+  const [completedAnamrezRecords, setCompletedAnamrezRecords] = useState<AnamrezRecord[]>([]);
+  const [selectedAnamrezRecord, setSelectedAnamrezRecord] = useState<AnamrezRecord | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -63,167 +69,110 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
   const [isAnamrezViewModalOpen, setIsAnamrezViewModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'pending' | 'completed'>('pending');
 
-  // Fetch patients
-  useEffect(() => {
-    const fetchPatients = async () => {
-      try {
-        console.log('🔍 Anamnez: Fetching patients for clinicId:', doctorProfile?.clinicId);
-        
-        // Fetch pending patients (anamnez not completed)
-        const pendingPatientsQuery = query(
-          collection(db, 'patients'),
-          where('clinicId', '==', doctorProfile?.clinicId || 'default-clinic'),
-          where('isAnamnezCompleted', '==', false)
-        );
-        const pendingSnapshot = await getDocs(pendingPatientsQuery);
-        const pendingPatientsList = pendingSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as Patient));
-        
-        // Fetch completed patients (anamnez completed)
-        const completedPatientsQuery = query(
-          collection(db, 'patients'),
-          where('clinicId', '==', doctorProfile?.clinicId || 'default-clinic'),
-          where('isAnamnezCompleted', '==', true)
-        );
-        const completedSnapshot = await getDocs(completedPatientsQuery);
-        const completedPatientsList = completedSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as Patient));
-        
-        console.log('📋 Anamnez: Found pending patients:', pendingPatientsList.length);
-        console.log('✅ Anamnez: Found completed patients:', completedPatientsList.length);
-        
-        // Sort in memory instead of using orderBy to avoid composite index issues
-        pendingPatientsList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        completedPatientsList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        
-        setPatients(pendingPatientsList);
-        setCompletedPatients(completedPatientsList);
-      } catch (error) {
-        console.error('❌ Anamnez: Hastalar yüklenirken hata oluştu:', error);
-      }
-    };
+  // Fetch anamnez records and patients
+  const fetchData = async () => {
+    if (!doctorProfile?.clinicId) return;
 
-    if (doctorProfile?.clinicId) {
-      fetchPatients();
+    try {
+      console.log('🔍 Anamnez: Fetching data for clinicId:', doctorProfile?.clinicId);
+
+      // Fetch all anamnez records for this clinic
+      const anamrezQuery = query(
+        collection(db, 'anamrezRecords'),
+        where('clinicId', '==', doctorProfile.clinicId)
+      );
+      const anamrezSnapshot = await getDocs(anamrezQuery);
+      const allAnamrezRecords = anamrezSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as AnamrezRecord));
+
+      // Separate pending and completed anamnez records
+      const pendingRecords = allAnamrezRecords.filter(r => r.status === 'pending');
+      const completedRecords = allAnamrezRecords.filter(r => r.status === 'completed');
+
+      // Sort by creation date
+      pendingRecords.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      completedRecords.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+      console.log('📋 Anamnez: Found pending records:', pendingRecords.length);
+      console.log('✅ Anamnez: Found completed records:', completedRecords.length);
+
+      setPendingAnamrezRecords(pendingRecords);
+      setCompletedAnamrezRecords(completedRecords);
+
+      // Also fetch all patients for reference
+      const patientsQuery = query(
+        collection(db, 'patients'),
+        where('clinicId', '==', doctorProfile.clinicId)
+      );
+      const patientsSnapshot = await getDocs(patientsQuery);
+      const patientsList = patientsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Patient));
+      setPatients(patientsList);
+
+      setLoading(false);
+    } catch (error) {
+      console.error('❌ Anamnez: Veri yüklenirken hata oluştu:', error);
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    fetchData();
   }, [doctorProfile]);
 
-  // Fetch anamnez records
-  useEffect(() => {
-    const fetchAnamrezRecords = async () => {
-      try {
-        const recordsQuery = query(
-          collection(db, 'anamrezRecords'),
-          orderBy('createdAt', 'desc')
-        );
-        const querySnapshot = await getDocs(recordsQuery);
-        const recordsList = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as AnamrezRecord));
-        setAnamrezRecords(recordsList);
-        setLoading(false);
-      } catch (error) {
-        console.error('Anamnez kayıtları yüklenirken hata oluştu:', error);
-        setLoading(false);
-      }
-    };
-
-    fetchAnamrezRecords();
-  }, []);
-
-  const filteredPatients = patients.filter(patient =>
-    patient.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    patient.tcNo.includes(searchTerm)
+  // Filter pending anamnez records by patient name
+  const filteredPendingRecords = pendingAnamrezRecords.filter(record =>
+    record.patientName.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const filteredCompletedPatients = completedPatients.filter(patient =>
-    patient.fullName.toLowerCase().includes(completedSearchTerm.toLowerCase()) ||
-    patient.tcNo.includes(completedSearchTerm)
+  // Filter completed anamnez records by patient name
+  const filteredCompletedRecords = completedAnamrezRecords.filter(record =>
+    record.patientName.toLowerCase().includes(completedSearchTerm.toLowerCase())
   );
 
+  // Get patient by ID
+  const getPatientById = (patientId: string): Patient | undefined => {
+    return patients.find(p => p.id === patientId);
+  };
+
+  // Get all anamnez records for a patient
   const getPatientAnamrezRecords = (patientId: string) => {
-    return anamrezRecords.filter(record => record.patientId === patientId);
+    return completedAnamrezRecords.filter(record => record.patientId === patientId);
+  };
+
+  // Handle selecting an anamnez record
+  const handleSelectAnamrezRecord = (record: AnamrezRecord) => {
+    setSelectedAnamrezRecord(record);
+    const patient = getPatientById(record.patientId);
+    if (patient) {
+      setSelectedPatient(patient);
+    }
   };
 
   const handleAnamrezCompleted = () => {
     // Immediately update the UI to reflect the change
-    if (selectedPatient) {
-      // Move the patient from pending to completed list
-      setPatients(prev => prev.filter(p => p.id !== selectedPatient.id));
-      
-      // Add the patient to completed list with updated status
-      const updatedPatient = {
-        ...selectedPatient,
-        isAnamnezCompleted: true,
-        anamrezCompletedAt: new Date().toISOString()
+    if (selectedAnamrezRecord) {
+      // Move the anamnez record from pending to completed list
+      setPendingAnamrezRecords(prev => prev.filter(r => r.id !== selectedAnamrezRecord.id));
+
+      // Add to completed list with updated status
+      const updatedRecord = {
+        ...selectedAnamrezRecord,
+        status: 'completed' as const,
+        updatedAt: new Date().toISOString()
       };
-      
-      setCompletedPatients(prev => [
-        updatedPatient,
-        ...prev
-      ]);
-      
-      // Update the selected patient state
-      setSelectedPatient(updatedPatient);
+
+      setCompletedAnamrezRecords(prev => [updatedRecord, ...prev]);
+      setSelectedAnamrezRecord(null);
+      setSelectedPatient(null);
     }
-    
-    // Also refresh data from database to ensure consistency
-    if (doctorProfile?.clinicId) {
-      const fetchPatients = async () => {
-        try {
-          console.log('🔄 Anamnez: Refreshing patients after anamnez completion');
-          
-          const patientsQuery = query(
-            collection(db, 'patients'),
-            where('clinicId', '==', doctorProfile.clinicId),
-            where('isAnamnezCompleted', '==', false)
-          );
-          const querySnapshot = await getDocs(patientsQuery);
-          const patientsList = querySnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          } as Patient));
-          
-          patientsList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-          setPatients(patientsList);
-          
-          // Also refresh completed patients
-          const completedPatientsQuery = query(
-            collection(db, 'patients'),
-            where('clinicId', '==', doctorProfile.clinicId),
-            where('isAnamnezCompleted', '==', true)
-          );
-          const completedSnapshot = await getDocs(completedPatientsQuery);
-          const completedPatientsList = completedSnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          } as Patient));
-          completedPatientsList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-          setCompletedPatients(completedPatientsList);
-          
-          // Also refresh anamnez records
-          const recordsQuery = query(
-            collection(db, 'anamrezRecords'),
-            orderBy('createdAt', 'desc')
-          );
-          const recordsSnapshot = await getDocs(recordsQuery);
-          const recordsList = recordsSnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          } as AnamrezRecord));
-          setAnamrezRecords(recordsList);
-          
-        } catch (error) {
-          console.error('❌ Anamnez: Error refreshing patients:', error);
-        }
-      };
-      fetchPatients();
-    }
+
+    // Refresh data from database to ensure consistency
+    fetchData();
   };
 
   if (loading) {
@@ -280,11 +229,11 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
           <div className="flex items-center gap-6">
             <div className="text-center">
               <div className="text-white/60 text-sm">Bekleyen</div>
-              <div className="text-2xl font-bold text-orange-300">{patients.length}</div>
+              <div className="text-2xl font-bold text-orange-300">{pendingAnamrezRecords.length}</div>
             </div>
             <div className="text-center">
               <div className="text-white/60 text-sm">Tamamlanan</div>
-              <div className="text-2xl font-bold text-green-300">{completedPatients.length}</div>
+              <div className="text-2xl font-bold text-green-300">{completedAnamrezRecords.length}</div>
             </div>
           </div>
         </div>
@@ -301,15 +250,15 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                 activeTab === 'pending'
                   ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
                   : 'text-white/70 hover:text-white/90'
-              } ${patients.length > 0 && activeTab === 'pending' ? 'animate-pulse-glow' : ''}`}
+              } ${pendingAnamrezRecords.length > 0 && activeTab === 'pending' ? 'animate-pulse-glow' : ''}`}
             >
-              {patients.length > 0 && (
+              {pendingAnamrezRecords.length > 0 && (
                 <div className="absolute -top-1 -left-1 w-3 h-3 bg-orange-500 rounded-full animate-ping"></div>
               )}
-              {patients.length > 0 && (
+              {pendingAnamrezRecords.length > 0 && (
                 <div className="absolute -top-1 -left-1 w-3 h-3 bg-orange-500 rounded-full animate-pulse"></div>
               )}
-              Bekleyen ({patients.length})
+              Bekleyen ({pendingAnamrezRecords.length})
             </button>
             <button
               onClick={() => setActiveTab('completed')}
@@ -319,7 +268,7 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                   : 'text-white/70 hover:text-white/90'
               }`}
             >
-              Tamamlanan ({completedPatients.length})
+              Tamamlanan ({completedAnamrezRecords.length})
             </button>
           </div>
 
@@ -341,30 +290,36 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                 </div>
               </div>
 
-              {/* Pending Patients List */}
+              {/* Pending Anamnez Records List */}
               <div className="space-y-2 max-h-96 overflow-y-auto admin-panel-scrollbar">
-                {filteredPatients.length === 0 ? (
+                {filteredPendingRecords.length === 0 ? (
                   <div className="text-center py-8">
                     <div className="text-white/50 text-lg mb-2">📋</div>
-                    <p className="text-white/70 text-sm">Anamnez bekleyen hasta bulunmuyor.</p>
+                    <p className="text-white/70 text-sm">Anamnez bekleyen kayıt bulunmuyor.</p>
                   </div>
                 ) : (
-                  filteredPatients.map((patient) => {
+                  filteredPendingRecords.map((record) => {
                     return (
                       <div
-                        key={patient.id}
-                        onClick={() => setSelectedPatient(patient)}
+                        key={record.id}
+                        onClick={() => handleSelectAnamrezRecord(record)}
                         className={`p-3 rounded-xl cursor-pointer transition-all duration-200 ${
-                          selectedPatient?.id === patient.id
+                          selectedAnamrezRecord?.id === record.id
                             ? 'bg-orange-500/20 border border-orange-500/30'
                             : 'bg-white/5 hover:bg-white/10 border border-transparent'
                         }`}
                       >
                         <div className="flex items-center justify-between">
                           <div>
-                            <h3 className="text-white font-semibold text-sm">{patient.fullName}</h3>
-                            <p className="text-white/60 text-xs">TC: {patient.tcNo}</p>
-                            <p className="text-white/60 text-xs">{patient.phone}</p>
+                            <h3 className="text-white font-semibold text-sm">{record.patientName}</h3>
+                            {record.appointmentDate && (
+                              <p className="text-white/60 text-xs">
+                                Randevu: {new Date(record.appointmentDate).toLocaleDateString('tr-TR')}
+                              </p>
+                            )}
+                            <p className="text-white/60 text-xs">
+                              Oluşturulma: {new Date(record.createdAt).toLocaleDateString('tr-TR')}
+                            </p>
                           </div>
                           <div className="text-right">
                             <div className="px-2 py-1 bg-orange-500/20 text-orange-300 rounded-full text-xs">
@@ -396,32 +351,35 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                 </div>
               </div>
 
-              {/* Completed Patients List */}
+              {/* Completed Anamnez Records List */}
               <div className="space-y-2 max-h-96 overflow-y-auto admin-panel-scrollbar">
-                {filteredCompletedPatients.length === 0 ? (
+                {filteredCompletedRecords.length === 0 ? (
                   <div className="text-center py-8">
                     <div className="text-white/50 text-lg mb-2">✅</div>
-                    <p className="text-white/70 text-sm">Anamnezi tamamlanan hasta bulunmuyor.</p>
+                    <p className="text-white/70 text-sm">Tamamlanan anamnez kaydı bulunmuyor.</p>
                   </div>
                 ) : (
-                  filteredCompletedPatients.map((patient) => {
+                  filteredCompletedRecords.map((record) => {
                     return (
                       <div
-                        key={patient.id}
-                        onClick={() => setSelectedPatient(patient)}
+                        key={record.id}
+                        onClick={() => handleSelectAnamrezRecord(record)}
                         className={`p-3 rounded-xl cursor-pointer transition-all duration-200 ${
-                          selectedPatient?.id === patient.id
+                          selectedAnamrezRecord?.id === record.id
                             ? 'bg-green-500/20 border border-green-500/30'
                             : 'bg-white/5 hover:bg-white/10 border border-transparent'
                         }`}
                       >
                         <div className="flex items-center justify-between">
                           <div>
-                            <h3 className="text-white font-semibold text-sm">{patient.fullName}</h3>
-                            <p className="text-white/60 text-xs">TC: {patient.tcNo}</p>
-                            <p className="text-white/60 text-xs">{patient.phone}</p>
+                            <h3 className="text-white font-semibold text-sm">{record.patientName}</h3>
+                            {record.appointmentDate && (
+                              <p className="text-white/60 text-xs">
+                                Randevu: {new Date(record.appointmentDate).toLocaleDateString('tr-TR')}
+                              </p>
+                            )}
                             <p className="text-white/60 text-xs">
-                              Tamamlandı: {patient.anamrezCompletedAt ? new Date(patient.anamrezCompletedAt).toLocaleDateString('tr-TR') : '-'}
+                              Tamamlandı: {new Date(record.updatedAt).toLocaleDateString('tr-TR')}
                             </p>
                           </div>
                           <div className="text-right">
@@ -441,25 +399,29 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
 
         {/* Patient Details & Records */}
         <div className="lg:col-span-2 space-y-6">
-          {selectedPatient ? (
+          {selectedAnamrezRecord && selectedPatient ? (
             <>
               {/* Patient Info */}
               <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <h2 className="text-xl font-bold text-white">Hasta Bilgileri</h2>
-                    {selectedPatient.isAnamnezCompleted && (
+                    {selectedAnamrezRecord.status === 'completed' ? (
                       <div className="px-3 py-1 bg-green-500/20 text-green-300 rounded-full text-xs font-semibold">
                         ✅ Anamnez Tamamlandı
                       </div>
+                    ) : (
+                      <div className="px-3 py-1 bg-orange-500/20 text-orange-300 rounded-full text-xs font-semibold">
+                        ⏳ Anamnez Bekliyor
+                      </div>
                     )}
                   </div>
-                  {!selectedPatient.isAnamnezCompleted && (
-                    <button 
+                  {selectedAnamrezRecord.status === 'pending' && (
+                    <button
                       onClick={() => setIsAnamrezModalOpen(true)}
                       className="px-4 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-xl text-green-300 hover:text-green-200 transition-all duration-200"
                     >
-                      Yeni Anamnez
+                      Anamnez Doldur
                     </button>
                   )}
                 </div>
@@ -489,6 +451,14 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                     <label className="block text-white/70 text-xs font-medium mb-1">Acil Telefon</label>
                     <div className="text-white font-semibold">{selectedPatient.emergencyPhone}</div>
                   </div>
+                  {selectedAnamrezRecord.appointmentDate && (
+                    <div>
+                      <label className="block text-white/70 text-xs font-medium mb-1">Randevu Tarihi</label>
+                      <div className="text-white font-semibold">
+                        {new Date(selectedAnamrezRecord.appointmentDate).toLocaleDateString('tr-TR')}
+                      </div>
+                    </div>
+                  )}
                   <div className="md:col-span-2">
                     <label className="block text-white/70 text-xs font-medium mb-1">Başvuru Nedeni</label>
                     <div className="text-white font-semibold">{selectedPatient.visitReason}</div>
@@ -496,20 +466,14 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                 </div>
               </div>
 
-              {/* Anamnez Records */}
+              {/* Patient's All Anamnez Records */}
               <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-                <h2 className="text-xl font-bold text-white mb-6">Anamnez Kayıtları</h2>
-                
+                <h2 className="text-xl font-bold text-white mb-6">Bu Hastanın Tüm Anamnez Kayıtları</h2>
+
                 {getPatientAnamrezRecords(selectedPatient.id).length === 0 ? (
                   <div className="text-center py-8">
                     <div className="text-white/50 text-lg mb-2">📋</div>
-                    <p className="text-white/70">Bu hasta için henüz anamnez kaydı bulunmuyor.</p>
-                    <button 
-                      onClick={() => setIsAnamrezModalOpen(true)}
-                      className="mt-4 px-6 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-xl text-green-300 hover:text-green-200 transition-all duration-200"
-                    >
-                      İlk Anamnez Kaydını Oluştur
-                    </button>
+                    <p className="text-white/70">Bu hasta için henüz tamamlanmış anamnez kaydı bulunmuyor.</p>
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -524,11 +488,18 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                               <h4 className="text-white font-semibold text-sm">
                                 {new Date(record.createdAt).toLocaleDateString('tr-TR')}
                               </h4>
-                              <p className="text-white/60 text-xs">Hemşire: {record.nurseName}</p>
+                              {record.appointmentDate && (
+                                <p className="text-white/60 text-xs">
+                                  Randevu: {new Date(record.appointmentDate).toLocaleDateString('tr-TR')}
+                                </p>
+                              )}
                             </div>
                           </div>
-                          <button 
-                            onClick={() => setIsAnamrezViewModalOpen(true)}
+                          <button
+                            onClick={() => {
+                              setSelectedAnamrezRecord(record);
+                              setIsAnamrezViewModalOpen(true);
+                            }}
                             className="px-3 py-1 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded-lg text-xs transition-all duration-200"
                           >
                             Görüntüle
@@ -538,12 +509,14 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                           <div>
                             <label className="block text-white/60 text-xs mb-1">Ana Şikayet</label>
-                            <p className="text-white/90 line-clamp-2">{record.chiefComplaint}</p>
+                            <p className="text-white/90 line-clamp-2">{record.complaintDetails || record.chiefComplaint || '-'}</p>
                           </div>
                           <div>
-                            <label className="block text-white/60 text-xs mb-1">Vital Signs</label>
+                            <label className="block text-white/60 text-xs mb-1">Belirtiler</label>
                             <p className="text-white/90">
-                              BP: {record.vitalSigns.bloodPressure}, Nabız: {record.vitalSigns.pulse}
+                              {record.vitalSigns ?
+                                `BP: ${record.vitalSigns.bloodPressure || '-'}, Nabız: ${record.vitalSigns.pulse || '-'}`
+                                : '-'}
                             </p>
                           </div>
                         </div>
@@ -557,9 +530,9 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
             <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
               <div className="text-center py-12">
                 <div className="text-white/50 text-4xl mb-4">👈</div>
-                <h3 className="text-xl font-semibold text-white mb-2">Hasta Seçin</h3>
+                <h3 className="text-xl font-semibold text-white mb-2">Anamnez Kaydı Seçin</h3>
                 <p className="text-white/70">
-                  Anamnez kayıtlarını görüntülemek için sol taraftan bir hasta seçin
+                  Detayları görüntülemek için sol taraftan bir anamnez kaydı seçin
                 </p>
               </div>
             </div>
@@ -574,6 +547,8 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
         patient={selectedPatient}
         doctorProfile={doctorProfile}
         onAnamrezCompleted={handleAnamrezCompleted}
+        anamrezRecordId={selectedAnamrezRecord?.id}
+        appointmentId={selectedAnamrezRecord?.appointmentId}
       />
 
       {/* Anamnez View Modal */}
@@ -581,6 +556,7 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
         isOpen={isAnamrezViewModalOpen}
         onClose={() => setIsAnamrezViewModalOpen(false)}
         patient={selectedPatient}
+        anamrezRecord={selectedAnamrezRecord}
       />
       </div>
     </>
