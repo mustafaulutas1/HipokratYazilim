@@ -210,7 +210,7 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
       };
 
       if (treatmentApplied) {
-        updateData.status = 'pharmacy_waiting'; // Changed from treatment_completed to send to pharmacy
+        updateData.status = 'treatment_completed'; // Treatment completed
         updateData.treatmentCompletedAt = new Date().toISOString();
         updateData.treatmentApplied = true;
         if (treatmentNotes.trim()) {

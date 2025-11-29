@@ -75,9 +75,11 @@ interface PharmacyPatient {
   fullName: string;
   tcNo: string;
   status: string;
+  pharmacyStatus?: string;
   updatedAt: string;
   createdAt: string;
   treatmentCompletedAt?: string;
+  treatmentStartedAt?: string;
   treatmentOptions?: {
     protocolName?: string;
     selectedProtocol?: SavedProtocol;
@@ -86,10 +88,11 @@ interface PharmacyPatient {
 }
 
 const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorProfile }) => {
-  const [activeTab, setActiveTab] = useState<'medications' | 'devices' | 'patients'>('medications');
+  const [activeTab, setActiveTab] = useState<'medications' | 'devices' | 'patients' | 'sales_history'>('medications');
   const [savedMedications, setSavedMedications] = useState<SavedMedication[]>([]);
   const [savedDevices, setSavedDevices] = useState<SavedMedicalDevice[]>([]);
   const [waitingPatients, setWaitingPatients] = useState<PharmacyPatient[]>([]);
+  const [completedSales, setCompletedSales] = useState<any[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingMedication, setEditingMedication] = useState<SavedMedication | null>(null);
   const [editingDevice, setEditingDevice] = useState<SavedMedicalDevice | null>(null);
@@ -102,6 +105,14 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const [filterCategory, setFilterCategory] = useState('all');
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  // Payment modal states
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [pharmacyPaymentAmount, setPharmacyPaymentAmount] = useState<string>('');
+  const [pharmacyPaymentMethod, setPharmacyPaymentMethod] = useState<string>('nakit');
+  const [pendingSoldItems, setPendingSoldItems] = useState<any[]>([]);
+  const [selectedMedicines, setSelectedMedicines] = useState<string[]>([]);
+  // Sale detail modal state
+  const [selectedSaleDetail, setSelectedSaleDetail] = useState<any | null>(null);
   const [formData, setFormData] = useState<Medication>({
     name: '',
     description: '',
@@ -281,7 +292,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       const patientsQuery = query(
         patientsRef,
         where('clinicId', '==', doctorProfile.clinicId),
-        where('status', '==', 'pharmacy_waiting')
+        where('pharmacyStatus', '==', 'waiting')
       );
       
       const patientsSnapshot = await getDocs(patientsQuery);
@@ -294,10 +305,41 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
         } as PharmacyPatient);
       });
       
-      patients.sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime());
+      patients.sort((a, b) => new Date(b.treatmentStartedAt || b.updatedAt || b.createdAt).getTime() - new Date(a.treatmentStartedAt || a.updatedAt || a.createdAt).getTime());
       setWaitingPatients(patients);
     } catch (error) {
       console.error('Error fetching patients:', error);
+    }
+  };
+
+  const fetchCompletedSales = async () => {
+    if (!doctorProfile?.clinicId) return;
+    try {
+      const patientsRef = collection(db, 'patients');
+      const salesQuery = query(
+        patientsRef,
+        where('clinicId', '==', doctorProfile.clinicId),
+        where('pharmacyStatus', '==', 'completed')
+      );
+      
+      const salesSnapshot = await getDocs(salesQuery);
+      const sales: any[] = [];
+      
+      salesSnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.pharmacySaleDate) {
+          sales.push({
+            id: doc.id,
+            ...data
+          });
+        }
+      });
+      
+      // Sort by sale date, most recent first
+      sales.sort((a, b) => new Date(b.pharmacySaleDate || b.pharmacySaleCompletedAt).getTime() - new Date(a.pharmacySaleDate || a.pharmacySaleCompletedAt).getTime());
+      setCompletedSales(sales.slice(0, 50)); // Limit to last 50 sales
+    } catch (error) {
+      console.error('Error fetching completed sales:', error);
     }
   };
 
@@ -306,6 +348,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       fetchMedications();
       fetchDevices();
       fetchPatients();
+      fetchCompletedSales();
     }
   }, [doctorProfile?.clinicId]);
 
@@ -335,37 +378,73 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     setIsSaleModalOpen(true);
   };
 
-  const handleCompleteSale = async (soldItems: any[]) => {
-    if (!selectedPatientForSale) return;
+  // Open payment modal when clicking "Satışı Tamamla"
+  const handleOpenPaymentModal = (soldItems: any[]) => {
+    setPendingSoldItems(soldItems);
+    // Initialize all medicines as selected
+    setSelectedMedicines(soldItems.map(item => item.name));
+    // Calculate total from sold items
+    const total = soldItems.reduce((sum, item) => sum + (item.price || 0), 0);
+    setPharmacyPaymentAmount(total.toFixed(2));
+    setIsPaymentModalOpen(true);
+  };
+
+  // Recalculate total when selection changes
+  const recalculatePharmacyTotal = (selected: string[]) => {
+    const total = pendingSoldItems
+      .filter(item => selected.includes(item.name))
+      .reduce((sum, item) => sum + (item.price || 0), 0);
+    setPharmacyPaymentAmount(total.toFixed(2));
+  };
+
+  // Toggle medicine selection
+  const handleMedicineToggle = (medicineName: string) => {
+    setSelectedMedicines(prev => {
+      const newSelection = prev.includes(medicineName)
+        ? prev.filter(name => name !== medicineName)
+        : [...prev, medicineName];
+      recalculatePharmacyTotal(newSelection);
+      return newSelection;
+    });
+  };
+
+  // Process the actual payment and complete sale
+  const handleProcessPharmacyPayment = async () => {
+    if (!selectedPatientForSale || !pharmacyPaymentAmount) return;
 
     try {
       setLoading(true);
       
-      // Update stock
-      for (const item of soldItems) {
-        if (item.medicationId) {
-          const medRef = doc(db, 'medications', item.medicationId);
-          await updateDoc(medRef, {
-            stockQuantity: item.newStock
-          });
-        }
-      }
-
+      // Filter to only selected medicines
+      const approvedMedicines = pendingSoldItems.filter(item => selectedMedicines.includes(item.name));
+      const removedMedicines = pendingSoldItems.filter(item => !selectedMedicines.includes(item.name));
+      
       // Update patient
       const patientRef = doc(db, 'patients', selectedPatientForSale.id);
       await updateDoc(patientRef, {
-        status: 'treatment_completed', // Completed lifecycle
+        pharmacyStatus: 'completed',
         pharmacySaleCompletedAt: new Date().toISOString(),
         pharmacySaleDate: new Date().toISOString(),
-        pharmacySoldItems: soldItems
+        pharmacySoldItems: approvedMedicines,
+        pharmacyRemovedItems: removedMedicines,
+        pharmacyPaymentAmount: parseFloat(pharmacyPaymentAmount),
+        pharmacyPaymentMethod: pharmacyPaymentMethod,
+        pharmacyPaymentDate: new Date().toISOString()
       });
 
-      alert('Satış ve stok düşümü başarıyla tamamlandı!');
+      alert('İlaç satışı ve ödeme başarıyla tamamlandı!');
+      
+      // Close modals and reset states
+      setIsPaymentModalOpen(false);
       setIsSaleModalOpen(false);
       setSelectedPatientForSale(null);
+      setPendingSoldItems([]);
+      setSelectedMedicines([]);
+      setPharmacyPaymentAmount('');
+      setPharmacyPaymentMethod('nakit');
       
-      fetchMedications();
       fetchPatients();
+      fetchCompletedSales();
 
     } catch (error) {
       console.error('Error completing sale:', error);
@@ -373,6 +452,11 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     } finally {
       setLoading(false);
     }
+  };
+
+  // Legacy function - kept for compatibility but now opens payment modal
+  const handleCompleteSale = async (soldItems: any[]) => {
+    handleOpenPaymentModal(soldItems);
   };
 
   const saveMedication = async () => {
@@ -786,6 +870,22 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
               </span>
             )}
           </button>
+          <button
+            onClick={() => {
+              setActiveTab('sales_history');
+              setShowAddForm(false);
+              setSearchTerm('');
+              setFilterCategory('all');
+              fetchCompletedSales();
+            }}
+            className={`px-8 py-3 rounded-xl font-medium transition-all duration-200 ${
+              activeTab === 'sales_history'
+                ? 'bg-gradient-to-r from-green-600 to-green-700 text-white shadow-lg'
+                : 'bg-white/10 text-white/70 hover:bg-white/20'
+            }`}
+          >
+            📋 Satış Geçmişi
+          </button>
         </div>
       </div>
 
@@ -844,7 +944,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                 <div className="text-white/70 text-sm">Bakım Takipli</div>
               </div>
             </div>
-          ) : (
+          ) : activeTab === 'patients' ? (
             // Patient Stats
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-gradient-to-r from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 rounded-2xl p-4">
@@ -859,10 +959,10 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                 <div className="text-white/70 text-sm">Mevcut İlaç Çeşidi</div>
               </div>
             </div>
-          )}
+          ) : null}
 
           {/* Action Buttons and Filters */}
-          {activeTab !== 'patients' && (
+          {activeTab !== 'patients' && activeTab !== 'sales_history' && (
           <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
             <div className="mb-6 flex flex-wrap items-center gap-3">
               <button
@@ -1282,6 +1382,161 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
               )}
             </div>
           )}
+
+          {/* Sales History */}
+          {activeTab === 'sales_history' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-white">
+                  📋 Satış Geçmişi ({completedSales.length})
+                </h3>
+                <button
+                  onClick={fetchCompletedSales}
+                  className="px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl text-white/80 hover:text-white transition-all duration-200 flex items-center gap-2"
+                >
+                  🔄 Yenile
+                </button>
+              </div>
+
+              {completedSales.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-6xl mb-4">📋</div>
+                  <h3 className="text-xl font-semibold text-white mb-2">
+                    Satış Kaydı Yok
+                  </h3>
+                  <p className="text-white/60">
+                    Henüz tamamlanmış satış bulunmamaktadır.
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-white/5 border border-white/20 rounded-2xl overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-white/10">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-white/80 font-medium">Hasta</th>
+                        <th className="px-6 py-4 text-left text-white/80 font-medium">Satış Tarihi</th>
+                        <th className="px-6 py-4 text-left text-white/80 font-medium">İlaçlar</th>
+                        <th className="px-6 py-4 text-left text-white/80 font-medium">Ödeme Yöntemi</th>
+                        <th className="px-6 py-4 text-right text-white/80 font-medium">Tutar</th>
+                        <th className="px-6 py-4 text-center text-white/80 font-medium">İşlem</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/10">
+                      {completedSales.map((sale) => (
+                        <tr key={sale.id} className="hover:bg-white/5 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center text-white">
+                                👤
+                              </div>
+                              <div>
+                                <p className="text-white font-medium">{sale.fullName}</p>
+                                <p className="text-white/50 text-sm">TC: {sale.tcNo}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <p className="text-white">
+                              {sale.pharmacySaleDate 
+                                ? new Date(sale.pharmacySaleDate).toLocaleDateString('tr-TR')
+                                : '-'
+                              }
+                            </p>
+                            <p className="text-white/50 text-sm">
+                              {sale.pharmacySaleDate 
+                                ? new Date(sale.pharmacySaleDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+                                : ''
+                              }
+                            </p>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-wrap gap-1">
+                              {sale.pharmacySoldItems?.slice(0, 3).map((item: any, idx: number) => (
+                                <span 
+                                  key={idx} 
+                                  className="px-2 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-full"
+                                >
+                                  {item.name}
+                                </span>
+                              ))}
+                              {sale.pharmacySoldItems?.length > 3 && (
+                                <span className="px-2 py-1 bg-white/10 text-white/60 text-xs rounded-full">
+                                  +{sale.pharmacySoldItems.length - 3} daha
+                                </span>
+                              )}
+                              {!sale.pharmacySoldItems?.length && (
+                                <span className="text-white/50 text-sm">-</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                              sale.pharmacyPaymentMethod === 'nakit' 
+                                ? 'bg-green-500/20 text-green-300'
+                                : sale.pharmacyPaymentMethod === 'kredi_karti'
+                                ? 'bg-blue-500/20 text-blue-300'
+                                : sale.pharmacyPaymentMethod === 'banka_karti'
+                                ? 'bg-purple-500/20 text-purple-300'
+                                : 'bg-yellow-500/20 text-yellow-300'
+                            }`}>
+                              {sale.pharmacyPaymentMethod === 'nakit' ? '💵 Nakit' :
+                               sale.pharmacyPaymentMethod === 'kredi_karti' ? '💳 Kredi Kartı' :
+                               sale.pharmacyPaymentMethod === 'banka_karti' ? '💳 Banka Kartı' :
+                               sale.pharmacyPaymentMethod === 'havale' ? '🏦 Havale/EFT' :
+                               sale.pharmacyPaymentMethod || '-'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <p className="text-white font-bold text-lg">
+                              {sale.pharmacyPaymentAmount 
+                                ? `${sale.pharmacyPaymentAmount.toFixed(2)} TL`
+                                : '-'
+                              }
+                            </p>
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <button
+                              onClick={() => setSelectedSaleDetail(sale)}
+                              className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 hover:text-blue-200 rounded-lg transition-all duration-200 flex items-center gap-2 mx-auto"
+                            >
+                              🔍 Detay
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Sales Summary */}
+              {completedSales.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+                  <div className="bg-gradient-to-r from-green-500/20 to-emerald-600/20 border border-green-500/30 rounded-2xl p-4">
+                    <div className="text-green-300 text-2xl mb-1">💰</div>
+                    <div className="text-white text-2xl font-bold">
+                      {completedSales.reduce((sum, sale) => sum + (sale.pharmacyPaymentAmount || 0), 0).toFixed(2)} TL
+                    </div>
+                    <div className="text-white/70 text-sm">Toplam Satış</div>
+                  </div>
+                  <div className="bg-gradient-to-r from-blue-500/20 to-cyan-600/20 border border-blue-500/30 rounded-2xl p-4">
+                    <div className="text-blue-300 text-2xl mb-1">📦</div>
+                    <div className="text-white text-2xl font-bold">
+                      {completedSales.length}
+                    </div>
+                    <div className="text-white/70 text-sm">Toplam İşlem</div>
+                  </div>
+                  <div className="bg-gradient-to-r from-purple-500/20 to-pink-600/20 border border-purple-500/30 rounded-2xl p-4">
+                    <div className="text-purple-300 text-2xl mb-1">💊</div>
+                    <div className="text-white text-2xl font-bold">
+                      {completedSales.reduce((sum, sale) => sum + (sale.pharmacySoldItems?.length || 0), 0)}
+                    </div>
+                    <div className="text-white/70 text-sm">Satılan İlaç</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </>
       ) : (
             /* Add/Edit Form */
@@ -1337,23 +1592,6 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                 />
               </div>
 
-              {/* Dosage Form */}
-              <div>
-                <label className="block text-white/80 text-sm font-medium mb-2">
-                  Dozaj Şekli
-                </label>
-                <select
-                  value={formData.dosageForm}
-                  onChange={(e) => setFormData(prev => ({ ...prev, dosageForm: e.target.value }))}
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                >
-                  <option value="" className="text-gray-900 bg-white">Seçiniz</option>
-                  {DOSAGE_FORMS.map(form => (
-                    <option key={form} value={form} className="text-gray-900 bg-white">{form}</option>
-                  ))}
-                </select>
-              </div>
-
               {/* Category */}
               <div>
                 <label className="block text-white/80 text-sm font-medium mb-2">
@@ -1397,36 +1635,6 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                   value={formData.manufacturer}
                   onChange={(e) => setFormData(prev => ({ ...prev, manufacturer: e.target.value }))}
                   placeholder="Örn: Abdi İbrahim"
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                />
-              </div>
-
-              {/* Stock Quantity */}
-              <div>
-                <label className="block text-white/80 text-sm font-medium mb-2">
-                  Stok Miktarı
-                </label>
-                <input
-                  type="number"
-                  value={formData.stockQuantity === 0 ? '' : formData.stockQuantity}
-                  onChange={(e) => setFormData(prev => ({ ...prev, stockQuantity: e.target.value === '' ? 0 : parseInt(e.target.value) }))}
-                  placeholder="Stok miktarı"
-                  min="0"
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                />
-              </div>
-
-              {/* Minimum Stock Level */}
-              <div>
-                <label className="block text-white/80 text-sm font-medium mb-2">
-                  Minimum Stok Seviyesi
-                </label>
-                <input
-                  type="number"
-                  value={formData.minStockLevel === 0 ? '' : formData.minStockLevel}
-                  onChange={(e) => setFormData(prev => ({ ...prev, minStockLevel: e.target.value === '' ? 0 : parseInt(e.target.value) }))}
-                  placeholder="Minimum stok uyarısı için"
-                  min="0"
                   className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                 />
               </div>
@@ -1719,23 +1927,21 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                     <thead className="bg-white/5 text-white/60 text-sm">
                       <tr>
                         <th className="p-4">Tip</th>
-                        <th className="p-4">İlaç Adı (Reçete)</th>
+                        <th className="p-4">İlaç Adı</th>
                         <th className="p-4">Dozaj</th>
-                        <th className="p-4">Eşleşen Stok İlacı</th>
                         <th className="p-4">Fiyat</th>
-                        <th className="p-4">Durum</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/10">
                       {getPrescribedMedicines(selectedPatientForSale).length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="p-8 text-center text-white/50">
+                          <td colSpan={4} className="p-8 text-center text-white/50">
                             Bu protokolde ilaç tanımlanmamış.
                           </td>
                         </tr>
                       ) : (
                         getPrescribedMedicines(selectedPatientForSale).map((med, index) => {
-                          // Find matching medication in stock (loose match)
+                          // Find matching medication for price (optional)
                           const match = savedMedications.find(sm => 
                             sm.name.toLowerCase().includes(med.name.toLowerCase()) || 
                             med.name.toLowerCase().includes(sm.name.toLowerCase())
@@ -1747,26 +1953,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                               <td className="p-4 font-medium">{med.name}</td>
                               <td className="p-4 text-sm">{med.dosage}</td>
                               <td className="p-4">
-                                {match ? (
-                                  <div className="flex items-center gap-2 text-green-400">
-                                    <span>✅ {match.name}</span>
-                                    <span className="text-xs bg-green-500/20 px-2 py-0.5 rounded">Stok: {match.stockQuantity}</span>
-                                  </div>
-                                ) : (
-                                  <span className="text-red-400">❌ Stokta Bulunamadı</span>
-                                )}
-                              </td>
-                              <td className="p-4">
                                 {match ? `${match.price.toFixed(2)} TL` : '-'}
-                              </td>
-                              <td className="p-4">
-                                {match && match.stockQuantity > 0 ? (
-                                  <span className="text-green-400 text-sm">Satılabilir</span>
-                                ) : match ? (
-                                  <span className="text-red-400 text-sm">Stok Yetersiz</span>
-                                ) : (
-                                  <span className="text-gray-500 text-sm">Eşleşme Yok</span>
-                                )}
                               </td>
                             </tr>
                           );
@@ -1799,26 +1986,21 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                           sm.name.toLowerCase().includes(med.name.toLowerCase()) || 
                           med.name.toLowerCase().includes(sm.name.toLowerCase())
                         );
-                        if (match && match.stockQuantity > 0) {
-                          return {
-                            name: med.name,
-                            medicationId: match.id,
-                            price: match.price,
-                            originalStock: match.stockQuantity,
-                            newStock: match.stockQuantity - 1
-                          };
-                        }
-                        return null;
-                     }).filter(Boolean);
+                        return {
+                          name: med.name,
+                          dosage: med.dosage,
+                          type: med.type,
+                          medicationId: match?.id || null,
+                          price: match?.price || 0
+                        };
+                     });
 
                      if (soldItems.length === 0) {
-                       alert('Satışı yapılacak eşleşen stok ilacı bulunamadı.');
+                       alert('Satışı yapılacak ilaç bulunamadı.');
                        return;
                      }
 
-                     if (window.confirm(`${soldItems.length} adet ilaç için satış işlemini onaylıyor musunuz? Stoktan düşülecektir.`)) {
-                        handleCompleteSale(soldItems);
-                     }
+                     handleOpenPaymentModal(soldItems);
                   }}
                   className="px-8 py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-green-500/25 flex items-center gap-2"
                 >
@@ -1826,6 +2008,292 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                 </button>
               </div>
 
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Modal */}
+      {isPaymentModalOpen && selectedPatientForSale && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-200">
+            <div className="p-6 border-b border-gray-200">
+              <h3 className="text-xl font-bold text-gray-900 mb-2">
+                💳 Ödeme Alma
+              </h3>
+              <p className="text-gray-600">
+                {selectedPatientForSale.fullName} için eczane ödeme işlemi
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Medicines being sold - Clickable to toggle */}
+              {pendingSoldItems.length > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                  <h4 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
+                    <span className="text-lg">💊</span>
+                    Satılan İlaçlar
+                    <span className="text-xs font-normal text-blue-600 ml-2">
+                      (Kaldırmak için tıklayın)
+                    </span>
+                  </h4>
+                  <div className="space-y-2">
+                    {pendingSoldItems.map((item, index) => {
+                      const isSelected = selectedMedicines.includes(item.name);
+                      return (
+                        <div 
+                          key={index} 
+                          onClick={() => handleMedicineToggle(item.name)}
+                          className={`flex items-center gap-2 rounded-lg px-3 py-2 border cursor-pointer transition-all duration-200 ${
+                            isSelected 
+                              ? 'bg-white border-blue-200 hover:bg-blue-50' 
+                              : 'bg-gray-100 border-gray-300 opacity-60 hover:opacity-80'
+                          }`}
+                        >
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold ${
+                            isSelected ? 'bg-blue-500 text-white' : 'bg-gray-400 text-white'
+                          }`}>
+                            {isSelected ? index + 1 : '✕'}
+                          </div>
+                          <span className={`font-medium ${isSelected ? 'text-blue-900' : 'text-gray-500 line-through'}`}>
+                            {item.name}
+                          </span>
+                          <span className={`text-sm ${isSelected ? 'text-blue-600' : 'text-gray-400'}`}>
+                            ({item.dosage})
+                          </span>
+                          <span className={`ml-auto text-sm font-medium ${isSelected ? 'text-blue-700' : 'text-gray-400'}`}>
+                            {item.price > 0 ? `${item.price.toFixed(2)} TL` : '-'}
+                          </span>
+                          <span className={`text-xs px-2 py-1 rounded-full ${
+                            isSelected 
+                              ? 'text-green-600 bg-green-100' 
+                              : 'text-red-600 bg-red-100'
+                          }`}>
+                            {isSelected ? 'Aktif' : 'Kaldırıldı'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {selectedMedicines.length === 0 && (
+                    <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-800">
+                      <span className="font-medium">⚠️ Uyarı:</span> En az bir ilaç seçmelisiniz.
+                    </div>
+                  )}
+                  <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+                    <span className="font-medium">💡 Not:</span> Hasta istemediği ilaçları kaldırabilirsiniz.
+                  </div>
+                </div>
+              )}
+
+              {/* Payment Amount */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Ödeme Tutarı (TL)
+                </label>
+                <input
+                  type="number"
+                  value={pharmacyPaymentAmount}
+                  onChange={(e) => setPharmacyPaymentAmount(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="0.00"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+
+              {/* Payment Method */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Ödeme Yöntemi
+                </label>
+                <select
+                  value={pharmacyPaymentMethod}
+                  onChange={(e) => setPharmacyPaymentMethod(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="nakit">Nakit</option>
+                  <option value="kredi_karti">Kredi Kartı</option>
+                  <option value="banka_karti">Banka Kartı</option>
+                  <option value="havale">Havale/EFT</option>
+                </select>
+              </div>
+
+              {/* Patient Info */}
+              <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                <h4 className="font-semibold text-gray-900 mb-2">Hasta Bilgileri</h4>
+                <p className="text-gray-600 text-sm">Ad Soyad: {selectedPatientForSale.fullName}</p>
+                <p className="text-gray-600 text-sm">TC No: {selectedPatientForSale.tcNo}</p>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setIsPaymentModalOpen(false);
+                  setPendingSoldItems([]);
+                  setSelectedMedicines([]);
+                  setPharmacyPaymentAmount('');
+                  setPharmacyPaymentMethod('nakit');
+                }}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg text-gray-700 hover:text-gray-900 font-medium transition-all duration-200"
+              >
+                İptal
+              </button>
+              <button
+                onClick={handleProcessPharmacyPayment}
+                disabled={loading || !pharmacyPaymentAmount || parseFloat(pharmacyPaymentAmount) < 0 || selectedMedicines.length === 0}
+                className="px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-lg font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    İşleniyor...
+                  </>
+                ) : (
+                  <>
+                    💳 Ödeme Al
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sale Detail Modal */}
+      {selectedSaleDetail && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-cyan-600 p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center text-2xl">
+                    📋
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-white">Satış Detayı</h2>
+                    <p className="text-white/80">{selectedSaleDetail.fullName}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedSaleDetail(null)}
+                  className="w-10 h-10 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-white transition-all"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+              {/* Patient Info */}
+              <div className="bg-gray-50 rounded-xl p-4 mb-6">
+                <h3 className="text-sm font-medium text-gray-500 mb-3">Hasta Bilgileri</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-gray-400">Ad Soyad</p>
+                    <p className="text-gray-800 font-medium">{selectedSaleDetail.fullName}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">TC Kimlik No</p>
+                    <p className="text-gray-800 font-medium">{selectedSaleDetail.tcNo}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">Telefon</p>
+                    <p className="text-gray-800 font-medium">{selectedSaleDetail.phone || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">E-posta</p>
+                    <p className="text-gray-800 font-medium">{selectedSaleDetail.email || '-'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sale Info */}
+              <div className="bg-gray-50 rounded-xl p-4 mb-6">
+                <h3 className="text-sm font-medium text-gray-500 mb-3">Satış Bilgileri</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-gray-400">Satış Tarihi</p>
+                    <p className="text-gray-800 font-medium">
+                      {selectedSaleDetail.pharmacySaleDate 
+                        ? new Date(selectedSaleDetail.pharmacySaleDate).toLocaleDateString('tr-TR')
+                        : '-'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">Satış Saati</p>
+                    <p className="text-gray-800 font-medium">
+                      {selectedSaleDetail.pharmacySaleDate 
+                        ? new Date(selectedSaleDetail.pharmacySaleDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+                        : '-'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">Ödeme Yöntemi</p>
+                    <p className="text-gray-800 font-medium">
+                      {selectedSaleDetail.pharmacyPaymentMethod === 'nakit' ? '💵 Nakit' :
+                       selectedSaleDetail.pharmacyPaymentMethod === 'kredi_karti' ? '💳 Kredi Kartı' :
+                       selectedSaleDetail.pharmacyPaymentMethod === 'banka_karti' ? '💳 Banka Kartı' :
+                       selectedSaleDetail.pharmacyPaymentMethod === 'havale' ? '🏦 Havale/EFT' :
+                       selectedSaleDetail.pharmacyPaymentMethod || '-'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">Toplam Tutar</p>
+                    <p className="text-gray-800 font-bold text-lg">
+                      {selectedSaleDetail.pharmacyPaymentAmount 
+                        ? `${selectedSaleDetail.pharmacyPaymentAmount.toFixed(2)} TL`
+                        : '-'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sold Items */}
+              <div className="bg-gray-50 rounded-xl p-4">
+                <h3 className="text-sm font-medium text-gray-500 mb-3">Satılan İlaçlar ({selectedSaleDetail.pharmacySoldItems?.length || 0})</h3>
+                {selectedSaleDetail.pharmacySoldItems?.length > 0 ? (
+                  <div className="space-y-2">
+                    {selectedSaleDetail.pharmacySoldItems.map((item: any, idx: number) => (
+                      <div key={idx} className="flex items-center justify-between bg-white rounded-lg p-3 border border-gray-200">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600">
+                            💊
+                          </div>
+                          <div>
+                            <p className="text-gray-800 font-medium">{item.name}</p>
+                            {item.category && (
+                              <p className="text-gray-400 text-xs">{item.category}</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-gray-800 font-bold">{item.price?.toFixed(2) || '0.00'} TL</p>
+                          {item.quantity && item.quantity > 1 && (
+                            <p className="text-gray-400 text-xs">x{item.quantity}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-400 text-center py-4">İlaç bilgisi bulunamadı</p>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 border-t border-gray-200 flex justify-end">
+              <button
+                onClick={() => setSelectedSaleDetail(null)}
+                className="px-6 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg text-gray-700 hover:text-gray-900 font-medium transition-all duration-200"
+              >
+                Kapat
+              </button>
             </div>
           </div>
         </div>

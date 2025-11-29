@@ -982,6 +982,11 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         anamrezCompletedAt: new Date().toISOString(),
         anamrezCompletedBy: doctorProfile?.fullName || '',
         optionalScans: updatedOptionalScans,
+        // Reset assignment status for new visit - patient can be reassigned to a doctor
+        status: 'anamnez_completed',
+        assignedDoctorId: null,
+        assignedDoctorName: null,
+        assignedAt: null,
         updatedAt: new Date().toISOString()
       });
 

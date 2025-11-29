@@ -94,11 +94,11 @@ export const AVAILABLE_PERMISSIONS: Permission[] = [
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
   admin: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'prescriptions', 'reports', 'assistant-panel', 'doctor-panel', 'treatment-panel'],
-  doctor: ['patients', 'appointments', 'anamnez', 'treatment-protocols', 'assistant-panel', 'doctor-panel', 'settings'],
+  doctor: ['patients', 'appointments', 'anamnez', 'treatment-protocols', 'assistant-panel', 'doctor-panel'],
   nurse: ['dashboard', 'patients', 'appointments', 'anamnez'],
-  assistant: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'prescriptions', 'reports', 'assistant-panel', 'doctor-panel', 'treatment-panel'],
+  assistant: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'accounting', 'pharmacy', 'prescriptions', 'reports', 'assistant-panel', 'doctor-panel', 'treatment-panel'],
   desk: ['patients', 'appointments'],
-  anamnez: ['anamnez', 'patients', 'settings'],
+  anamnez: ['anamnez', 'patients'],
   accounting: ['dashboard', 'patients', 'accounting', 'reports'],
   pharmacy: ['dashboard', 'patients', 'pharmacy', 'prescriptions'],
   treatment: ['dashboard', 'patients', 'appointments', 'treatment-protocols', 'anamnez', 'treatment-panel'],

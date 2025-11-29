@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -76,6 +76,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<string>('nakit');
+  const [selectedApplications, setSelectedApplications] = useState<string[]>([]);
   const [refundAmount, setRefundAmount] = useState<string>('');
   const [refundMethod, setRefundMethod] = useState<string>('nakit');
   const [reportPeriod, setReportPeriod] = useState<string>('daily');
@@ -102,101 +103,99 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
   });
 
   useEffect(() => {
-    const fetchAccountingData = async () => {
-      if (!doctorProfile?.clinicId) return;
+    if (!doctorProfile?.clinicId) return;
 
-      try {
-        setLoading(true);
-        console.log('💰 AccountingScreen: Fetching data for clinicId:', doctorProfile.clinicId);
+    setLoading(true);
+    console.log('💰 AccountingScreen: Setting up real-time listener for clinicId:', doctorProfile.clinicId);
 
-        // Fetch all patients for this clinic
-        const allClinicPatientsQuery = query(
-          collection(db, 'patients'),
-          where('clinicId', '==', doctorProfile.clinicId)
-        );
-        
-        const allClinicSnapshot = await getDocs(allClinicPatientsQuery);
-        const allClinicPatients = allClinicSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as PaymentPatient));
-        
-        console.log('💰 AccountingScreen: Total patients in clinic:', allClinicPatients.length);
-        
-        // Filter patients with treatment_decided status (pending payment)
-        const pendingPayments = allClinicPatients.filter(patient =>
-          patient.status === 'treatment_decided' &&
-          !patient.paymentCompleted
-        ).sort((a, b) => {
-          const dateA = new Date(a.treatmentStartedAt || a.createdAt).getTime();
-          const dateB = new Date(b.treatmentStartedAt || b.createdAt).getTime();
-          return dateA - dateB; // Oldest first (earliest treatment decisions first)
-        });
+    // Set up real-time listener for all patients in this clinic
+    const allClinicPatientsQuery = query(
+      collection(db, 'patients'),
+      where('clinicId', '==', doctorProfile.clinicId)
+    );
+    
+    const unsubscribe = onSnapshot(allClinicPatientsQuery, (snapshot) => {
+      const allClinicPatients = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as PaymentPatient));
+      
+      console.log('💰 AccountingScreen: Total patients in clinic:', allClinicPatients.length);
+      
+      // Filter patients with treatment_decided status (pending payment)
+      const pendingPayments = allClinicPatients.filter(patient =>
+        patient.status === 'treatment_decided' &&
+        !patient.paymentCompleted
+      ).sort((a, b) => {
+        const dateA = new Date(a.treatmentStartedAt || a.createdAt).getTime();
+        const dateB = new Date(b.treatmentStartedAt || b.createdAt).getTime();
+        return dateA - dateB; // Oldest first (earliest treatment decisions first)
+      });
 
-        console.log('💰 AccountingScreen: Pending payment patients:', pendingPayments.length);
-        setPendingPaymentPatients(pendingPayments);
+      console.log('💰 AccountingScreen: Pending payment patients:', pendingPayments.length);
+      setPendingPaymentPatients(pendingPayments);
 
-        // Filter patients with completed payments
-        const completedPayments = allClinicPatients.filter(patient =>
-          patient.paymentCompleted === true
-        ).sort((a, b) => {
-          const dateA = new Date(b.paymentDate || b.updatedAt || b.createdAt).getTime();
-          const dateB = new Date(a.paymentDate || a.updatedAt || a.createdAt).getTime();
-          return dateA - dateB; // Most recent payments first
-        }).slice(0, 50); // Limit to last 50 payments
+      // Filter patients with completed payments
+      const completedPayments = allClinicPatients.filter(patient =>
+        patient.paymentCompleted === true
+      ).sort((a, b) => {
+        const dateA = new Date(b.paymentDate || b.updatedAt || b.createdAt).getTime();
+        const dateB = new Date(a.paymentDate || a.updatedAt || a.createdAt).getTime();
+        return dateA - dateB; // Most recent payments first
+      }).slice(0, 50); // Limit to last 50 payments
 
-        console.log('💰 AccountingScreen: Completed payment patients:', completedPayments.length);
-        setPaidPatients(completedPayments);
+      console.log('💰 AccountingScreen: Completed payment patients:', completedPayments.length);
+      setPaidPatients(completedPayments);
 
-        // Filter patients with not applied treatments (need refund)
-        const notAppliedTreatments = allClinicPatients.filter(patient =>
-          patient.status === 'treatment_not_applied' &&
-          patient.paymentCompleted === true &&
-          !patient.refundProcessed
-        ).sort((a, b) => {
-          const dateA = new Date(b.updatedAt || b.createdAt).getTime();
-          const dateB = new Date(a.updatedAt || a.createdAt).getTime();
-          return dateA - dateB; // Most recent first
-        });
+      // Filter patients with not applied treatments (need refund)
+      const notAppliedTreatments = allClinicPatients.filter(patient =>
+        patient.status === 'treatment_not_applied' &&
+        patient.paymentCompleted === true &&
+        !patient.refundProcessed
+      ).sort((a, b) => {
+        const dateA = new Date(b.updatedAt || b.createdAt).getTime();
+        const dateB = new Date(a.updatedAt || a.createdAt).getTime();
+        return dateA - dateB; // Most recent first
+      });
 
-        console.log('💰 AccountingScreen: Not applied treatment patients:', notAppliedTreatments.length);
-        setNotAppliedTreatmentPatients(notAppliedTreatments);
+      console.log('💰 AccountingScreen: Not applied treatment patients:', notAppliedTreatments.length);
+      setNotAppliedTreatmentPatients(notAppliedTreatments);
 
-        // Calculate stats
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-        
-        const todayPayments = completedPayments.filter(patient =>
-          patient.paymentDate && new Date(patient.paymentDate) >= todayStart
-        ).length;
+      // Calculate stats
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      
+      const todayPayments = completedPayments.filter(patient =>
+        patient.paymentDate && new Date(patient.paymentDate) >= todayStart
+      ).length;
 
-        const totalRevenue = completedPayments.reduce((sum, patient) => 
-          sum + (patient.paymentAmount || 0), 0
-        );
+      const totalRevenue = completedPayments.reduce((sum, patient) => 
+        sum + (patient.paymentAmount || 0), 0
+      );
 
-        const totalRefunds = allClinicPatients
-          .filter(patient => patient.refundProcessed === true)
-          .reduce((sum, patient) => sum + (patient.refundAmount || 0), 0);
+      const totalRefunds = allClinicPatients
+        .filter(patient => patient.refundProcessed === true)
+        .reduce((sum, patient) => sum + (patient.refundAmount || 0), 0);
 
-        const estimatedPendingAmount = pendingPayments.length * 500; // Estimated 500 TL per treatment
+      const estimatedPendingAmount = pendingPayments.length * 500; // Estimated 500 TL per treatment
 
-        setStats({
-          totalPendingPayments: pendingPayments.length,
-          todayPayments,
-          totalRevenue,
-          pendingAmount: estimatedPendingAmount,
-          totalRefunds,
-          notAppliedTreatments: notAppliedTreatments.length
-        });
+      setStats({
+        totalPendingPayments: pendingPayments.length,
+        todayPayments,
+        totalRevenue,
+        pendingAmount: estimatedPendingAmount,
+        totalRefunds,
+        notAppliedTreatments: notAppliedTreatments.length
+      });
 
-      } catch (error) {
-        console.error('❌ AccountingScreen: Error fetching data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+      setLoading(false);
+    }, (error) => {
+      console.error('❌ AccountingScreen: Error in real-time listener:', error);
+      setLoading(false);
+    });
 
-    fetchAccountingData();
+    // Cleanup subscription on unmount
+    return () => unsubscribe();
   }, [doctorProfile?.clinicId]);
 
   const handleProcessPayment = async () => {
@@ -206,22 +205,34 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       setLoading(true);
       const patientRef = doc(db, 'patients', selectedPatient.id);
       
+      // Get removed applications
+      const allApplications = selectedPatient.treatmentOptions?.selectedMainApplications || [];
+      const removedApplications = allApplications.filter(app => !selectedApplications.includes(app));
+      
       await updateDoc(patientRef, {
         paymentCompleted: true,
         paymentAmount: parseFloat(paymentAmount),
         paymentDate: new Date().toISOString(),
         paymentMethod: paymentMethod,
+        // Save which applications the patient will actually receive
+        approvedApplications: selectedApplications,
+        removedApplications: removedApplications,
         status: 'treatment_continue', // Send to treatment continue (TreatmentPanel)
         updatedAt: new Date().toISOString()
       });
 
       console.log(`✅ Payment processed for patient: ${selectedPatient.fullName}`);
+      console.log(`✅ Approved applications: ${selectedApplications.join(', ')}`);
+      if (removedApplications.length > 0) {
+        console.log(`⚠️ Removed applications: ${removedApplications.join(', ')}`);
+      }
       
       // Refresh data
       setIsPaymentModalOpen(false);
       setSelectedPatient(null);
       setPaymentAmount('');
       setPaymentMethod('nakit');
+      setSelectedApplications([]);
       
       // Refetch data
       window.location.reload(); // Simple refresh for now
@@ -702,6 +713,9 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                     <button
                       onClick={() => {
                         setSelectedPatient(patient);
+                        // Initialize selected applications with all applications
+                        const allApplications = patient.treatmentOptions?.selectedMainApplications || [];
+                        setSelectedApplications([...allApplications]);
                         setIsPaymentModalOpen(true);
                       }}
                       className="px-4 py-2 bg-green-500/20 border border-green-400 rounded-xl text-green-200 hover:bg-green-500/30 transition-all duration-200 flex items-center gap-2"
@@ -791,26 +805,59 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
             </div>
 
             <div className="p-6 space-y-4">
-              {/* Selected Applications Display */}
+              {/* Selected Applications Display - Clickable to toggle */}
               {selectedPatient.treatmentOptions?.selectedMainApplications && selectedPatient.treatmentOptions.selectedMainApplications.length > 0 && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                   <h4 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
                     <span className="text-lg">🏥</span>
                     Seçilen Ana Uygulamalar
+                    <span className="text-xs font-normal text-blue-600 ml-2">
+                      (Kaldırmak için tıklayın)
+                    </span>
                   </h4>
                   <div className="space-y-2">
-                    {selectedPatient.treatmentOptions.selectedMainApplications.map((application: string, index: number) => (
-                      <div key={index} className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-blue-200">
-                        <div className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold">
-                          {index + 1}
+                    {selectedPatient.treatmentOptions.selectedMainApplications.map((application: string, index: number) => {
+                      const isSelected = selectedApplications.includes(application);
+                      return (
+                        <div 
+                          key={index} 
+                          onClick={() => {
+                            if (isSelected) {
+                              setSelectedApplications(prev => prev.filter(app => app !== application));
+                            } else {
+                              setSelectedApplications(prev => [...prev, application]);
+                            }
+                          }}
+                          className={`flex items-center gap-2 rounded-lg px-3 py-2 border cursor-pointer transition-all duration-200 ${
+                            isSelected 
+                              ? 'bg-white border-blue-200 hover:bg-blue-50' 
+                              : 'bg-gray-100 border-gray-300 opacity-60 hover:opacity-80'
+                          }`}
+                        >
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold ${
+                            isSelected ? 'bg-blue-500 text-white' : 'bg-gray-400 text-white'
+                          }`}>
+                            {isSelected ? index + 1 : '✕'}
+                          </div>
+                          <span className={`font-medium ${isSelected ? 'text-blue-900' : 'text-gray-500 line-through'}`}>
+                            {application}
+                          </span>
+                          <span className={`ml-auto text-xs px-2 py-1 rounded-full ${
+                            isSelected 
+                              ? 'text-green-600 bg-green-100' 
+                              : 'text-red-600 bg-red-100'
+                          }`}>
+                            {isSelected ? 'Aktif' : 'Kaldırıldı'}
+                          </span>
                         </div>
-                        <span className="text-blue-900 font-medium">{application}</span>
-                        <span className="ml-auto text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
-                          Aktif
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
+                  {selectedApplications.length === 0 && (
+                    <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-800">
+                      <span className="font-medium">⚠️ Uyarı:</span> En az bir uygulama seçmelisiniz.
+                    </div>
+                  )}
                   {selectedPatient.treatmentOptions?.protocolName && (
                     <div className="mt-3 pt-3 border-t border-blue-200">
                       <p className="text-sm text-blue-700">
@@ -819,7 +866,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                     </div>
                   )}
                   <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
-                    <span className="font-medium">💡 Not:</span> Yukarıdaki uygulamalar doktor tarafından seçilmiştir. Ücretlendirme bu uygulamalara göre yapılmalıdır.
+                    <span className="font-medium">💡 Not:</span> Hasta istemediği uygulamaları kaldırabilirsiniz. Kaldırılan uygulamalar tedavi sırasında uygulanmayacaktır.
                   </div>
                 </div>
               )}
@@ -935,6 +982,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   setSelectedPatient(null);
                   setPaymentAmount('');
                   setPaymentMethod('nakit');
+                  setSelectedApplications([]);
                 }}
                 className="px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg text-gray-700 hover:text-gray-900 font-medium transition-all duration-200"
               >
@@ -942,7 +990,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
               </button>
               <button
                 onClick={handleProcessPayment}
-                disabled={loading || !paymentAmount || parseFloat(paymentAmount) <= 0}
+                disabled={loading || !paymentAmount || parseFloat(paymentAmount) <= 0 || (selectedPatient?.treatmentOptions?.selectedMainApplications?.length > 0 && selectedApplications.length === 0)}
                 className="px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-lg font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (

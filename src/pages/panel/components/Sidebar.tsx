@@ -4,7 +4,7 @@ import { rtmLogo } from '../../../assets';
 import { getRoleDisplayName } from '../../../constants/permissions';
 import { useUserPermissions } from '../../../hooks/useUserPermissions';
 
-type PanelSection = 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
+type PanelSection = 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'reports' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
 
 interface SidebarProps {
   currentSection: PanelSection | null;
@@ -54,7 +54,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
       // Check if doctor-panel is missing for admin
       if (userRole === 'admin' && !userPermissions.includes('doctor-panel')) {
         console.error('❌ CRITICAL: Admin user missing doctor-panel permission!');
-        console.log('Expected permissions:', ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'prescriptions', 'reports', 'assistant-panel', 'doctor-panel', 'treatment-panel']);
+        console.log('Expected permissions:', ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'reports', 'assistant-panel', 'doctor-panel', 'treatment-panel']);
         console.log('Actual permissions:', userPermissions);
       }
     }
@@ -157,12 +157,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
       description: 'İlaç yönetimi ve eczane işlemleri'
     },
     {
-      id: 'prescriptions',
-      label: 'Reçeteler',
-      icon: '📋',
-      description: 'Reçete yazma ve takibi'
-    },
-    {
       id: 'reports',
       label: 'Raporlar',
       icon: '📈',
@@ -225,11 +219,19 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
           ) : (
             menuItems
               .filter(item => {
-                // Call Center için dashboard'u filtrele
                 const userRole = doctorProfile?.role || doctorProfile?.userType || 'doctor';
-                if (userRole === 'call-center' && item.id === 'dashboard') {
+                
+                // Hide dashboard (Anasayfa) for specific roles - only admin can see it
+                const hiddenDashboardRoles = ['accounting', 'pharmacy', 'assistant', 'doctor', 'nurse', 'desk', 'anamnez', 'treatment', 'call-center'];
+                if (hiddenDashboardRoles.includes(userRole) && item.id === 'dashboard') {
                   return false;
                 }
+                
+                // Hide settings (Ayarlar) for all roles except admin
+                if (userRole !== 'admin' && item.id === 'settings') {
+                  return false;
+                }
+                
                 return userPermissions.includes(item.id);
               })
               .map((item) => (

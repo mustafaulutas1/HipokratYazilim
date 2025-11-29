@@ -30,6 +30,16 @@ interface AssignedPatient {
   assignedAt?: string;
   status?: string;
   updatedAt?: string;
+  // Payment fields
+  paymentCompleted?: boolean;
+  paymentAmount?: number;
+  paymentDate?: string;
+  paymentMethod?: string;
+  paymentHistory?: Array<{
+    amount?: number;
+    date?: string;
+    method?: string;
+  }>;
 }
 
 interface PatientStats {
@@ -270,13 +280,31 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
   const handleStartTreatment = async (patient: AssignedPatient, treatmentOptions: TreatmentOptions) => {
     try {
       const patientRef = doc(db, 'patients', patient.id);
+      
+      // Store previous payment info in history before starting new treatment
+      const previousPaymentData = patient.paymentCompleted ? {
+        amount: patient.paymentAmount,
+        date: patient.paymentDate,
+        method: patient.paymentMethod
+      } : null;
+
       await updateDoc(patientRef, {
         status: 'treatment_decided',
+        pharmacyStatus: 'waiting', // Patient also goes to pharmacy
         treatmentStartedAt: new Date().toISOString(),
         treatmentOptions: treatmentOptions,
+        // Reset payment status for new treatment
+        paymentCompleted: false,
+        paymentAmount: null,
+        paymentDate: null,
+        paymentMethod: null,
+        // Store previous payment in history if exists
+        ...(previousPaymentData && {
+          paymentHistory: [...(patient.paymentHistory || []), previousPaymentData]
+        }),
         updatedAt: new Date().toISOString()
       });
-      console.log(`✅ Treatment decided for patient: ${patient.fullName}`);
+      console.log(`✅ Treatment decided for patient: ${patient.fullName} - Sent to both Muhasebe and Eczane`);
     } catch (error) {
       console.error('❌ Error starting treatment:', error);
       alert('Tedaviye başlarken bir hata oluştu. Lütfen tekrar deneyin.');

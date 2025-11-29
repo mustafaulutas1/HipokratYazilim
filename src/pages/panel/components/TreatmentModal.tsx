@@ -902,11 +902,18 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
   // Add 3 Regeneration phase
   const handleAdd3Regeneration = () => {
     if (!editedProtocol) return;
+
+    // Prevent adding Reg 3 if Reg 2 doesn't exist
+    if (!editedProtocol.phases.regeneration2) {
+      alert('3. Rejenerasyon fazını eklemek için önce 2. Rejenerasyon fazını eklemelisiniz.');
+      return;
+    }
+
     setEditedProtocol({
       ...editedProtocol,
       phases: {
         ...editedProtocol.phases,
-        regeneration3: { treatment: 'DTX-19', dosage: '3X1 TK' }
+        regeneration3: { treatment: '', dosage: '' }
       }
     });
   };
@@ -1520,12 +1527,19 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                   <div className="bg-green-50 border-2 border-dashed border-green-300 rounded-xl p-4 flex flex-col items-center justify-center text-center min-h-[120px]">
                                     <div className="w-8 h-8 bg-green-200 text-green-600 rounded-full flex items-center justify-center text-sm font-bold mb-2">3</div>
                                     <h5 className="font-bold text-green-600 mb-2">3 Regeneration</h5>
-                                    <button
-                                      onClick={handleAdd3Regeneration}
-                                      className="px-3 py-1 bg-green-500 hover:bg-green-600 text-white rounded-lg text-xs font-medium transition-all flex items-center gap-1"
-                                    >
-                                      + Ekle
-                                    </button>
+                                    
+                                    {!editedProtocol.phases.regeneration2 ? (
+                                      <div className="text-xs text-green-400 font-medium italic">
+                                        Önce 2. fazı ekleyin
+                                      </div>
+                                    ) : (
+                                      <button
+                                        onClick={handleAdd3Regeneration}
+                                        className="px-3 py-1 bg-green-500 hover:bg-green-600 text-white rounded-lg text-xs font-medium transition-all flex items-center gap-1"
+                                      >
+                                        + Ekle
+                                      </button>
+                                    )}
                                   </div>
                                 )}
 

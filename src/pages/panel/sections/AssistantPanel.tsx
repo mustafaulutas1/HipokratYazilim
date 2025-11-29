@@ -41,8 +41,10 @@ interface WaitingPatient {
   assignedDoctorName?: string;
   assignedAt?: string;
   status?: string;
+  pharmacyStatus?: string;
   paymentCompleted?: boolean;
   treatmentCompletedAt?: string;
+  treatmentStartedAt?: string;
   priority?: 'normal' | 'urgent' | 'emergency';
 }
 
@@ -114,10 +116,20 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
           });
         });
         
-        // Filter for completed anamnez and either not assigned or treatment completed (for re-assignment)
+        // Filter for completed anamnez and either not assigned or ready for re-assignment
+        // Patients are ready for re-assignment if:
+        // - Not assigned to any doctor yet
+        // - OR status indicates they completed previous treatment/visit
         const completedPatients = allClinicPatients.filter(patient => 
           patient.isAnamnezCompleted === true && 
-          (!patient.assignedDoctorId || patient.status === 'treatment_completed')
+          (
+            !patient.assignedDoctorId || 
+            patient.status === 'anamnez_completed' ||
+            patient.status === 'treatment_completed' ||
+            patient.status === 'discharged' ||
+            patient.status === 'new' ||
+            !patient.status
+          )
         ).sort((a, b) => {
           const dateA = new Date(a.createdAt || 0).getTime();
           const dateB = new Date(b.createdAt || 0).getTime();
@@ -210,12 +222,12 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
         });
         setTreatmentContinuePatients(treatmentContinueFiltered);
 
-        // Fetch patients waiting for pharmacy (status: pharmacy_waiting)
+        // Fetch patients waiting for pharmacy (pharmacyStatus: waiting)
         const pharmacyWaitingFiltered = allClinicPatients.filter(patient =>
-          patient.status === 'pharmacy_waiting'
+          patient.pharmacyStatus === 'waiting'
         ).sort((a, b) => {
-          const dateA = new Date(a.updatedAt || a.createdAt || 0).getTime();
-          const dateB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+          const dateA = new Date(a.treatmentStartedAt || a.updatedAt || a.createdAt || 0).getTime();
+          const dateB = new Date(b.treatmentStartedAt || b.updatedAt || b.createdAt || 0).getTime();
           return dateB - dateA;
         });
         setPharmacyWaitingPatients(pharmacyWaitingFiltered);
@@ -951,7 +963,7 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
                       {activeListType === 'with_doctor' && `Görüşme Başlangıcı: ${formatDate(patient.assignedAt || patient.createdAt)}`}
                       {activeListType === 'waiting_accounting' && `Tedavi Kararı: ${formatDate(patient.createdAt)}`}
                       {activeListType === 'treatment_continue' && `Tedavi Başlangıcı: ${formatDate(patient.updatedAt || patient.createdAt)}`}
-                      {activeListType === 'pharmacy_waiting' && `Eczaneye Sevk: ${formatDate(patient.treatmentCompletedAt || patient.updatedAt || patient.createdAt)}`}
+                      {activeListType === 'pharmacy_waiting' && `Tedavi Başlangıcı: ${formatDate(patient.treatmentStartedAt || patient.updatedAt || patient.createdAt)}`}
                       {activeListType === 'treatment_completed' && `Taburcu: ${formatDate(patient.createdAt)}`}
                       {activeListType === 'emergency' && `Acil Kayıt: ${formatDate(patient.createdAt)}`}
                     </p>

@@ -19,7 +19,7 @@ import Pharmacy from './sections/Pharmacy';
 import { getUserPermissions } from '../../constants/permissions';
 import { loggingService } from '../../services/loggingService';
 
-type PanelSection = 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
+type PanelSection = 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'reports' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
 
 interface DoctorProfile {
   fullName: string;
@@ -127,14 +127,20 @@ export default function AdminPanel() {
     checkUserAccess();
   }, [user, loading, navigate]);
 
-  // Set initial section based on user role
+  // Set initial section based on user role or restore from localStorage
   useEffect(() => {
     if (doctorProfile && !panelLoading && currentSection === null) {
       const userRole = doctorProfile.role || doctorProfile.userType || 'doctor';
       const userPermissions = getUserPermissions(userRole, doctorProfile.permissions);
       
-      // Set initial section to first permission (permissions are ordered by priority)
-      if (userPermissions.length > 0) {
+      // Try to restore from localStorage first
+      const savedSection = localStorage.getItem('currentPanelSection') as PanelSection | null;
+      
+      if (savedSection && userPermissions.includes(savedSection)) {
+        // Restore saved section if user has permission
+        setCurrentSection(savedSection);
+      } else if (userPermissions.length > 0) {
+        // Set initial section to first permission (permissions are ordered by priority)
         setCurrentSection(userPermissions[0] as PanelSection);
       } else {
         // Fallback: For desk role, default to 'patients', otherwise 'dashboard'
@@ -162,6 +168,8 @@ export default function AdminPanel() {
   // Section değişikliğini handle et ve logla
   const handleSectionChange = (newSection: PanelSection) => {
     setCurrentSection(newSection);
+    // Save to localStorage to persist across page refreshes
+    localStorage.setItem('currentPanelSection', newSection);
     logSectionChange(newSection);
   };
 
@@ -272,7 +280,6 @@ export default function AdminPanel() {
                     {currentSection === 'users' && 'Kullanıcı Yönetimi'}
                     {currentSection === 'accounting' && 'Muhasebe'}
                     {currentSection === 'pharmacy' && 'Eczane'}
-                    {currentSection === 'prescriptions' && 'Reçeteler'}
                     {currentSection === 'reports' && 'Raporlar'}
                     {currentSection === 'assistant-panel' && 'Asistan Ekranı'}
                     {currentSection === 'doctor-panel' && 'Doktor Ekranı'}
