@@ -163,23 +163,23 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     'Diğer'
   ];
 
-  // Available dosage forms
-  const DOSAGE_FORMS = [
-    'Tablet',
-    'Kapsül',
-    'Şurup',
-    'İnjeke',
-    'Krem',
-    'Merhem',
-    'Damla',
-    'Toz',
-    'Fitil',
-    'Şampuan',
-    'Jel',
-    'Sprey',
-    'Transdermal Plaster',
-    'Diğer'
-  ];
+  // Available dosage forms - currently unused but kept for future use
+  // const DOSAGE_FORMS = [
+  //   'Tablet',
+  //   'Kapsül',
+  //   'Şurup',
+  //   'İnjeke',
+  //   'Krem',
+  //   'Merhem',
+  //   'Damla',
+  //   'Toz',
+  //   'Fitil',
+  //   'Şampuan',
+  //   'Jel',
+  //   'Sprey',
+  //   'Transdermal Plaster',
+  //   'Diğer'
+  // ];
 
   // Available device categories
   const DEVICE_CATEGORIES = [
@@ -455,9 +455,9 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   };
 
   // Legacy function - kept for compatibility but now opens payment modal
-  const handleCompleteSale = async (soldItems: any[]) => {
-    handleOpenPaymentModal(soldItems);
-  };
+  // const handleCompleteSale = async (soldItems: any[]) => {
+  //   handleOpenPaymentModal(soldItems);
+  // };
 
   const saveMedication = async () => {
     if (!formData.name.trim()) {

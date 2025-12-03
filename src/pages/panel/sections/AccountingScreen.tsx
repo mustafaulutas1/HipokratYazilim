@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, updateDoc, doc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, updateDoc, doc, getDocs } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -207,7 +207,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       
       // Get removed applications
       const allApplications = selectedPatient.treatmentOptions?.selectedMainApplications || [];
-      const removedApplications = allApplications.filter(app => !selectedApplications.includes(app));
+      const removedApplications = allApplications.filter((app: string) => !selectedApplications.includes(app));
       
       await updateDoc(patientRef, {
         paymentCompleted: true,
@@ -312,28 +312,28 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       );
       
       const allClinicSnapshot = await getDocs(allClinicPatientsQuery);
-      const allClinicPatients = allClinicSnapshot.docs.map(doc => ({
+      const allClinicPatients = allClinicSnapshot.docs.map((doc: { id: string; data: () => Record<string, unknown> }) => ({
         id: doc.id,
         ...doc.data()
       } as PaymentPatient));
 
       // Ödemeleri filtrele
-      const periodPayments = allClinicPatients.filter(patient => {
+      const periodPayments = allClinicPatients.filter((patient: PaymentPatient) => {
         if (!patient.paymentCompleted || !patient.paymentDate) return false;
         const paymentDate = new Date(patient.paymentDate);
         return paymentDate >= startDate && paymentDate <= now;
       });
 
       // İadeleri filtrele
-      const periodRefunds = allClinicPatients.filter(patient => {
+      const periodRefunds = allClinicPatients.filter((patient: PaymentPatient) => {
         if (!patient.refundProcessed || !patient.refundDate) return false;
         const refundDate = new Date(patient.refundDate);
         return refundDate >= startDate && refundDate <= now;
       });
 
       // İstatistikleri hesapla
-      const totalPayments = periodPayments.reduce((sum, patient) => sum + (patient.paymentAmount || 0), 0);
-      const totalRefunds = periodRefunds.reduce((sum, patient) => sum + (patient.refundAmount || 0), 0);
+      const totalPayments = periodPayments.reduce((sum: number, patient: PaymentPatient) => sum + (patient.paymentAmount || 0), 0);
+      const totalRefunds = periodRefunds.reduce((sum: number, patient: PaymentPatient) => sum + (patient.refundAmount || 0), 0);
       const netRevenue = totalPayments - totalRefunds;
 
       setReportData({

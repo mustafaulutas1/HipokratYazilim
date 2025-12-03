@@ -19,7 +19,7 @@ import Pharmacy from './sections/Pharmacy';
 import { getUserPermissions } from '../../constants/permissions';
 import { loggingService } from '../../services/loggingService';
 
-type PanelSection = 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'reports' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
+type PanelSection = 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
 
 interface DoctorProfile {
   fullName: string;
