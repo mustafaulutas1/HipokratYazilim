@@ -36,7 +36,7 @@ export const DEFAULT_ROLES: Omit<Role, 'id' | 'createdAt' | 'updatedAt'>[] = [
     name: 'assistant',
     displayName: 'Asistan',
     description: 'Genel destek ve yardımcı işlemler',
-    permissions: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'accounting', 'pharmacy', 'prescriptions', 'reports', 'assistant-panel', 'doctor-panel', 'treatment-panel'],
+    permissions: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'accounting', 'pharmacy', 'prescriptions', 'assistant-panel', 'doctor-panel', 'treatment-panel'],
     isDefault: true
   },
   {
@@ -50,7 +50,7 @@ export const DEFAULT_ROLES: Omit<Role, 'id' | 'createdAt' | 'updatedAt'>[] = [
     name: 'accounting',
     displayName: 'Muhasebe Uzmanı',
     description: 'Mali işlemler, faturalama ve finansal raporlama',
-    permissions: ['dashboard', 'patients', 'accounting', 'reports'],
+    permissions: ['dashboard', 'patients', 'accounting'],
     isDefault: true
   },
   {
@@ -64,14 +64,14 @@ export const DEFAULT_ROLES: Omit<Role, 'id' | 'createdAt' | 'updatedAt'>[] = [
     name: 'treatment',
     displayName: 'Tedavi Uzmanı',
     description: 'Tedavi uygulamaları ve takibi',
-    permissions: ['dashboard', 'patients', 'appointments', 'treatment-protocols', 'anamnez'],
+    permissions: ['dashboard', 'patients', 'appointments', 'treatment-protocols', 'anamnez', 'treatment-panel'],
     isDefault: true
   },
   {
     name: 'admin',
     displayName: 'Sistem Yöneticisi',
     description: 'Tam yetki - tüm sistem yönetimi',
-    permissions: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'prescriptions', 'reports', 'assistant-panel'],
+    permissions: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'prescriptions', 'assistant-panel'],
     isDefault: true
   },
   {

@@ -67,12 +67,6 @@ export const AVAILABLE_PERMISSIONS: Permission[] = [
     icon: '📋'
   },
   {
-    id: 'reports',
-    name: 'Raporlar',
-    description: 'Sistem raporları ve analizler',
-    icon: '📈'
-  },
-  {
     id: 'assistant-panel',
     name: 'Asistan Ekranı',
     description: 'Asistan özel işlemleri ve yönetimi',
@@ -93,13 +87,13 @@ export const AVAILABLE_PERMISSIONS: Permission[] = [
 ];
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
-  admin: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'prescriptions', 'reports', 'assistant-panel', 'doctor-panel', 'treatment-panel'],
+  admin: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'prescriptions', 'assistant-panel', 'doctor-panel', 'treatment-panel'],
   doctor: ['patients', 'appointments', 'anamnez', 'treatment-protocols', 'assistant-panel', 'doctor-panel'],
   nurse: ['dashboard', 'patients', 'appointments', 'anamnez'],
-  assistant: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'accounting', 'pharmacy', 'prescriptions', 'reports', 'assistant-panel', 'doctor-panel', 'treatment-panel'],
+  assistant: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'accounting', 'pharmacy', 'prescriptions', 'assistant-panel', 'doctor-panel', 'treatment-panel'],
   desk: ['patients', 'appointments'],
   anamnez: ['anamnez', 'patients'],
-  accounting: ['dashboard', 'patients', 'accounting', 'reports'],
+  accounting: ['dashboard', 'patients', 'accounting'],
   pharmacy: ['dashboard', 'patients', 'pharmacy', 'prescriptions'],
   treatment: ['dashboard', 'patients', 'appointments', 'treatment-protocols', 'anamnez', 'treatment-panel'],
   'call-center': ['patients', 'appointments']

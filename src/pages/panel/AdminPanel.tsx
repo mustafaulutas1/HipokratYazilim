@@ -19,7 +19,7 @@ import Pharmacy from './sections/Pharmacy';
 import { getUserPermissions } from '../../constants/permissions';
 import { loggingService } from '../../services/loggingService';
 
-type PanelSection = 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
+type PanelSection = 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
 
 interface DoctorProfile {
   fullName: string;
@@ -280,7 +280,6 @@ export default function AdminPanel() {
                     {currentSection === 'users' && 'Kullanıcı Yönetimi'}
                     {currentSection === 'accounting' && 'Muhasebe'}
                     {currentSection === 'pharmacy' && 'Eczane'}
-                    {currentSection === 'reports' && 'Raporlar'}
                     {currentSection === 'assistant-panel' && 'Asistan Ekranı'}
                     {currentSection === 'doctor-panel' && 'Doktor Ekranı'}
                     {currentSection === 'treatment-panel' && 'Tedavi Ekranı'}

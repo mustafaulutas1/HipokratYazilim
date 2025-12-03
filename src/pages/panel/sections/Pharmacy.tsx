@@ -1155,16 +1155,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                               <p className="text-white/70 text-sm mb-1">{medication.manufacturer}</p>
                             )}
                             
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              <span className={`px-2 py-1 rounded text-xs ${
-                                medication.stockQuantity <= medication.minStockLevel 
-                                  ? 'bg-yellow-500/20 text-yellow-300' 
-                                  : 'bg-green-500/20 text-green-300'
-                              }`}>
-                                📦 Stok: {medication.stockQuantity}
-                              </span>
-                              
-                              {medication.expiryDate && (
+                            {medication.expiryDate && (
+                              <div className="flex flex-wrap gap-2 mt-2">
                                 <span className={`px-2 py-1 rounded text-xs ${
                                   new Date(medication.expiryDate) < new Date()
                                     ? 'bg-red-500/20 text-red-300'
@@ -1174,8 +1166,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                                 }`}>
                                   📅 {new Date(medication.expiryDate).toLocaleDateString('tr-TR')}
                                 </span>
-                              )}
-                            </div>
+                              </div>
+                            )}
                             
                             {medication.description && (
                               <p className="text-white/70 text-sm mt-2 line-clamp-2">{medication.description}</p>
@@ -1271,25 +1263,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                                 <p className="text-white/70 text-sm mb-1">{device.manufacturer}</p>
                               )}
                               
-                              <div className="flex flex-wrap gap-2 mt-2">
-                                <span className={`px-2 py-1 rounded text-xs ${
-                                  device.stockQuantity <= device.minStockLevel 
-                                    ? 'bg-yellow-500/20 text-yellow-300' 
-                                    : 'bg-green-500/20 text-green-300'
-                                }`}>
-                                  📦 Stok: {device.stockQuantity}
-                                </span>
-                                
-                                {device.nextMaintenanceDate && (
-                                  <span className={`px-2 py-1 rounded text-xs ${
-                                    new Date(device.nextMaintenanceDate) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-                                      ? 'bg-orange-500/20 text-orange-300'
-                                      : 'bg-blue-500/20 text-blue-300'
-                                  }`}>
-                                    🔧 {new Date(device.nextMaintenanceDate).toLocaleDateString('tr-TR')}
-                                  </span>
-                                )}
-                              </div>
+
                               
                               {device.description && (
                                 <p className="text-white/70 text-sm mt-2 line-clamp-2">{device.description}</p>
@@ -1793,76 +1767,6 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                     placeholder="Örn: Omron, Philips"
                     className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
                   />
-                </div>
-
-                {/* Stock Quantity */}
-                <div>
-                  <label className="block text-white/80 text-sm font-medium mb-2">
-                    Stok Miktarı
-                  </label>
-                  <input
-                    type="number"
-                    value={deviceFormData.stockQuantity === 0 ? '' : deviceFormData.stockQuantity}
-                    onChange={(e) => setDeviceFormData(prev => ({ ...prev, stockQuantity: e.target.value === '' ? 0 : parseInt(e.target.value) }))}
-                    placeholder="Stok miktarı"
-                    min="0"
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-                  />
-                </div>
-
-                {/* Minimum Stock Level */}
-                <div>
-                  <label className="block text-white/80 text-sm font-medium mb-2">
-                    Minimum Stok Seviyesi
-                  </label>
-                  <input
-                    type="number"
-                    value={deviceFormData.minStockLevel === 0 ? '' : deviceFormData.minStockLevel}
-                    onChange={(e) => setDeviceFormData(prev => ({ ...prev, minStockLevel: e.target.value === '' ? 0 : parseInt(e.target.value) }))}
-                    placeholder="Minimum stok uyarısı için"
-                    min="0"
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-                  />
-                </div>
-
-                {/* Last Maintenance Date */}
-                <div>
-                  <label className="block text-white/80 text-sm font-medium mb-2">
-                    Son Bakım Tarihi
-                  </label>
-                  <input
-                    type="date"
-                    value={deviceFormData.lastMaintenanceDate || ''}
-                    onChange={(e) => setDeviceFormData(prev => ({ ...prev, lastMaintenanceDate: e.target.value }))}
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-                  />
-                </div>
-
-                {/* Next Maintenance Date */}
-                <div>
-                  <label className="block text-white/80 text-sm font-medium mb-2">
-                    Sonraki Bakım Tarihi
-                  </label>
-                  <input
-                    type="date"
-                    value={deviceFormData.nextMaintenanceDate || ''}
-                    onChange={(e) => setDeviceFormData(prev => ({ ...prev, nextMaintenanceDate: e.target.value }))}
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-                  />
-                </div>
-
-                {/* Maintenance Required */}
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="maintenanceRequired"
-                    checked={deviceFormData.maintenanceRequired}
-                    onChange={(e) => setDeviceFormData(prev => ({ ...prev, maintenanceRequired: e.target.checked }))}
-                    className="w-5 h-5 text-purple-600 bg-white/10 border-white/20 rounded focus:ring-purple-500"
-                  />
-                  <label htmlFor="maintenanceRequired" className="ml-2 text-white/80 text-sm font-medium">
-                    Bakım Takibi Gerekli
-                  </label>
                 </div>
               </div>
 

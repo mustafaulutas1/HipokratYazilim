@@ -80,3 +80,55 @@ export const checkRolePermissions = async (roleName: string) => {
     throw error;
   }
 };
+
+// Update treatment role to add treatment-panel permission
+export const updateTreatmentRoleWithTreatmentPanel = async () => {
+  try {
+    console.log('🔄 Starting treatment role update process...');
+    
+    // Query for treatment role (clinicId: 'default')
+    const rolesRef = collection(db, 'roles');
+    const q = query(
+      rolesRef,
+      where('name', '==', 'treatment'),
+      where('clinicId', '==', 'default')
+    );
+    
+    const querySnapshot = await getDocs(q);
+    
+    for (const roleDoc of querySnapshot.docs) {
+      const roleData = roleDoc.data();
+      const currentPermissions = roleData.permissions || [];
+      
+      // Check if treatment-panel is already in permissions
+      if (!currentPermissions.includes('treatment-panel')) {
+        const updatedPermissions = [...currentPermissions, 'treatment-panel'];
+        
+        console.log(`📝 Updating treatment role permissions:`, {
+          before: currentPermissions,
+          after: updatedPermissions
+        });
+        
+        // Update the role document
+        await updateDoc(doc(db, 'roles', roleDoc.id), {
+          permissions: updatedPermissions,
+          updatedAt: new Date().toISOString()
+        });
+        
+        console.log(`✅ Successfully updated treatment role with treatment-panel permission`);
+      } else {
+        console.log(`ℹ️ Treatment role already has treatment-panel permission`);
+      }
+    }
+    
+    if (querySnapshot.empty) {
+      console.log('❌ Treatment role not found in default roles');
+    }
+    
+    console.log('🎉 Treatment role update process completed!');
+    return true;
+  } catch (error) {
+    console.error('❌ Error updating treatment role:', error);
+    throw error;
+  }
+};

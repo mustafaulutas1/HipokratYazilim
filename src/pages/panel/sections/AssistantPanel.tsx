@@ -6,7 +6,7 @@ import DoctorNotesModal from './DoctorNotesModal';
 import DoctorMessageModal from '../components/DoctorMessageModal';
 import DoctorSelectionModal from '../components/DoctorSelectionModal';
 
-type PanelSection = 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
+type PanelSection = 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
 
 interface AssistantPanelProps {
   doctorProfile?: any;

@@ -4,7 +4,7 @@ import { rtmLogo } from '../../../assets';
 import { getRoleDisplayName } from '../../../constants/permissions';
 import { useUserPermissions } from '../../../hooks/useUserPermissions';
 
-type PanelSection = 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'reports' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
+type PanelSection = 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
 
 interface SidebarProps {
   currentSection: PanelSection | null;
@@ -54,7 +54,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
       // Check if doctor-panel is missing for admin
       if (userRole === 'admin' && !userPermissions.includes('doctor-panel')) {
         console.error('❌ CRITICAL: Admin user missing doctor-panel permission!');
-        console.log('Expected permissions:', ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'reports', 'assistant-panel', 'doctor-panel', 'treatment-panel']);
+        console.log('Expected permissions:', ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'assistant-panel', 'doctor-panel', 'treatment-panel']);
         console.log('Actual permissions:', userPermissions);
       }
     }
@@ -155,12 +155,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
       label: 'Eczane',
       icon: '💊',
       description: 'İlaç yönetimi ve eczane işlemleri'
-    },
-    {
-      id: 'reports',
-      label: 'Raporlar',
-      icon: '📈',
-      description: 'Sistem raporları ve analizler'
     },
     {
       id: 'treatment-panel',
