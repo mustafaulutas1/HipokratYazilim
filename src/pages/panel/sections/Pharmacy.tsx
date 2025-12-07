@@ -1055,11 +1055,6 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       }
     });
 
-  // Get low stock medications
-  const lowStockMedications = savedMedications.filter(
-    med => med.stockQuantity <= med.minStockLevel
-  );
-
   // Get expired or soon-to-expire medications
   const expiredMedications = savedMedications.filter(
     med => med.expiryDate && new Date(med.expiryDate) < new Date()
