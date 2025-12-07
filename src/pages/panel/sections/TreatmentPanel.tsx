@@ -66,6 +66,8 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
   const [treatmentApplied, setTreatmentApplied] = useState<boolean>(true);
   const [treatmentNotes, setTreatmentNotes] = useState<string>('Tedavi Başarı İle Uygulandı');
   const [notAppliedReason, setNotAppliedReason] = useState<string>('');
+  const [selectedTreatments, setSelectedTreatments] = useState<string[]>([]);
+  const [unselectedTreatmentReason, setUnselectedTreatmentReason] = useState<string>('');
   const [isEmergencyModalOpen, setIsEmergencyModalOpen] = useState(false);
   const [selectedEmergencyCause, setSelectedEmergencyCause] = useState<string>('');
   const [customEmergencyCause, setCustomEmergencyCause] = useState<string>('');
@@ -205,21 +207,53 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
       setLoading(true);
       const patientRef = doc(db, 'patients', selectedPatient.id);
 
-      const updateData: Record<string, string | boolean> = {
+      // Get all planned treatments and determine which were unselected
+      const allTreatments = selectedPatient.treatmentOptions?.selectedMainApplications || [];
+      const unselectedTreatments = allTreatments.filter((t: string) => !selectedTreatments.includes(t));
+      const hasUnselectedTreatments = unselectedTreatments.length > 0;
+
+      const updateData: Record<string, any> = {
         updatedAt: new Date().toISOString()
       };
 
       if (treatmentApplied) {
-        updateData.status = 'treatment_completed'; // Treatment completed
-        updateData.treatmentCompletedAt = new Date().toISOString();
-        updateData.treatmentApplied = true;
-        if (treatmentNotes.trim()) {
-          updateData.treatmentNotes = treatmentNotes.trim();
+        // Check if some treatments were not applied (unselected)
+        if (hasUnselectedTreatments) {
+          // Partial treatment - some treatments were not applied
+          updateData.status = 'treatment_not_applied'; // Goes to refund queue
+          updateData.treatmentCompletedAt = new Date().toISOString();
+          updateData.treatmentApplied = true; // Some treatments were applied
+          updateData.treatmentPartiallyApplied = true;
+          updateData.appliedTreatments = selectedTreatments;
+          updateData.unselectedTreatments = unselectedTreatments;
+          updateData.unselectedTreatmentReason = unselectedTreatmentReason.trim() || 'Hasta tarafından reddedildi';
+          updateData.requiresRefund = true;
+          updateData.refundReason = `Uygulanmayan tedaviler: ${unselectedTreatments.join(', ')}`;
+          if (treatmentNotes.trim()) {
+            updateData.treatmentNotes = treatmentNotes.trim();
+          }
+        } else {
+          // All treatments applied
+          updateData.status = 'treatment_completed';
+          updateData.treatmentCompletedAt = new Date().toISOString();
+          updateData.treatmentApplied = true;
+          updateData.treatmentPartiallyApplied = false;
+          updateData.appliedTreatments = selectedTreatments;
+          updateData.unselectedTreatments = [];
+          if (treatmentNotes.trim()) {
+            updateData.treatmentNotes = treatmentNotes.trim();
+          }
         }
       } else {
+        // No treatment applied at all
         updateData.status = 'treatment_not_applied';
         updateData.treatmentApplied = false;
+        updateData.treatmentPartiallyApplied = false;
         updateData.treatmentNotAppliedReason = notAppliedReason.trim();
+        updateData.appliedTreatments = [];
+        updateData.unselectedTreatments = allTreatments;
+        updateData.requiresRefund = true;
+        updateData.refundReason = `Tüm tedaviler uygulanmadı: ${notAppliedReason.trim()}`;
         if (treatmentNotes.trim()) {
           updateData.treatmentNotes = treatmentNotes.trim();
         }
@@ -227,7 +261,11 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
 
       await updateDoc(patientRef, updateData);
 
-      console.log(`✅ Treatment processed for patient: ${selectedPatient.fullName}, Applied: ${treatmentApplied}`);
+      console.log(`✅ Treatment processed for patient: ${selectedPatient.fullName}`);
+      console.log(`✅ Applied treatments: ${selectedTreatments.join(', ')}`);
+      if (hasUnselectedTreatments) {
+        console.log(`⚠️ Unselected treatments (refund required): ${unselectedTreatments.join(', ')}`);
+      }
 
       // Reset modal state
       setIsTreatmentModalOpen(false);
@@ -235,6 +273,8 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
       setTreatmentApplied(true);
       setTreatmentNotes('Tedavi Başarı İle Uygulandı');
       setNotAppliedReason('');
+      setSelectedTreatments([]);
+      setUnselectedTreatmentReason('');
 
       // Refetch data
       window.location.reload(); // Simple refresh for now
@@ -458,6 +498,10 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
                         setTreatmentApplied(true);
                         setTreatmentNotes('Tedavi Başarı İle Uygulandı');
                         setNotAppliedReason('');
+                        // Initialize selected treatments with all available treatments
+                        const allTreatments = patient.treatmentOptions?.selectedMainApplications || [];
+                        setSelectedTreatments([...allTreatments]);
+                        setUnselectedTreatmentReason('');
                         setIsTreatmentModalOpen(true);
                       }}
                       className="px-4 py-2 bg-green-500/20 border border-green-400 rounded-xl text-green-200 hover:bg-green-500/30 transition-all duration-200 flex items-center gap-2"
@@ -525,26 +569,107 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
             </div>
 
             <div className="p-6 space-y-4">
-              {/* Selected Applications Display */}
+              {/* Selected Applications Display - Clickable to toggle */}
               {selectedPatient.treatmentOptions?.selectedMainApplications && selectedPatient.treatmentOptions.selectedMainApplications.length > 0 && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                   <h4 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
                     <span className="text-lg">🏥</span>
                     Uygulanacak Tedaviler
+                    <span className="text-xs font-normal text-blue-600 ml-2">
+                      (Uygulanmayan tedavileri kaldırmak için tıklayın)
+                    </span>
                   </h4>
                   <div className="space-y-2">
-                    {selectedPatient.treatmentOptions.selectedMainApplications.map((application: string, index: number) => (
-                      <div key={index} className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-blue-200">
-                        <div className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold">
-                          {index + 1}
+                    {selectedPatient.treatmentOptions.selectedMainApplications.map((application: string, index: number) => {
+                      const isSelected = selectedTreatments.includes(application);
+                      return (
+                        <div 
+                          key={index} 
+                          onClick={() => {
+                            if (treatmentApplied) {
+                              if (isSelected) {
+                                setSelectedTreatments(prev => prev.filter(t => t !== application));
+                              } else {
+                                setSelectedTreatments(prev => [...prev, application]);
+                              }
+                            }
+                          }}
+                          className={`flex items-center gap-2 rounded-lg px-3 py-2 border cursor-pointer transition-all duration-200 ${
+                            !treatmentApplied 
+                              ? 'bg-gray-100 border-gray-300 opacity-50 cursor-not-allowed'
+                              : isSelected 
+                                ? 'bg-white border-blue-200 hover:bg-blue-50' 
+                                : 'bg-red-50 border-red-300 hover:bg-red-100'
+                          }`}
+                        >
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold ${
+                            !treatmentApplied
+                              ? 'bg-gray-400 text-white'
+                              : isSelected 
+                                ? 'bg-blue-500 text-white' 
+                                : 'bg-red-500 text-white'
+                          }`}>
+                            {isSelected ? index + 1 : '✕'}
+                          </div>
+                          <span className={`font-medium ${
+                            !treatmentApplied
+                              ? 'text-gray-500'
+                              : isSelected 
+                                ? 'text-blue-900' 
+                                : 'text-red-700 line-through'
+                          }`}>
+                            {application}
+                          </span>
+                          <span className={`ml-auto text-xs px-2 py-1 rounded-full ${
+                            !treatmentApplied
+                              ? 'text-gray-600 bg-gray-200'
+                              : isSelected 
+                                ? 'text-green-600 bg-green-100' 
+                                : 'text-red-600 bg-red-100'
+                          }`}>
+                            {!treatmentApplied ? 'Devre Dışı' : isSelected ? 'Uygulanacak' : 'İade Edilecek'}
+                          </span>
                         </div>
-                        <span className="text-blue-900 font-medium">{application}</span>
-                        <span className="ml-auto text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
-                          Planlı
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
+                  
+                  {/* Warning for unselected treatments */}
+                  {treatmentApplied && selectedTreatments.length < (selectedPatient.treatmentOptions.selectedMainApplications?.length || 0) && (
+                    <div className="mt-3 p-3 bg-orange-100 border border-orange-300 rounded-lg">
+                      <div className="flex items-start gap-2">
+                        <span className="text-xl">⚠️</span>
+                        <div className="flex-1">
+                          <p className="text-orange-800 font-medium text-sm">
+                            {selectedPatient.treatmentOptions.selectedMainApplications.length - selectedTreatments.length} tedavi uygulanmayacak!
+                          </p>
+                          <p className="text-orange-700 text-xs mt-1">
+                            Hasta, uygulanmayan tedaviler için İade Bekleyenler listesine yönlendirilecektir.
+                          </p>
+                          
+                          <div className="mt-2">
+                            <label className="block text-xs font-medium text-orange-800 mb-1">
+                              Uygulanmama Nedeni (Opsiyonel)
+                            </label>
+                            <input
+                              type="text"
+                              value={unselectedTreatmentReason}
+                              onChange={(e) => setUnselectedTreatmentReason(e.target.value)}
+                              placeholder="Örn: Hasta reddetti, zaman yetersiz..."
+                              className="w-full px-2 py-1 text-sm border border-orange-300 rounded focus:ring-2 focus:ring-orange-400 focus:border-transparent"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {treatmentApplied && selectedTreatments.length === 0 && (
+                    <div className="mt-3 p-2 bg-red-100 border border-red-300 rounded text-sm text-red-800">
+                      <span className="font-medium">⚠️ Uyarı:</span> En az bir tedavi seçmelisiniz veya "Tedavi Uygulanmadı" seçeneğini işaretleyin.
+                    </div>
+                  )}
+                  
                   {selectedPatient.treatmentOptions?.protocolName && (
                     <div className="mt-3 pt-3 border-t border-blue-200">
                       <p className="text-sm text-blue-700">
@@ -653,6 +778,8 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
                   setTreatmentApplied(true);
                   setTreatmentNotes('Tedavi Başarı İle Uygulandı');
                   setNotAppliedReason('');
+                  setSelectedTreatments([]);
+                  setUnselectedTreatmentReason('');
                 }}
                 className="px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg text-gray-700 hover:text-gray-900 font-medium transition-all duration-200"
               >
@@ -660,7 +787,7 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
               </button>
               <button
                 onClick={handleProcessTreatment}
-                disabled={loading || (!treatmentApplied && notAppliedReason.trim().length < 20)}
+                disabled={loading || (!treatmentApplied && notAppliedReason.trim().length < 20) || (treatmentApplied && selectedTreatments.length === 0)}
                 className="px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-lg font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (

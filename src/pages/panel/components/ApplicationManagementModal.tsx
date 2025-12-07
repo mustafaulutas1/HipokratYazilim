@@ -122,11 +122,14 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
     try {
       setLoading(true);
       
+      // Ensure name is uppercase
+      const uppercaseName = formData.name.trim().toUpperCase();
+      
       if (editingApplication) {
         // Update existing application
         const applicationRef = doc(db, 'medicalApplications', editingApplication.id);
         await updateDoc(applicationRef, {
-          name: formData.name,
+          name: uppercaseName,
           description: formData.description,
           price: formData.price,
           updatedAt: new Date().toISOString()
@@ -137,6 +140,7 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
         const applicationsRef = collection(db, 'medicalApplications');
         await addDoc(applicationsRef, {
           ...formData,
+          name: uppercaseName,
           clinicId: doctorProfile?.clinicId || '',
           createdAt: new Date().toISOString()
         });
@@ -467,9 +471,9 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
                   <input
                     type="text"
                     value={formData.name}
-                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value.toUpperCase() }))}
                     placeholder="Örn: HACAMAT, MINOR OZON, AKUPUNKTUR"
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50 uppercase"
                   />
                 </div>
 

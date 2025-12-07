@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, query, deleteDoc, doc, where, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, deleteDoc, doc, where, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
+import { utils, writeFile } from 'xlsx';
 
 interface Medication {
   id?: string;
@@ -85,6 +86,11 @@ interface PharmacyPatient {
     selectedProtocol?: SavedProtocol;
     customizedProtocol?: SavedProtocol;
   };
+  // Debt tracking fields
+  hasDebt?: boolean;
+  debtAmount?: number;
+  debtDate?: string;
+  debtReason?: string;
 }
 
 const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorProfile }) => {
@@ -111,6 +117,12 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const [pharmacyPaymentMethod, setPharmacyPaymentMethod] = useState<string>('nakit');
   const [pendingSoldItems, setPendingSoldItems] = useState<any[]>([]);
   const [selectedMedicines, setSelectedMedicines] = useState<string[]>([]);
+  const [isPharmacyPartialPayment, setIsPharmacyPartialPayment] = useState<boolean>(false);
+  const [pharmacyRemainingDebt, setPharmacyRemainingDebt] = useState<string>('');
+  // Debt history panel states
+  const [patientDebtHistory, setPatientDebtHistory] = useState<any[]>([]);
+  const [selectedDebts, setSelectedDebts] = useState<string[]>([]);
+  const [loadingDebtHistory, setLoadingDebtHistory] = useState(false);
   // Sale detail modal state
   const [selectedSaleDetail, setSelectedSaleDetail] = useState<any | null>(null);
   const [formData, setFormData] = useState<Medication>({
@@ -343,6 +355,161 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     }
   };
 
+  // Excel export function for sales history
+  const exportSalesHistoryToExcel = () => {
+    if (completedSales.length === 0) {
+      alert('Dışa aktarılacak satış kaydı bulunmamaktadır.');
+      return;
+    }
+
+    const workbook = utils.book_new();
+    
+    // Özet sayfası
+    const totalRevenue = completedSales.reduce((sum, sale) => sum + (sale.pharmacyPaymentAmount || 0), 0);
+    const summaryData = [
+      ['ECZANE SATIŞ RAPORU - ÖZET'],
+      [''],
+      ['Rapor Tarihi', new Date().toLocaleDateString('tr-TR')],
+      [''],
+      ['İSTATİSTİKLER'],
+      ['Toplam Satış Adedi', completedSales.length],
+      ['Toplam Gelir', `${totalRevenue.toLocaleString('tr-TR')} TL`],
+      ['Ortalama Satış Tutarı', `${(totalRevenue / completedSales.length).toLocaleString('tr-TR', { maximumFractionDigits: 2 })} TL`]
+    ];
+    const summarySheet = utils.aoa_to_sheet(summaryData);
+    utils.book_append_sheet(workbook, summarySheet, 'Özet');
+
+    // Satış Detayları sayfası
+    const salesData = completedSales.map(sale => ({
+      'Hasta Adı': sale.fullName || '-',
+      'TC No': sale.tcNo || '-',
+      'Satış Tarihi': sale.pharmacySaleDate 
+        ? new Date(sale.pharmacySaleDate).toLocaleDateString('tr-TR') + ' ' + 
+          new Date(sale.pharmacySaleDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+        : '-',
+      'Satılan Ürünler': sale.pharmacySoldItems?.map((item: any) => `${item.name} (${item.quantity})`).join(', ') || '-',
+      'Ürün Sayısı': sale.pharmacySoldItems?.length || 0,
+      'Ödeme Tutarı': sale.pharmacyPaymentAmount || 0,
+      'Ödeme Yöntemi': sale.pharmacyPaymentMethod === 'nakit' ? 'Nakit' : 
+                       sale.pharmacyPaymentMethod === 'kartkredi' ? 'Kredi Kartı' :
+                       sale.pharmacyPaymentMethod === 'kartdebit' ? 'Banka Kartı' :
+                       sale.pharmacyPaymentMethod === 'kredi_karti' ? 'Kredi Kartı' :
+                       sale.pharmacyPaymentMethod === 'banka_karti' ? 'Banka Kartı' :
+                       sale.pharmacyPaymentMethod === 'havale' ? 'Havale/EFT' :
+                       sale.pharmacyPaymentMethod === 'cari' ? 'Cari' :
+                       sale.pharmacyPaymentMethod || '-',
+      'Borç Durumu': sale.hasDebt && sale.debtAmount ? `${sale.debtAmount.toLocaleString('tr-TR')} TL` : 'Yok'
+    }));
+    const salesSheet = utils.json_to_sheet(salesData);
+    utils.book_append_sheet(workbook, salesSheet, 'Satış Detayları');
+
+    // Ürün Bazlı Analiz sayfası
+    const productStats: { [key: string]: { name: string; quantity: number; revenue: number } } = {};
+    completedSales.forEach(sale => {
+      sale.pharmacySoldItems?.forEach((item: any) => {
+        if (!productStats[item.name]) {
+          productStats[item.name] = { name: item.name, quantity: 0, revenue: 0 };
+        }
+        productStats[item.name].quantity += item.quantity || 1;
+        productStats[item.name].revenue += (item.price || 0) * (item.quantity || 1);
+      });
+    });
+    
+    const productData = Object.values(productStats)
+      .sort((a, b) => b.quantity - a.quantity)
+      .map(p => ({
+        'Ürün Adı': p.name,
+        'Toplam Satış Adedi': p.quantity,
+        'Toplam Gelir': `${p.revenue.toLocaleString('tr-TR')} TL`
+      }));
+    
+    if (productData.length > 0) {
+      const productSheet = utils.json_to_sheet(productData);
+      utils.book_append_sheet(workbook, productSheet, 'Ürün Analizi');
+    }
+
+    // Excel dosyasını indir
+    const fileName = `Eczane_Satis_Raporu_${new Date().toLocaleDateString('tr-TR').replace(/\./g, '-')}.xlsx`;
+    writeFile(workbook, fileName);
+  };
+
+  // Fetch patient's debt history (unpaid pharmacy purchases)
+  const fetchPatientDebtHistory = async (patient: PharmacyPatient) => {
+    if (!doctorProfile?.clinicId || !patient.tcNo) return;
+    
+    setLoadingDebtHistory(true);
+    try {
+      // Query for pharmacy_debts collection for this patient
+      const debtsRef = collection(db, 'pharmacy_debts');
+      const debtsQuery = query(
+        debtsRef,
+        where('clinicId', '==', doctorProfile.clinicId),
+        where('patientTcNo', '==', patient.tcNo),
+        where('isPaid', '==', false)
+      );
+      
+      const debtsSnapshot = await getDocs(debtsQuery);
+      const debts: any[] = [];
+      
+      debtsSnapshot.forEach((docSnap) => {
+        debts.push({
+          id: docSnap.id,
+          ...docSnap.data()
+        });
+      });
+      
+      // Also check for legacy debt stored directly on patient document
+      // If patient has debt but no records in pharmacy_debts, create a virtual record
+      if (patient.hasDebt && patient.debtAmount && patient.debtAmount > 0 && debts.length === 0) {
+        debts.push({
+          id: `legacy_${patient.id}`,
+          patientId: patient.id,
+          patientTcNo: patient.tcNo,
+          patientName: patient.fullName,
+          amount: patient.debtAmount,
+          reason: patient.debtReason || 'Önceki borç',
+          isPaid: false,
+          createdAt: patient.debtDate || new Date().toISOString(),
+          isLegacy: true // Mark as legacy debt
+        });
+      }
+      
+      // Sort by date, oldest first
+      debts.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      setPatientDebtHistory(debts);
+    } catch (error) {
+      console.error('Error fetching patient debt history:', error);
+      setPatientDebtHistory([]);
+    } finally {
+      setLoadingDebtHistory(false);
+    }
+  };
+
+  // Toggle debt selection
+  const handleDebtToggle = (debtId: string) => {
+    setSelectedDebts(prev => 
+      prev.includes(debtId) 
+        ? prev.filter(id => id !== debtId)
+        : [...prev, debtId]
+    );
+  };
+
+  // Select all debts
+  const handleSelectAllDebts = () => {
+    if (selectedDebts.length === patientDebtHistory.length) {
+      setSelectedDebts([]);
+    } else {
+      setSelectedDebts(patientDebtHistory.map(d => d.id));
+    }
+  };
+
+  // Calculate total selected debt amount
+  const calculateSelectedDebtTotal = () => {
+    return patientDebtHistory
+      .filter(d => selectedDebts.includes(d.id))
+      .reduce((sum, d) => sum + (d.amount || 0), 0);
+  };
+
   useEffect(() => {
     if (doctorProfile?.clinicId) {
       fetchMedications();
@@ -386,6 +553,12 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     // Calculate total from sold items
     const total = soldItems.reduce((sum, item) => sum + (item.price || 0), 0);
     setPharmacyPaymentAmount(total.toFixed(2));
+    // Reset debt selection
+    setSelectedDebts([]);
+    // Fetch patient debt history when modal opens
+    if (selectedPatientForSale) {
+      fetchPatientDebtHistory(selectedPatientForSale);
+    }
     setIsPaymentModalOpen(true);
   };
 
@@ -419,20 +592,119 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       const approvedMedicines = pendingSoldItems.filter(item => selectedMedicines.includes(item.name));
       const removedMedicines = pendingSoldItems.filter(item => !selectedMedicines.includes(item.name));
       
-      // Update patient
+      // Calculate amounts
+      const selectedDebtTotal = calculateSelectedDebtTotal();
+      const totalPaymentReceived = parseFloat(pharmacyPaymentAmount) || 0;
+      
+      // Calculate new debt from this sale (if partial payment)
+      const newDebtAmount = isPharmacyPartialPayment && pharmacyRemainingDebt ? parseFloat(pharmacyRemainingDebt) : 0;
+      
+      const batch = writeBatch(db);
       const patientRef = doc(db, 'patients', selectedPatientForSale.id);
-      await updateDoc(patientRef, {
+      
+      // 1. Mark selected past debts as paid
+      if (selectedDebts.length > 0) {
+        for (const debtId of selectedDebts) {
+          const debtRecord = patientDebtHistory.find(d => d.id === debtId);
+          
+          // Check if this is a legacy debt (stored directly on patient, not in pharmacy_debts)
+          if (debtRecord?.isLegacy) {
+            // Legacy debts will be cleared when we update patient record below
+            console.log('Paying legacy debt:', debtId, debtRecord.amount);
+          } else {
+            // Regular debt in pharmacy_debts collection
+            const debtRef = doc(db, 'pharmacy_debts', debtId);
+            batch.update(debtRef, {
+              isPaid: true,
+              paidAt: new Date().toISOString(),
+              paidAmount: debtRecord?.amount || 0,
+              paymentMethod: pharmacyPaymentMethod
+            });
+          }
+        }
+      }
+      
+      // 2. If there's new debt from this sale, save it as a debt record
+      if (newDebtAmount > 0) {
+        const newDebtRef = doc(collection(db, 'pharmacy_debts'));
+        batch.set(newDebtRef, {
+          clinicId: doctorProfile?.clinicId,
+          patientId: selectedPatientForSale.id,
+          patientTcNo: selectedPatientForSale.tcNo,
+          patientName: selectedPatientForSale.fullName,
+          amount: newDebtAmount,
+          items: approvedMedicines.map(item => ({
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity || 1
+          })),
+          reason: 'Eczane eksik ödeme',
+          isPaid: false,
+          createdAt: new Date().toISOString(),
+          saleDate: new Date().toISOString()
+        });
+      }
+      
+      // 3. Calculate remaining total debt for the patient
+      // Start with debts that were NOT selected (still unpaid)
+      const remainingOldDebts = patientDebtHistory
+        .filter(d => !selectedDebts.includes(d.id))
+        .reduce((sum, d) => sum + (d.amount || 0), 0);
+      
+      // Add new debt from this sale
+      const totalRemainingDebt = remainingOldDebts + newDebtAmount;
+      
+      // 4. Prepare patient update data
+      const updateData: any = {
         pharmacyStatus: 'completed',
         pharmacySaleCompletedAt: new Date().toISOString(),
         pharmacySaleDate: new Date().toISOString(),
         pharmacySoldItems: approvedMedicines,
         pharmacyRemovedItems: removedMedicines,
-        pharmacyPaymentAmount: parseFloat(pharmacyPaymentAmount),
+        pharmacyPaymentAmount: totalPaymentReceived,
         pharmacyPaymentMethod: pharmacyPaymentMethod,
-        pharmacyPaymentDate: new Date().toISOString()
-      });
+        pharmacyPaymentDate: new Date().toISOString(),
+        // Record what debts were paid in this transaction
+        lastDebtPayment: selectedDebts.length > 0 ? {
+          paidDebts: selectedDebts,
+          paidAmount: selectedDebtTotal,
+          paidAt: new Date().toISOString()
+        } : null
+      };
+      
+      // Update patient debt status
+      if (totalRemainingDebt > 0) {
+        updateData.hasDebt = true;
+        updateData.debtAmount = Math.round(totalRemainingDebt * 100) / 100;
+        updateData.debtDate = new Date().toISOString();
+        if (newDebtAmount > 0) {
+          updateData.debtReason = `Eczane borcu: ${newDebtAmount.toFixed(2)} TL`;
+        }
+      } else {
+        // All debts are paid off
+        updateData.hasDebt = false;
+        updateData.debtAmount = 0;
+        updateData.debtReason = '';
+        updateData.debtDate = null;
+      }
+      
+      batch.update(patientRef, updateData);
+      
+      // Commit all changes
+      await batch.commit();
 
-      alert('İlaç satışı ve ödeme başarıyla tamamlandı!');
+      // Show success message
+      let message = 'İlaç satışı başarıyla tamamlandı!';
+      if (selectedDebts.length > 0) {
+        message += ` ${selectedDebts.length} eski borç ödendi (${selectedDebtTotal.toFixed(2)} TL).`;
+      }
+      if (newDebtAmount > 0) {
+        message += ` Yeni borç kaydedildi: ${newDebtAmount.toFixed(2)} TL.`;
+      }
+      if (totalRemainingDebt > 0) {
+        message += ` Kalan toplam borç: ${totalRemainingDebt.toFixed(2)} TL.`;
+      }
+      alert(message);
       
       // Close modals and reset states
       setIsPaymentModalOpen(false);
@@ -442,6 +714,10 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       setSelectedMedicines([]);
       setPharmacyPaymentAmount('');
       setPharmacyPaymentMethod('nakit');
+      setIsPharmacyPartialPayment(false);
+      setPharmacyRemainingDebt('');
+      setPatientDebtHistory([]);
+      setSelectedDebts([]);
       
       fetchPatients();
       fetchCompletedSales();
@@ -811,10 +1087,10 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
         <div className="text-center mb-6">
           <h1 className="text-3xl font-bold text-white mb-2">
-            💊 Eczane ve Cihaz Yönetimi
+            💊 Eczane Yönetimi
           </h1>
           <p className="text-white/70 text-lg">
-            İlaç ve tıbbi cihaz tanımlama, stok takibi ve fiyat yönetimi
+            İlaç tanımlama, stok takibi ve fiyat yönetimi
           </p>
         </div>
 
@@ -835,6 +1111,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
           >
             💊 İlaçlar
           </button>
+{/* Tıbbi Cihazlar tab hidden
           <button
             onClick={() => {
               setActiveTab('devices');
@@ -850,6 +1127,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
           >
             🏥 Tıbbi Cihazlar
           </button>
+          */}
           <button
             onClick={() => {
               setActiveTab('patients');
@@ -893,17 +1171,11 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
         <>
           {/* Stats Overview */}
           {activeTab === 'medications' ? (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-gradient-to-r from-blue-500/20 to-blue-600/20 border border-blue-500/30 rounded-2xl p-4">
                 <div className="text-blue-300 text-2xl mb-1">💊</div>
                 <div className="text-white text-2xl font-bold">{savedMedications.length}</div>
                 <div className="text-white/70 text-sm">Toplam İlaç</div>
-              </div>
-              
-              <div className="bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 border border-yellow-500/30 rounded-2xl p-4">
-                <div className="text-yellow-300 text-2xl mb-1">⚠️</div>
-                <div className="text-white text-2xl font-bold">{lowStockMedications.length}</div>
-                <div className="text-white/70 text-sm">Düşük Stok</div>
               </div>
               
               <div className="bg-gradient-to-r from-red-500/20 to-red-600/20 border border-red-500/30 rounded-2xl p-4">
@@ -1322,10 +1594,32 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                     {waitingPatients.map((patient) => (
                       <div
                         key={patient.id}
-                        className="bg-white/5 border border-white/20 rounded-xl p-6 transition-all duration-200 hover:bg-white/10"
+                        className={`bg-white/5 border rounded-xl p-6 transition-all duration-200 hover:bg-white/10 ${
+                          patient.hasDebt && patient.debtAmount && patient.debtAmount > 0
+                            ? 'border-red-400/50 bg-red-500/10'
+                            : 'border-white/20'
+                        }`}
                       >
+                        {/* Debt Warning Badge */}
+                        {patient.hasDebt && patient.debtAmount && patient.debtAmount > 0 && (
+                          <div className="mb-3 p-2 bg-red-500/20 border border-red-400/30 rounded-lg">
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg">⚠️</span>
+                              <div>
+                                <p className="text-red-200 text-xs font-bold">BORÇLU HASTA</p>
+                                <p className="text-red-100 text-sm font-medium">
+                                  {patient.debtAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                         <div className="flex items-center gap-4 mb-4">
-                          <div className="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center text-xl text-white">
+                          <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl text-white ${
+                            patient.hasDebt && patient.debtAmount && patient.debtAmount > 0
+                              ? 'bg-gradient-to-br from-red-500 to-orange-600'
+                              : 'bg-gradient-to-br from-cyan-500 to-blue-600'
+                          }`}>
                             👤
                           </div>
                           <div>
@@ -1364,12 +1658,21 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                 <h3 className="text-lg font-semibold text-white">
                   📋 Satış Geçmişi ({completedSales.length})
                 </h3>
-                <button
-                  onClick={fetchCompletedSales}
-                  className="px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl text-white/80 hover:text-white transition-all duration-200 flex items-center gap-2"
-                >
-                  🔄 Yenile
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={exportSalesHistoryToExcel}
+                    disabled={completedSales.length === 0}
+                    className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:from-gray-500 disabled:to-gray-600 disabled:cursor-not-allowed rounded-xl text-white font-medium transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-green-500/25"
+                  >
+                    📥 Raporu İndir
+                  </button>
+                  <button
+                    onClick={fetchCompletedSales}
+                    className="px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl text-white/80 hover:text-white transition-all duration-200 flex items-center gap-2"
+                  >
+                    🔄 Yenile
+                  </button>
+                </div>
               </div>
 
               {completedSales.length === 0 ? (
@@ -1451,12 +1754,15 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                                 ? 'bg-blue-500/20 text-blue-300'
                                 : sale.pharmacyPaymentMethod === 'banka_karti'
                                 ? 'bg-purple-500/20 text-purple-300'
+                                : sale.pharmacyPaymentMethod === 'cari'
+                                ? 'bg-orange-500/20 text-orange-300'
                                 : 'bg-yellow-500/20 text-yellow-300'
                             }`}>
                               {sale.pharmacyPaymentMethod === 'nakit' ? '💵 Nakit' :
                                sale.pharmacyPaymentMethod === 'kredi_karti' ? '💳 Kredi Kartı' :
                                sale.pharmacyPaymentMethod === 'banka_karti' ? '💳 Banka Kartı' :
                                sale.pharmacyPaymentMethod === 'havale' ? '🏦 Havale/EFT' :
+                               sale.pharmacyPaymentMethod === 'cari' ? '📋 Cari' :
                                sale.pharmacyPaymentMethod || '-'}
                             </span>
                           </td>
@@ -1920,147 +2226,401 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       {/* Payment Modal */}
       {isPaymentModalOpen && selectedPatientForSale && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-200">
-            <div className="p-6 border-b border-gray-200">
-              <h3 className="text-xl font-bold text-gray-900 mb-2">
-                💳 Ödeme Alma
-              </h3>
-              <p className="text-gray-600">
-                {selectedPatientForSale.fullName} için eczane ödeme işlemi
-              </p>
-            </div>
-
-            <div className="p-6 space-y-4">
-              {/* Medicines being sold - Clickable to toggle */}
-              {pendingSoldItems.length > 0 && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                  <h4 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
-                    <span className="text-lg">💊</span>
-                    Satılan İlaçlar
-                    <span className="text-xs font-normal text-blue-600 ml-2">
-                      (Kaldırmak için tıklayın)
-                    </span>
-                  </h4>
-                  <div className="space-y-2">
-                    {pendingSoldItems.map((item, index) => {
-                      const isSelected = selectedMedicines.includes(item.name);
-                      return (
-                        <div 
-                          key={index} 
-                          onClick={() => handleMedicineToggle(item.name)}
-                          className={`flex items-center gap-2 rounded-lg px-3 py-2 border cursor-pointer transition-all duration-200 ${
-                            isSelected 
-                              ? 'bg-white border-blue-200 hover:bg-blue-50' 
-                              : 'bg-gray-100 border-gray-300 opacity-60 hover:opacity-80'
-                          }`}
-                        >
-                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold ${
-                            isSelected ? 'bg-blue-500 text-white' : 'bg-gray-400 text-white'
-                          }`}>
-                            {isSelected ? index + 1 : '✕'}
-                          </div>
-                          <span className={`font-medium ${isSelected ? 'text-blue-900' : 'text-gray-500 line-through'}`}>
-                            {item.name}
-                          </span>
-                          <span className={`text-sm ${isSelected ? 'text-blue-600' : 'text-gray-400'}`}>
-                            ({item.dosage})
-                          </span>
-                          <span className={`ml-auto text-sm font-medium ${isSelected ? 'text-blue-700' : 'text-gray-400'}`}>
-                            {item.price > 0 ? `${item.price.toFixed(2)} TL` : '-'}
-                          </span>
-                          <span className={`text-xs px-2 py-1 rounded-full ${
-                            isSelected 
-                              ? 'text-green-600 bg-green-100' 
-                              : 'text-red-600 bg-red-100'
-                          }`}>
-                            {isSelected ? 'Aktif' : 'Kaldırıldı'}
-                          </span>
-                        </div>
-                      );
-                    })}
+          <div className="bg-white rounded-2xl w-full max-w-6xl max-h-[95vh] overflow-hidden shadow-2xl border border-gray-200">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-cyan-600 p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                    <span className="text-2xl">💳</span>
                   </div>
-                  {selectedMedicines.length === 0 && (
-                    <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-800">
-                      <span className="font-medium">⚠️ Uyarı:</span> En az bir ilaç seçmelisiniz.
-                    </div>
-                  )}
-                  <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
-                    <span className="font-medium">💡 Not:</span> Hasta istemediği ilaçları kaldırabilirsiniz.
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Eczane Ödeme</h3>
+                    <p className="text-white/80 text-sm">{selectedPatientForSale.fullName} - TC: {selectedPatientForSale.tcNo}</p>
                   </div>
                 </div>
-              )}
-
-              {/* Payment Amount */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Ödeme Tutarı (TL)
-                </label>
-                <input
-                  type="number"
-                  value={pharmacyPaymentAmount}
-                  onChange={(e) => setPharmacyPaymentAmount(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="0.00"
-                  min="0"
-                  step="0.01"
-                />
-              </div>
-
-              {/* Payment Method */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Ödeme Yöntemi
-                </label>
-                <select
-                  value={pharmacyPaymentMethod}
-                  onChange={(e) => setPharmacyPaymentMethod(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                <button
+                  onClick={() => {
+                    setIsPaymentModalOpen(false);
+                    setPendingSoldItems([]);
+                    setSelectedMedicines([]);
+                    setPharmacyPaymentAmount('');
+                    setPharmacyPaymentMethod('nakit');
+                    setIsPharmacyPartialPayment(false);
+                    setPharmacyRemainingDebt('');
+                    setPatientDebtHistory([]);
+                    setSelectedDebts([]);
+                  }}
+                  className="w-10 h-10 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-white transition-all"
                 >
-                  <option value="nakit">Nakit</option>
-                  <option value="kredi_karti">Kredi Kartı</option>
-                  <option value="banka_karti">Banka Kartı</option>
-                  <option value="havale">Havale/EFT</option>
-                </select>
-              </div>
-
-              {/* Patient Info */}
-              <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                <h4 className="font-semibold text-gray-900 mb-2">Hasta Bilgileri</h4>
-                <p className="text-gray-600 text-sm">Ad Soyad: {selectedPatientForSale.fullName}</p>
-                <p className="text-gray-600 text-sm">TC No: {selectedPatientForSale.tcNo}</p>
+                  ✕
+                </button>
               </div>
             </div>
 
-            {/* Modal Actions */}
-            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setIsPaymentModalOpen(false);
-                  setPendingSoldItems([]);
-                  setSelectedMedicines([]);
-                  setPharmacyPaymentAmount('');
-                  setPharmacyPaymentMethod('nakit');
-                }}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg text-gray-700 hover:text-gray-900 font-medium transition-all duration-200"
-              >
-                İptal
-              </button>
-              <button
-                onClick={handleProcessPharmacyPayment}
-                disabled={loading || !pharmacyPaymentAmount || parseFloat(pharmacyPaymentAmount) < 0 || selectedMedicines.length === 0}
-                className="px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-lg font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    İşleniyor...
-                  </>
-                ) : (
-                  <>
-                    💳 Ödeme Al
-                  </>
-                )}
-              </button>
+            {/* Two Panel Layout */}
+            <div className="flex flex-col lg:flex-row h-[calc(95vh-180px)]">
+              {/* LEFT PANEL - Current Sale (Günlük) */}
+              <div className="flex-1 border-r border-gray-200 overflow-y-auto">
+                <div className="p-4 bg-blue-50 border-b border-blue-200">
+                  <h4 className="font-bold text-blue-900 flex items-center gap-2">
+                    <span className="text-xl">📋</span>
+                    Günlük İşlem
+                  </h4>
+                  <p className="text-blue-600 text-sm">Bugünkü ilaç satışı</p>
+                </div>
+
+                <div className="p-4 space-y-4">
+                  {/* Medicines being sold */}
+                  {pendingSoldItems.length > 0 && (
+                    <div className="bg-white border border-gray-200 rounded-xl p-4">
+                      <h5 className="font-semibold text-gray-800 mb-3 flex items-center gap-2 text-sm">
+                        <span>💊</span>
+                        Satılan İlaçlar
+                        <span className="text-xs font-normal text-gray-500 ml-auto">
+                          (Tıkla: Kaldır/Ekle)
+                        </span>
+                      </h5>
+                      <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                        {pendingSoldItems.map((item, index) => {
+                          const isSelected = selectedMedicines.includes(item.name);
+                          return (
+                            <div 
+                              key={index} 
+                              onClick={() => handleMedicineToggle(item.name)}
+                              className={`flex items-center gap-2 rounded-lg px-3 py-2 border cursor-pointer transition-all duration-200 ${
+                                isSelected 
+                                  ? 'bg-green-50 border-green-300 hover:bg-green-100' 
+                                  : 'bg-gray-50 border-gray-200 opacity-60 hover:opacity-80'
+                              }`}
+                            >
+                              <div className={`w-5 h-5 rounded flex items-center justify-center text-xs font-bold ${
+                                isSelected ? 'bg-green-500 text-white' : 'bg-gray-300 text-white'
+                              }`}>
+                                {isSelected ? '✓' : '✕'}
+                              </div>
+                              <span className={`flex-1 text-sm ${isSelected ? 'text-gray-900' : 'text-gray-400 line-through'}`}>
+                                {item.name}
+                              </span>
+                              <span className={`text-sm font-bold ${isSelected ? 'text-green-700' : 'text-gray-400'}`}>
+                                {item.price > 0 ? `${item.price.toFixed(2)} TL` : '-'}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      
+                      {/* Current Sale Total */}
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <div className="flex items-center justify-between text-lg font-bold">
+                          <span className="text-gray-700">Günlük Toplam:</span>
+                          <span className="text-blue-600">
+                            {pendingSoldItems
+                              .filter(item => selectedMedicines.includes(item.name))
+                              .reduce((sum, item) => sum + (item.price || 0), 0)
+                              .toFixed(2)} TL
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Payment Amount */}
+                  <div className="bg-white border border-gray-200 rounded-xl p-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      💰 Ödeme Tutarı (TL)
+                    </label>
+                    <input
+                      type="number"
+                      value={pharmacyPaymentAmount}
+                      onChange={(e) => setPharmacyPaymentAmount(e.target.value)}
+                      className="w-full px-4 py-3 text-lg font-bold border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="0.00"
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+
+                  {/* Payment Method */}
+                  <div className="bg-white border border-gray-200 rounded-xl p-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      💳 Ödeme Yöntemi
+                    </label>
+                    <select
+                      value={pharmacyPaymentMethod}
+                      onChange={(e) => setPharmacyPaymentMethod(e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="nakit">💵 Nakit</option>
+                      <option value="kredi_karti">💳 Kredi Kartı</option>
+                      <option value="banka_karti">💳 Banka Kartı</option>
+                      <option value="havale">🏦 Havale/EFT</option>
+                      <option value="cari">📋 Cari</option>
+                    </select>
+                  </div>
+
+                  {/* Partial Payment Checkbox */}
+                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isPharmacyPartialPayment}
+                        onChange={(e) => {
+                          setIsPharmacyPartialPayment(e.target.checked);
+                          if (!e.target.checked) setPharmacyRemainingDebt('');
+                        }}
+                        className="w-5 h-5 rounded border-orange-300 text-orange-500 focus:ring-orange-400"
+                      />
+                      <span className="font-semibold text-orange-900">⚠️ Hasta tamamını ödemedi</span>
+                    </label>
+                    
+                    {isPharmacyPartialPayment && (
+                      <div className="mt-3 space-y-2">
+                        <input
+                          type="number"
+                          value={pharmacyRemainingDebt}
+                          onChange={(e) => setPharmacyRemainingDebt(e.target.value)}
+                          className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+                          placeholder="Kalan borç tutarı"
+                          min="0"
+                          step="0.01"
+                        />
+                        {pharmacyRemainingDebt && parseFloat(pharmacyRemainingDebt) > 0 && (
+                          <p className="text-orange-700 text-sm font-medium">
+                            🚨 {parseFloat(pharmacyRemainingDebt).toFixed(2)} TL borç kaydedilecek
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* RIGHT PANEL - Debt History (Geçmiş) */}
+              <div className="flex-1 bg-gradient-to-b from-red-50 to-orange-50 overflow-y-auto">
+                <div className="p-4 bg-red-100 border-b border-red-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-bold text-red-900 flex items-center gap-2">
+                        <span className="text-xl">📜</span>
+                        Geçmiş Borçlar
+                      </h4>
+                      <p className="text-red-600 text-sm">Önceki ödenmeyen işlemler</p>
+                    </div>
+                    {patientDebtHistory.length > 0 && (
+                      <button
+                        onClick={handleSelectAllDebts}
+                        className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors"
+                      >
+                        {selectedDebts.length === patientDebtHistory.length ? 'Hiçbirini Seçme' : 'HEPSİNİ SEÇ'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-4">
+                  {loadingDebtHistory ? (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-500"></div>
+                      <span className="ml-3 text-red-600">Borç geçmişi yükleniyor...</span>
+                    </div>
+                  ) : patientDebtHistory.length === 0 ? (
+                    <div className="text-center py-12">
+                      <div className="text-5xl mb-3">✅</div>
+                      <h5 className="font-semibold text-gray-700">Geçmiş Borç Yok</h5>
+                      <p className="text-gray-500 text-sm mt-1">Bu hastanın ödenmeyen eski işlemi bulunmuyor.</p>
+                      
+                      {/* Show current debt if exists */}
+                      {selectedPatientForSale.hasDebt && selectedPatientForSale.debtAmount && selectedPatientForSale.debtAmount > 0 && (
+                        <div className="mt-6 bg-red-100 border-2 border-red-300 rounded-xl p-4 text-left">
+                          <h5 className="font-bold text-red-900 flex items-center gap-2 mb-2">
+                            <span>🚨</span> Mevcut Borç Kaydı
+                          </h5>
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-red-700">Borç Tutarı:</span>
+                              <span className="font-bold text-red-900 text-xl">
+                                {selectedPatientForSale.debtAmount.toFixed(2)} TL
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center text-sm">
+                              <span className="text-red-600">Tarih:</span>
+                              <span className="text-red-800">
+                                {selectedPatientForSale.debtDate 
+                                  ? new Date(selectedPatientForSale.debtDate).toLocaleDateString('tr-TR')
+                                  : '-'}
+                              </span>
+                            </div>
+                            {selectedPatientForSale.debtReason && (
+                              <p className="text-red-600 text-sm pt-2 border-t border-red-200">
+                                Sebep: {selectedPatientForSale.debtReason}
+                              </p>
+                            )}
+                          </div>
+                          
+                          {/* Quick add to payment */}
+                          <button
+                            onClick={() => {
+                              const currentAmount = parseFloat(pharmacyPaymentAmount) || 0;
+                              const debtAmount = selectedPatientForSale.debtAmount || 0;
+                              setPharmacyPaymentAmount((currentAmount + debtAmount).toFixed(2));
+                            }}
+                            className="w-full mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+                          >
+                            <span>➕</span>
+                            Ödemeye Ekle ({selectedPatientForSale.debtAmount.toFixed(2)} TL)
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {/* Debt Items */}
+                      {patientDebtHistory.map((debt) => {
+                        const isSelected = selectedDebts.includes(debt.id);
+                        return (
+                          <div
+                            key={debt.id}
+                            onClick={() => handleDebtToggle(debt.id)}
+                            className={`rounded-xl p-4 border-2 cursor-pointer transition-all duration-200 ${
+                              isSelected
+                                ? 'bg-white border-green-400 shadow-lg'
+                                : 'bg-white/60 border-gray-200 hover:border-red-300'
+                            }`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className={`w-6 h-6 rounded flex items-center justify-center text-sm font-bold flex-shrink-0 mt-1 ${
+                                isSelected ? 'bg-green-500 text-white' : 'bg-gray-300 text-white'
+                              }`}>
+                                {isSelected ? '✓' : ''}
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-gray-500 text-xs">
+                                    {debt.createdAt ? new Date(debt.createdAt).toLocaleDateString('tr-TR') : '-'}
+                                  </span>
+                                  <span className={`font-bold text-lg ${isSelected ? 'text-green-600' : 'text-red-600'}`}>
+                                    {(debt.amount || 0).toFixed(2)} TL
+                                  </span>
+                                </div>
+                                {/* Items in this debt */}
+                                {debt.items && debt.items.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-2">
+                                    {debt.items.map((item: any, idx: number) => (
+                                      <span key={idx} className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded">
+                                        {item.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                {debt.reason && (
+                                  <p className="text-gray-500 text-xs mt-1">{debt.reason}</p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Selected Debts Summary */}
+                      {selectedDebts.length > 0 && (
+                        <div className="bg-green-100 border-2 border-green-400 rounded-xl p-4 mt-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-semibold text-green-800">Seçilen Borçlar:</span>
+                            <span className="text-green-600">{selectedDebts.length} adet</span>
+                          </div>
+                          <div className="flex items-center justify-between text-xl font-bold">
+                            <span className="text-green-800">Toplam:</span>
+                            <span className="text-green-600">{calculateSelectedDebtTotal().toFixed(2)} TL</span>
+                          </div>
+                          <button
+                            onClick={() => {
+                              const currentAmount = parseFloat(pharmacyPaymentAmount) || 0;
+                              const debtTotal = calculateSelectedDebtTotal();
+                              setPharmacyPaymentAmount((currentAmount + debtTotal).toFixed(2));
+                            }}
+                            className="w-full mt-3 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+                          >
+                            <span>➕</span>
+                            Ödemeye Ekle
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Summary Bar */}
+            <div className="border-t-2 border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 p-4">
+              <div className="flex items-center justify-between">
+                {/* Grand Total Summary */}
+                <div className="flex items-center gap-6">
+                  <div className="text-center">
+                    <p className="text-gray-500 text-xs uppercase tracking-wide">Günlük</p>
+                    <p className="font-bold text-blue-600 text-lg">
+                      {pendingSoldItems
+                        .filter(item => selectedMedicines.includes(item.name))
+                        .reduce((sum, item) => sum + (item.price || 0), 0)
+                        .toFixed(2)} TL
+                    </p>
+                  </div>
+                  <div className="text-2xl text-gray-300">+</div>
+                  <div className="text-center">
+                    <p className="text-gray-500 text-xs uppercase tracking-wide">Geçmiş Borç</p>
+                    <p className="font-bold text-red-600 text-lg">
+                      {calculateSelectedDebtTotal().toFixed(2)} TL
+                    </p>
+                  </div>
+                  <div className="text-2xl text-gray-300">=</div>
+                  <div className="text-center bg-white px-4 py-2 rounded-xl border-2 border-green-400">
+                    <p className="text-gray-500 text-xs uppercase tracking-wide">Toplam</p>
+                    <p className="font-bold text-green-600 text-2xl">
+                      {(pendingSoldItems
+                        .filter(item => selectedMedicines.includes(item.name))
+                        .reduce((sum, item) => sum + (item.price || 0), 0) + calculateSelectedDebtTotal()
+                      ).toFixed(2)} TL
+                    </p>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      setIsPaymentModalOpen(false);
+                      setPendingSoldItems([]);
+                      setSelectedMedicines([]);
+                      setPharmacyPaymentAmount('');
+                      setPharmacyPaymentMethod('nakit');
+                      setIsPharmacyPartialPayment(false);
+                      setPharmacyRemainingDebt('');
+                      setPatientDebtHistory([]);
+                      setSelectedDebts([]);
+                    }}
+                    className="px-6 py-3 bg-gray-200 hover:bg-gray-300 border border-gray-300 rounded-xl text-gray-700 font-medium transition-all duration-200"
+                  >
+                    İptal
+                  </button>
+                  <button
+                    onClick={handleProcessPharmacyPayment}
+                    disabled={loading || !pharmacyPaymentAmount || parseFloat(pharmacyPaymentAmount) < 0 || selectedMedicines.length === 0}
+                    className="px-8 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-xl font-bold text-lg transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-green-500/30"
+                  >
+                    {loading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                        İşleniyor...
+                      </>
+                    ) : (
+                      <>
+                        💰 KASA
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

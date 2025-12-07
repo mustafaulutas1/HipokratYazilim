@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import React, { useState, useEffect, useCallback } from 'react';
+import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import AnamrezViewModal from './AnamrezViewModal';
 import DoctorNotesModal from './DoctorNotesModal';
@@ -79,267 +79,224 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
   const [treatmentContinuePatients, setTreatmentContinuePatients] = useState<WaitingPatient[]>([]);
   const [pharmacyWaitingPatients, setPharmacyWaitingPatients] = useState<WaitingPatient[]>([]);
 
-  useEffect(() => {
-    const fetchDoctorData = async () => {
-      if (!doctorProfile?.clinicId) return;
+  // Process patients data and update all state - used by real-time listener
+  const processPatientData = useCallback(async (allClinicPatients: WaitingPatient[], isInitialLoad: boolean = false) => {
+    if (isInitialLoad) {
+      setLoading(true);
+    }
 
-      try {
-        setLoading(true);
-        console.log('🔍 AssistantPanel: Fetching data for clinicId:', doctorProfile.clinicId);
+    try {
+      console.log('📊 AssistantPanel: Processing patients in clinic:', allClinicPatients.length);
+      
+      // Filter for completed anamnez and either not assigned or ready for re-assignment
+      const completedPatients = allClinicPatients.filter(patient => 
+        patient.isAnamnezCompleted === true && 
+        (
+          !patient.assignedDoctorId || 
+          patient.status === 'anamnez_completed' ||
+          patient.status === 'treatment_completed' ||
+          patient.status === 'discharged' ||
+          patient.status === 'new' ||
+          !patient.status
+        )
+      ).sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0).getTime();
+        const dateB = new Date(b.createdAt || 0).getTime();
+        return dateB - dateA;
+      }).slice(0, 10);
 
-        // Fetch patients with completed anamnez (waiting for treatment)
-        // First, get all patients for this clinic
-        console.log('🔍 AssistantPanel: Querying patients with clinicId:', doctorProfile.clinicId);
-        
-        const allClinicPatientsQuery = query(
-          collection(db, 'patients'),
-          where('clinicId', '==', doctorProfile.clinicId)
+      console.log('👥 AssistantPanel: Patients with completed anamnez:', completedPatients.length);
+      
+      // Fetch anamnez records for these patients to get their diagnosis systems
+      if (completedPatients.length > 0) {
+        const patientIds = completedPatients.map(p => p.id);
+        const anamrezQuery = query(
+          collection(db, 'anamrezRecords'),
+          where('patientId', 'in', patientIds)
         );
         
-        const allClinicSnapshot = await getDocs(allClinicPatientsQuery);
-        const allClinicPatients = allClinicSnapshot.docs.map(doc => ({
+        const anamrezSnapshot = await getDocs(anamrezQuery);
+        const anamrezRecords = anamrezSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as AnamrezRecord));
+        
+        const patientsWithDiagnosis = completedPatients.map(patient => {
+          const patientAnamrezRecords = anamrezRecords.filter(record => record.patientId === patient.id);
+          const latestAnamrezRecord = patientAnamrezRecords.sort((a, b) => 
+            new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
+          )[0];
+          
+          return {
+            ...patient,
+            selectedDiagnosisSystems: patientAnamrezRecords
+              .map(record => record.selectedDiagnosisSystems)
+              .flat()
+              .filter((system, index, arr) => arr.indexOf(system) === index),
+            anamrezCompletedAt: latestAnamrezRecord ? (latestAnamrezRecord.updatedAt || latestAnamrezRecord.createdAt) : patient.anamrezCompletedAt
+          };
+        });
+        
+        const sortedPatients = patientsWithDiagnosis.sort((a, b) => {
+          const dateA = new Date(a.anamrezCompletedAt || a.createdAt).getTime();
+          const dateB = new Date(b.anamrezCompletedAt || b.createdAt).getTime();
+          return dateA - dateB;
+        });
+        
+        setWaitingPatients(sortedPatients);
+      } else {
+        setWaitingPatients(completedPatients);
+      }
+
+      // Fetch patients currently with doctor
+      const withDoctorFiltered = allClinicPatients.filter(patient =>
+        patient.assignedDoctorId &&
+        ['assigned_to_doctor', 'in_treatment'].includes(patient.status || '')
+      ).sort((a, b) => {
+        const dateA = new Date(a.assignedAt || a.createdAt || 0).getTime();
+        const dateB = new Date(b.assignedAt || b.createdAt || 0).getTime();
+        return dateB - dateA;
+      });
+      setWithDoctorPatients(withDoctorFiltered);
+
+      // Fetch patients waiting for accounting
+      const accountingPatientsFiltered = allClinicPatients.filter(patient =>
+        patient.status === 'treatment_decided' &&
+        patient.assignedDoctorId
+      ).sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0).getTime();
+        const dateB = new Date(b.createdAt || 0).getTime();
+        return dateB - dateA;
+      });
+      setAccountingPatients(accountingPatientsFiltered);
+
+      // Fetch patients continuing treatment
+      const treatmentContinueFiltered = allClinicPatients.filter(patient =>
+        patient.status === 'treatment_continue'
+      ).sort((a, b) => {
+        const dateA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+        const dateB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+        return dateB - dateA;
+      });
+      setTreatmentContinuePatients(treatmentContinueFiltered);
+
+      // Fetch patients waiting for pharmacy
+      const pharmacyWaitingFiltered = allClinicPatients.filter(patient =>
+        patient.pharmacyStatus === 'waiting'
+      ).sort((a, b) => {
+        const dateA = new Date(a.treatmentStartedAt || a.updatedAt || a.createdAt || 0).getTime();
+        const dateB = new Date(b.treatmentStartedAt || b.updatedAt || b.createdAt || 0).getTime();
+        return dateB - dateA;
+      });
+      setPharmacyWaitingPatients(pharmacyWaitingFiltered);
+
+      // Fetch fully completed treatments
+      const treatmentCompletedFiltered = allClinicPatients.filter(patient =>
+        patient.status === 'discharged' ||
+        (patient.status === 'treatment_completed' && patient.paymentCompleted)
+      ).sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0).getTime();
+        const dateB = new Date(b.createdAt || 0).getTime();
+        return dateB - dateA;
+      }).slice(0, 20);
+      setTreatmentCompletedPatients(treatmentCompletedFiltered);
+
+      // Fetch emergency patients
+      const emergencyPatientsFiltered = allClinicPatients.filter(patient =>
+        (patient as any).isEmergency === true ||
+        patient.priority === 'emergency' ||
+        patient.priority === 'urgent' ||
+        patient.visitReason?.toLowerCase().includes('acil') ||
+        patient.visitReason?.toLowerCase().includes('emergency')
+      ).sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0).getTime();
+        const dateB = new Date(b.createdAt || 0).getTime();
+        return dateB - dateA;
+      });
+      setEmergencyPatients(emergencyPatientsFiltered);
+
+      // Update stats
+      const totalPatients = allClinicPatients.length;
+      const finalWaitingPatientsCount = completedPatients.length;
+      const completedTreatmentsCount = allClinicPatients.filter(p => p.isAnamnezCompleted === true).length;
+
+      // Count today's appointments
+      const todayDateString = new Date().toISOString().split('T')[0];
+      let todayAppointments = 0;
+      try {
+        const appointmentsQuery = query(
+          collection(db, 'appointments'),
+          where('clinicId', '==', doctorProfile?.clinicId)
+        );
+        const appointmentsSnapshot = await getDocs(appointmentsQuery);
+        todayAppointments = appointmentsSnapshot.docs.filter(doc => {
+          const data = doc.data();
+          const appointmentDate = data.date || data.appointmentDate || data.scheduledDate;
+          if (!appointmentDate) return false;
+          const dateStr = typeof appointmentDate === 'string' ?
+            appointmentDate.split('T')[0] :
+            new Date(appointmentDate).toISOString().split('T')[0];
+          return dateStr === todayDateString;
+        }).length;
+      } catch (appointmentError) {
+        console.warn('⚠️ Could not fetch today\'s appointments:', appointmentError);
+      }
+
+      setStats({
+        totalPatients,
+        todayAppointments,
+        completedTreatments: completedTreatmentsCount,
+        pendingReports: finalWaitingPatientsCount
+      });
+
+    } catch (error) {
+      console.error('❌ AssistantPanel: Error processing patient data:', error);
+    } finally {
+      if (isInitialLoad) {
+        setLoading(false);
+      }
+    }
+  }, [doctorProfile?.clinicId]);
+
+  // Set up real-time listener for patients
+  useEffect(() => {
+    if (!doctorProfile?.clinicId) return;
+
+    console.log('🔄 AssistantPanel: Setting up real-time listener for clinicId:', doctorProfile.clinicId);
+
+    const allClinicPatientsQuery = query(
+      collection(db, 'patients'),
+      where('clinicId', '==', doctorProfile.clinicId)
+    );
+
+    let isFirstLoad = true;
+
+    // Set up real-time listener
+    const unsubscribe = onSnapshot(
+      allClinicPatientsQuery,
+      (snapshot) => {
+        console.log('🔄 AssistantPanel: Real-time update received, docs:', snapshot.docs.length);
+        
+        const allClinicPatients = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         } as WaitingPatient));
-        
-        console.log('📊 AssistantPanel: Total patients in clinic:', allClinicPatients.length);
-        console.log('📋 AssistantPanel: Sample patient data:', allClinicPatients[0]);
-        
-        // Debug: Log all patients with their status
-        console.log('🔍 AssistantPanel: All patients debug info:');
-        allClinicPatients.forEach(patient => {
-          console.log(`Patient: ${patient.fullName}`, {
-            isAnamnezCompleted: patient.isAnamnezCompleted,
-            assignedDoctorId: patient.assignedDoctorId,
-            assignedDoctorName: patient.assignedDoctorName,
-            status: patient.status
-          });
-        });
-        
-        // Filter for completed anamnez and either not assigned or ready for re-assignment
-        // Patients are ready for re-assignment if:
-        // - Not assigned to any doctor yet
-        // - OR status indicates they completed previous treatment/visit
-        const completedPatients = allClinicPatients.filter(patient => 
-          patient.isAnamnezCompleted === true && 
-          (
-            !patient.assignedDoctorId || 
-            patient.status === 'anamnez_completed' ||
-            patient.status === 'treatment_completed' ||
-            patient.status === 'discharged' ||
-            patient.status === 'new' ||
-            !patient.status
-          )
-        ).sort((a, b) => {
-          const dateA = new Date(a.createdAt || 0).getTime();
-          const dateB = new Date(b.createdAt || 0).getTime();
-          return dateB - dateA; // Most recent first
-        }).slice(0, 10);
 
-        console.log('👥 AssistantPanel: Patients with completed anamnez (not assigned):', completedPatients.length);
-        console.log('👥 AssistantPanel: Filtered patients:', completedPatients.map(p => p.fullName));
-        
-        // Fetch anamnez records for these patients to get their diagnosis systems
-        if (completedPatients.length > 0) {
-          const patientIds = completedPatients.map(p => p.id);
-          const anamrezQuery = query(
-            collection(db, 'anamrezRecords'),
-            where('patientId', 'in', patientIds)
-          );
-          
-          const anamrezSnapshot = await getDocs(anamrezQuery);
-          const anamrezRecords = anamrezSnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          } as AnamrezRecord));
-          
-          console.log('📋 AssistantPanel: Found anamnez records:', anamrezRecords.length);
-          
-          // Match diagnosis systems with patients and get anamnez completion date
-          const patientsWithDiagnosis = completedPatients.map(patient => {
-            const patientAnamrezRecords = anamrezRecords.filter(record => record.patientId === patient.id);
-            const latestAnamrezRecord = patientAnamrezRecords.sort((a, b) => 
-              new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
-            )[0];
-            
-            return {
-              ...patient,
-              selectedDiagnosisSystems: patientAnamrezRecords
-                .map(record => record.selectedDiagnosisSystems)
-                .flat()
-                .filter((system, index, arr) => arr.indexOf(system) === index), // Remove duplicates
-              anamrezCompletedAt: latestAnamrezRecord ? (latestAnamrezRecord.updatedAt || latestAnamrezRecord.createdAt) : patient.anamrezCompletedAt
-            };
-          });
-          
-          // Sort by anamnez completion date - oldest first (earliest date first)
-          const sortedPatients = patientsWithDiagnosis.sort((a, b) => {
-            const dateA = new Date(a.anamrezCompletedAt || a.createdAt).getTime();
-            const dateB = new Date(b.anamrezCompletedAt || b.createdAt).getTime();
-            return dateA - dateB; // Oldest first
-          });
-          
-          console.log('🔍 AssistantPanel: Patients sorted by anamnez completion:', sortedPatients.map(p => ({
-            name: p.fullName,
-            anamrezCompletedAt: p.anamrezCompletedAt,
-            diagnosisSystems: p.selectedDiagnosisSystems
-          })));
-          
-          setWaitingPatients(sortedPatients);
-        } else {
-          setWaitingPatients(completedPatients);
-        }
-
-        // Fetch patients currently with doctor
-        const withDoctorFiltered = allClinicPatients.filter(patient =>
-          patient.assignedDoctorId &&
-          ['assigned_to_doctor', 'in_treatment'].includes(patient.status || '')
-        ).sort((a, b) => {
-          const dateA = new Date(a.assignedAt || a.createdAt || 0).getTime();
-          const dateB = new Date(b.assignedAt || b.createdAt || 0).getTime();
-          return dateB - dateA;
-        });
-        setWithDoctorPatients(withDoctorFiltered);
-
-        // Fetch patients waiting for accounting (treatment decided but not paid)
-        const accountingPatientsFiltered = allClinicPatients.filter(patient =>
-          patient.status === 'treatment_decided' &&
-          patient.assignedDoctorId
-        ).sort((a, b) => {
-          const dateA = new Date(a.createdAt || 0).getTime();
-          const dateB = new Date(b.createdAt || 0).getTime();
-          return dateB - dateA;
-        });
-        setAccountingPatients(accountingPatientsFiltered);
-
-        // Fetch patients continuing treatment
-        const treatmentContinueFiltered = allClinicPatients.filter(patient =>
-          patient.status === 'treatment_continue'
-        ).sort((a, b) => {
-          const dateA = new Date(a.updatedAt || a.createdAt || 0).getTime();
-          const dateB = new Date(b.updatedAt || b.createdAt || 0).getTime();
-          return dateB - dateA;
-        });
-        setTreatmentContinuePatients(treatmentContinueFiltered);
-
-        // Fetch patients waiting for pharmacy (pharmacyStatus: waiting)
-        const pharmacyWaitingFiltered = allClinicPatients.filter(patient =>
-          patient.pharmacyStatus === 'waiting'
-        ).sort((a, b) => {
-          const dateA = new Date(a.treatmentStartedAt || a.updatedAt || a.createdAt || 0).getTime();
-          const dateB = new Date(b.treatmentStartedAt || b.updatedAt || b.createdAt || 0).getTime();
-          return dateB - dateA;
-        });
-        setPharmacyWaitingPatients(pharmacyWaitingFiltered);
-
-        // Fetch fully completed treatments (paid and discharged)
-        const treatmentCompletedFiltered = allClinicPatients.filter(patient =>
-          patient.status === 'discharged' ||
-          (patient.status === 'treatment_completed' && patient.paymentCompleted)
-        ).sort((a, b) => {
-          const dateA = new Date(a.createdAt || 0).getTime();
-          const dateB = new Date(b.createdAt || 0).getTime();
-          return dateB - dateA;
-        }).slice(0, 20);
-        setTreatmentCompletedPatients(treatmentCompletedFiltered);
-
-        // Fetch emergency patients (marked as emergency or urgent)
-        const emergencyPatientsFiltered = allClinicPatients.filter(patient =>
-          (patient as any).isEmergency === true ||
-          patient.priority === 'emergency' ||
-          patient.priority === 'urgent' ||
-          patient.visitReason?.toLowerCase().includes('acil') ||
-          patient.visitReason?.toLowerCase().includes('emergency')
-        ).sort((a, b) => {
-          const dateA = new Date(a.createdAt || 0).getTime();
-          const dateB = new Date(b.createdAt || 0).getTime();
-          return dateB - dateA;
-        });
-        setEmergencyPatients(emergencyPatientsFiltered);
-
-        // Get the final waiting patients count for stats
-        const finalWaitingPatientsCount = completedPatients.length;
-
-        // Fetch total patients count for this clinic
-        const allPatientsQuery = query(
-          collection(db, 'patients'),
-          where('clinicId', '==', doctorProfile.clinicId)
-        );
-        const allPatientsSnapshot = await getDocs(allPatientsQuery);
-        const totalPatients = allPatientsSnapshot.size;
-
-        // Fetch today's appointments
-        const todayForStats = new Date();
-        const todayDateStringForStats = todayForStats.toISOString().split('T')[0]; // YYYY-MM-DD format
-        console.log('📅 AssistantPanel: Looking for appointments on date:', todayDateStringForStats);
-        
-        let todayAppointments = 0;
-        try {
-          // Try different date formats - some might be stored as date strings
-          const appointmentsQuery = query(
-            collection(db, 'appointments'),
-            where('clinicId', '==', doctorProfile.clinicId)
-          );
-          const appointmentsSnapshot = await getDocs(appointmentsQuery);
-          
-          // Filter by today's date in memory to handle different date formats
-          const todayAppointmentsList = appointmentsSnapshot.docs.filter(doc => {
-            const data = doc.data();
-            const appointmentDate = data.date || data.appointmentDate || data.scheduledDate;
-            if (!appointmentDate) return false;
-            
-            // Handle different date formats
-            const dateStr = typeof appointmentDate === 'string' ?
-              appointmentDate.split('T')[0] :
-              new Date(appointmentDate).toISOString().split('T')[0];
-
-            return dateStr === todayDateStringForStats;
-          });
-          
-          todayAppointments = todayAppointmentsList.length;
-          console.log('📅 DoctorPanel: Found today\'s appointments:', todayAppointments);
-          console.log('📅 DoctorPanel: Sample appointment data:', todayAppointmentsList[0]?.data());
-        } catch (appointmentError) {
-          console.warn('⚠️ Could not fetch today\'s appointments, using fallback:', appointmentError);
-          // Fallback: estimate based on clinic size
-          todayAppointments = Math.max(1, Math.floor(totalPatients * 0.15));
-        }
-
-        // Fetch completed treatments (completed anamnez records)
-        let completedTreatments = 0;
-        try {
-          const completedAnamrezQuery = query(
-            collection(db, 'patients'),
-            where('clinicId', '==', doctorProfile.clinicId),
-            where('isAnamnezCompleted', '==', true)
-          );
-          const completedAnamrezSnapshot = await getDocs(completedAnamrezQuery);
-          completedTreatments = completedAnamrezSnapshot.size;
-          console.log('🩺 DoctorPanel: Completed treatments:', completedTreatments);
-        } catch (treatmentError) {
-          console.warn('⚠️ Could not fetch completed treatments:', treatmentError);
-          completedTreatments = completedPatients.length;
-        }
-
-        const finalStats = {
-          totalPatients: totalPatients,
-          todayAppointments: todayAppointments,
-          completedTreatments: completedTreatments,
-          pendingReports: finalWaitingPatientsCount // Use actual waiting patients count
-        };
-        
-        console.log('📊 DoctorPanel: Final stats:', finalStats);
-        setStats(finalStats);
-
-      } catch (error) {
-        console.error('❌ DoctorPanel: Error fetching doctor data:', error);
-      } finally {
+        processPatientData(allClinicPatients, isFirstLoad);
+        isFirstLoad = false;
+      },
+      (error) => {
+        console.error('❌ AssistantPanel: Real-time listener error:', error);
         setLoading(false);
       }
-    };
+    );
 
-    fetchDoctorData();
-  }, [doctorProfile]);
+    // Cleanup function - unsubscribe from real-time listener when component unmounts
+    return () => {
+      console.log('🔄 AssistantPanel: Cleaning up real-time listener');
+      unsubscribe();
+    };
+  }, [doctorProfile?.clinicId, processPatientData]);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -376,236 +333,9 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
   };
 
   const handlePatientAssigned = () => {
-    // Refresh the patient list after assignment with a small delay to ensure database update
-    setTimeout(() => {
-      fetchDoctorData();
-    }, 500);
-  };
-
-  const fetchDoctorData = async () => {
-    if (!doctorProfile?.clinicId) return;
-
-    try {
-      setLoading(true);
-      console.log('🔍 AssistantPanel: Fetching data for clinicId:', doctorProfile.clinicId);
-
-      // Fetch patients with completed anamnez (waiting for treatment)
-      // First, get all patients for this clinic
-      console.log('🔍 AssistantPanel: Querying patients with clinicId:', doctorProfile.clinicId);
-      
-      const allClinicPatientsQuery = query(
-        collection(db, 'patients'),
-        where('clinicId', '==', doctorProfile.clinicId)
-      );
-      
-      const allClinicSnapshot = await getDocs(allClinicPatientsQuery);
-      const allClinicPatients = allClinicSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as WaitingPatient));
-      
-      console.log('📊 AssistantPanel: Total patients in clinic:', allClinicPatients.length);
-      console.log('📋 AssistantPanel: Sample patient data:', allClinicPatients[0]);
-      
-      // Filter for completed anamnez and either not assigned or treatment completed (for re-assignment)
-      const completedPatients = allClinicPatients.filter(patient => 
-        patient.isAnamnezCompleted === true && 
-        (!patient.assignedDoctorId || patient.status === 'treatment_completed')
-      ).sort((a, b) => {
-        const dateA = new Date(a.createdAt || 0).getTime();
-        const dateB = new Date(b.createdAt || 0).getTime();
-        return dateB - dateA; // Most recent first
-      }).slice(0, 10);
-
-      console.log('👥 AssistantPanel: Patients with completed anamnez (not assigned):', completedPatients.length);
-      
-      // Fetch anamnez records for these patients to get their diagnosis systems
-      if (completedPatients.length > 0) {
-        const patientIds = completedPatients.map(p => p.id);
-        const anamrezQuery = query(
-          collection(db, 'anamrezRecords'),
-          where('patientId', 'in', patientIds)
-        );
-        
-        const anamrezSnapshot = await getDocs(anamrezQuery);
-        const anamrezRecords = anamrezSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as AnamrezRecord));
-        
-        console.log('📋 AssistantPanel: Found anamnez records:', anamrezRecords.length);
-        
-        // Match diagnosis systems with patients and get anamnez completion date
-        const patientsWithDiagnosis = completedPatients.map(patient => {
-          const patientAnamrezRecords = anamrezRecords.filter(record => record.patientId === patient.id);
-          const latestAnamrezRecord = patientAnamrezRecords.sort((a, b) => 
-            new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
-          )[0];
-          
-          return {
-            ...patient,
-            selectedDiagnosisSystems: patientAnamrezRecords
-              .map(record => record.selectedDiagnosisSystems)
-              .flat()
-              .filter((system, index, arr) => arr.indexOf(system) === index), // Remove duplicates
-            anamrezCompletedAt: latestAnamrezRecord ? (latestAnamrezRecord.updatedAt || latestAnamrezRecord.createdAt) : patient.anamrezCompletedAt
-          };
-        });
-        
-        // Sort by anamnez completion date - oldest first (earliest date first)
-        const sortedPatients = patientsWithDiagnosis.sort((a, b) => {
-          const dateA = new Date(a.anamrezCompletedAt || a.createdAt).getTime();
-          const dateB = new Date(b.anamrezCompletedAt || b.createdAt).getTime();
-          return dateA - dateB; // Oldest first
-        });
-        
-        console.log('🔍 AssistantPanel: Patients sorted by anamnez completion:', sortedPatients.map(p => ({
-          name: p.fullName,
-          anamrezCompletedAt: p.anamrezCompletedAt,
-          diagnosisSystems: p.selectedDiagnosisSystems
-        })));
-        
-        setWaitingPatients(sortedPatients);
-      } else {
-        setWaitingPatients(completedPatients);
-      }
-
-      // Fetch patients currently with doctor
-      const withDoctorFiltered = allClinicPatients.filter(patient =>
-        patient.assignedDoctorId &&
-        ['assigned_to_doctor', 'in_treatment'].includes(patient.status || '')
-      ).sort((a, b) => {
-        const dateA = new Date(a.assignedAt || a.createdAt || 0).getTime();
-        const dateB = new Date(b.assignedAt || b.createdAt || 0).getTime();
-        return dateB - dateA;
-      });
-      setWithDoctorPatients(withDoctorFiltered);
-
-      // Fetch patients waiting for accounting (treatment decided but not paid)
-      const accountingPatientsFiltered = allClinicPatients.filter(patient =>
-        patient.status === 'treatment_decided' &&
-        patient.assignedDoctorId
-      ).sort((a, b) => {
-        const dateA = new Date(a.createdAt || 0).getTime();
-        const dateB = new Date(b.createdAt || 0).getTime();
-        return dateB - dateA;
-      });
-      setAccountingPatients(accountingPatientsFiltered);
-
-      // Fetch patients continuing treatment
-      const treatmentContinueFiltered = allClinicPatients.filter(patient =>
-        patient.status === 'treatment_continue'
-      ).sort((a, b) => {
-        const dateA = new Date(a.updatedAt || a.createdAt || 0).getTime();
-        const dateB = new Date(b.updatedAt || b.createdAt || 0).getTime();
-        return dateB - dateA;
-      });
-      setTreatmentContinuePatients(treatmentContinueFiltered);
-
-      // Fetch fully completed treatments (paid and discharged)
-      const treatmentCompletedFiltered = allClinicPatients.filter(patient =>
-        patient.status === 'discharged' ||
-        (patient.status === 'treatment_completed' && patient.paymentCompleted)
-      ).sort((a, b) => {
-        const dateA = new Date(a.createdAt || 0).getTime();
-        const dateB = new Date(b.createdAt || 0).getTime();
-        return dateB - dateA;
-      }).slice(0, 20);
-      setTreatmentCompletedPatients(treatmentCompletedFiltered);
-
-      // Fetch emergency patients (marked as emergency or urgent)
-      const emergencyPatientsFiltered = allClinicPatients.filter(patient =>
-        (patient as any).isEmergency === true ||
-        patient.priority === 'emergency' ||
-        patient.priority === 'urgent' ||
-        patient.visitReason?.toLowerCase().includes('acil') ||
-        patient.visitReason?.toLowerCase().includes('emergency')
-      ).sort((a, b) => {
-        const dateA = new Date(a.createdAt || 0).getTime();
-        const dateB = new Date(b.createdAt || 0).getTime();
-        return dateB - dateA;
-      });
-      setEmergencyPatients(emergencyPatientsFiltered);
-
-      // Get the final waiting patients count for stats
-      const finalWaitingPatientsCount = completedPatients.length;
-
-      // Fetch total patients count for this clinic
-      const allPatientsQuery = query(
-        collection(db, 'patients'),
-        where('clinicId', '==', doctorProfile.clinicId)
-      );
-      const allPatientsSnapshot = await getDocs(allPatientsQuery);
-      const totalPatients = allPatientsSnapshot.size;
-
-      // Fetch today's appointments
-      const todayForDuplicateStats = new Date();
-      const todayDateStringForDuplicateStats = todayForDuplicateStats.toISOString().split('T')[0]; // YYYY-MM-DD format
-      console.log('📅 AssistantPanel: Looking for appointments on date:', todayDateStringForDuplicateStats);
-      
-      let todayAppointments = 0;
-      try {
-        // Try different date formats - some might be stored as date strings
-        const appointmentsQuery = query(
-          collection(db, 'appointments'),
-          where('clinicId', '==', doctorProfile.clinicId)
-        );
-        const appointmentsSnapshot = await getDocs(appointmentsQuery);
-        
-        // Filter by today's date in memory to handle different date formats
-        const todayAppointmentsList = appointmentsSnapshot.docs.filter(doc => {
-          const data = doc.data();
-          const appointmentDate = data.date || data.appointmentDate || data.scheduledDate;
-          if (!appointmentDate) return false;
-          
-          // Handle different date formats
-          const dateStr = typeof appointmentDate === 'string' ?
-            appointmentDate.split('T')[0] :
-            new Date(appointmentDate).toISOString().split('T')[0];
-
-          return dateStr === todayDateStringForDuplicateStats;
-        });
-        
-        todayAppointments = todayAppointmentsList.length;
-        console.log('📅 AssistantPanel: Found today\'s appointments:', todayAppointments);
-        console.log('📅 AssistantPanel: Sample appointment data:', todayAppointmentsList[0]?.data());
-      } catch (appointmentError) {
-        console.warn('⚠️ Could not fetch today\'s appointments, using fallback:', appointmentError);
-        // Fallback: estimate based on clinic size
-        todayAppointments = Math.max(1, Math.floor(totalPatients * 0.15));
-      }
-
-      // Fetch completed treatments (completed anamnez records)
-      let completedTreatments = 0;
-      try {
-        const completedAnamrezQuery = query(
-          collection(db, 'patients'),
-          where('clinicId', '==', doctorProfile.clinicId),
-          where('isAnamnezCompleted', '==', true)
-        );
-        const completedAnamrezSnapshot = await getDocs(completedAnamrezQuery);
-        completedTreatments = completedAnamrezSnapshot.size;
-        console.log('🩺 AssistantPanel: Completed treatments:', completedTreatments);
-      } catch (treatmentError) {
-        console.warn('⚠️ Could not fetch completed treatments:', treatmentError);
-        completedTreatments = completedPatients.length;
-      }
-
-      const finalStats = {
-        totalPatients: totalPatients,
-        todayAppointments: todayAppointments,
-        completedTreatments: completedTreatments,
-        pendingReports: finalWaitingPatientsCount // Use actual waiting patients count
-      };
-      
-      console.log('📊 AssistantPanel: Final stats:', finalStats);
-      setStats(finalStats);
-
-    } catch (error) {
-      console.error('❌ AssistantPanel: Error fetching doctor data:', error);
-    } finally {
-      setLoading(false);
-    }
+    // With real-time updates, the patient list will automatically refresh
+    // when data changes in Firestore. No manual refresh needed.
+    console.log('🔄 AssistantPanel: Patient assigned - real-time listener will update the list automatically');
   };
 
   const getCurrentPatientList = () => {

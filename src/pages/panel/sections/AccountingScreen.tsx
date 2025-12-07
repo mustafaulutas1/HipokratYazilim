@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, updateDoc, doc, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, updateDoc, doc, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { utils, writeFile } from 'xlsx';
 
 interface AccountingScreenProps {
   doctorProfile?: any;
@@ -45,6 +46,19 @@ interface PaymentPatient {
     thermalScan?: { enabled?: boolean };
     toxicityScan?: { enabled?: boolean };
   };
+  // Debt tracking fields
+  debtAmount?: number;
+  debtDate?: string;
+  debtReason?: string;
+  originalExpectedAmount?: number;
+  hasDebt?: boolean;
+  // Partial treatment tracking fields
+  treatmentPartiallyApplied?: boolean;
+  appliedTreatments?: string[];
+  unselectedTreatments?: string[];
+  unselectedTreatmentReason?: string;
+  requiresRefund?: boolean;
+  refundReason?: string;
 }
 
 interface PaymentStats {
@@ -54,6 +68,8 @@ interface PaymentStats {
   pendingAmount: number;
   totalRefunds: number;
   notAppliedTreatments: number;
+  totalDebtPatients: number;
+  totalDebtAmount: number;
 }
 
 const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) => {
@@ -63,22 +79,35 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
     totalRevenue: 0,
     pendingAmount: 0,
     totalRefunds: 0,
-    notAppliedTreatments: 0
+    notAppliedTreatments: 0,
+    totalDebtPatients: 0,
+    totalDebtAmount: 0
   });
   const [pendingPaymentPatients, setPendingPaymentPatients] = useState<PaymentPatient[]>([]);
   const [paidPatients, setPaidPatients] = useState<PaymentPatient[]>([]);
   const [notAppliedTreatmentPatients, setNotAppliedTreatmentPatients] = useState<PaymentPatient[]>([]);
+  const [debtPatients, setDebtPatients] = useState<PaymentPatient[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeListType, setActiveListType] = useState<'pending_payment' | 'completed_payment' | 'not_applied_treatment'>('pending_payment');
+  const [activeListType, setActiveListType] = useState<'pending_payment' | 'completed_payment' | 'not_applied_treatment' | 'debt_patients'>('pending_payment');
   const [selectedPatient, setSelectedPatient] = useState<PaymentPatient | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+  const [isDebtPaymentModalOpen, setIsDebtPaymentModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<string>('nakit');
   const [selectedApplications, setSelectedApplications] = useState<string[]>([]);
   const [refundAmount, setRefundAmount] = useState<string>('');
   const [refundMethod, setRefundMethod] = useState<string>('nakit');
+  const [debtPaymentAmount, setDebtPaymentAmount] = useState<string>('');
+  const [debtPaymentMethod, setDebtPaymentMethod] = useState<string>('nakit');
+  const [discountPercent, setDiscountPercent] = useState<string>('');
+  const [isDiscountActive, setIsDiscountActive] = useState<boolean>(false);
+  const [originalAmount, setOriginalAmount] = useState<string>('');
+  const [includeDebtInPayment, setIncludeDebtInPayment] = useState<boolean>(true);
+  const [isPartialPayment, setIsPartialPayment] = useState<boolean>(false);
+  const [remainingDebtAmount, setRemainingDebtAmount] = useState<string>('');
+  const [debtSearchQuery, setDebtSearchQuery] = useState<string>('');
   const [reportPeriod, setReportPeriod] = useState<string>('daily');
   const [reportData, setReportData] = useState<{
     payments: PaymentPatient[];
@@ -161,6 +190,25 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       console.log('💰 AccountingScreen: Not applied treatment patients:', notAppliedTreatments.length);
       setNotAppliedTreatmentPatients(notAppliedTreatments);
 
+      // Filter patients with debt
+      const patientsWithDebt = allClinicPatients.filter(patient =>
+        patient.hasDebt === true &&
+        patient.debtAmount &&
+        patient.debtAmount > 0
+      ).sort((a, b) => {
+        const dateA = new Date(b.debtDate || b.updatedAt || b.createdAt).getTime();
+        const dateB = new Date(a.debtDate || a.updatedAt || a.createdAt).getTime();
+        return dateA - dateB; // Most recent first
+      });
+
+      console.log('💰 AccountingScreen: Debt patients:', patientsWithDebt.length);
+      setDebtPatients(patientsWithDebt);
+
+      // Calculate total debt amount
+      const totalDebtAmount = patientsWithDebt.reduce((sum, patient) => 
+        sum + (patient.debtAmount || 0), 0
+      );
+
       // Calculate stats
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
@@ -185,7 +233,9 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         totalRevenue,
         pendingAmount: estimatedPendingAmount,
         totalRefunds,
-        notAppliedTreatments: notAppliedTreatments.length
+        notAppliedTreatments: notAppliedTreatments.length,
+        totalDebtPatients: patientsWithDebt.length,
+        totalDebtAmount
       });
 
       setLoading(false);
@@ -209,20 +259,60 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       const allApplications = selectedPatient.treatmentOptions?.selectedMainApplications || [];
       const removedApplications = allApplications.filter((app: string) => !selectedApplications.includes(app));
       
-      await updateDoc(patientRef, {
+      // Get current payment amount
+      const currentPayment = parseFloat(paymentAmount);
+      
+      // Calculate previous debt to potentially add to payment
+      const previousDebt = (includeDebtInPayment && selectedPatient.debtAmount) ? selectedPatient.debtAmount : 0;
+      
+      // Determine if there's new debt from this transaction
+      const newDebtAmount = isPartialPayment && remainingDebtAmount ? parseFloat(remainingDebtAmount) : 0;
+      
+      // Total debt = new debt from this payment + any previous debt NOT being paid off
+      const totalRemainingDebt = newDebtAmount + (!includeDebtInPayment && selectedPatient.debtAmount ? selectedPatient.debtAmount : 0);
+      
+      const updateData: any = {
         paymentCompleted: true,
-        paymentAmount: parseFloat(paymentAmount),
+        paymentAmount: currentPayment,
         paymentDate: new Date().toISOString(),
         paymentMethod: paymentMethod,
         // Save which applications the patient will actually receive
         approvedApplications: selectedApplications,
         removedApplications: removedApplications,
         status: 'treatment_continue', // Send to treatment continue (TreatmentPanel)
-        updatedAt: new Date().toISOString()
-      });
+        updatedAt: new Date().toISOString(),
+      };
+      
+      // Handle debt tracking - simplified with explicit checkbox
+      if (totalRemainingDebt > 0) {
+        updateData.hasDebt = true;
+        updateData.debtAmount = Math.round(totalRemainingDebt * 100) / 100;
+        updateData.debtDate = new Date().toISOString();
+        updateData.debtReason = isPartialPayment 
+          ? `Eksik ödeme - Ödenen: ${currentPayment.toLocaleString('tr-TR')} TL, Kalan borç: ${totalRemainingDebt.toLocaleString('tr-TR')} TL`
+          : selectedPatient.debtReason || 'Önceki borç';
+      } else {
+        // Clear any previous debt
+        updateData.hasDebt = false;
+        updateData.debtAmount = 0;
+        updateData.debtDate = null;
+        updateData.debtReason = null;
+      }
+      
+      // If paying off previous debt, record it
+      if (includeDebtInPayment && previousDebt > 0) {
+        updateData.previousDebtCleared = true;
+        updateData.previousDebtClearedDate = new Date().toISOString();
+        updateData.previousDebtClearedAmount = previousDebt;
+      }
+      
+      await updateDoc(patientRef, updateData);
 
       console.log(`✅ Payment processed for patient: ${selectedPatient.fullName}`);
       console.log(`✅ Approved applications: ${selectedApplications.join(', ')}`);
+      if (totalRemainingDebt > 0) {
+        console.log(`⚠️ Remaining debt: ${totalRemainingDebt.toLocaleString('tr-TR')} TL`);
+      }
       if (removedApplications.length > 0) {
         console.log(`⚠️ Removed applications: ${removedApplications.join(', ')}`);
       }
@@ -233,6 +323,8 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       setPaymentAmount('');
       setPaymentMethod('nakit');
       setSelectedApplications([]);
+      setIsPartialPayment(false);
+      setRemainingDebtAmount('');
       
       // Refetch data
       window.location.reload(); // Simple refresh for now
@@ -275,6 +367,123 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
     } catch (error) {
       console.error('❌ Error processing refund:', error);
       alert('İade işlenirken bir hata oluştu. Lütfen tekrar deneyin.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleProcessDebtPayment = async () => {
+    if (!selectedPatient || !debtPaymentAmount || !doctorProfile?.clinicId) return;
+
+    try {
+      setLoading(true);
+      const batch = writeBatch(db);
+      const patientRef = doc(db, 'patients', selectedPatient.id);
+      
+      const paymentAmountNum = parseFloat(debtPaymentAmount);
+      const currentDebt = selectedPatient.debtAmount || 0;
+      const remainingDebt = currentDebt - paymentAmountNum;
+      
+      // First, get all unpaid pharmacy debts for this patient
+      const debtsRef = collection(db, 'pharmacy_debts');
+      const debtsQuery = query(
+        debtsRef,
+        where('clinicId', '==', doctorProfile.clinicId),
+        where('patientTcNo', '==', selectedPatient.tcNo),
+        where('isPaid', '==', false)
+      );
+      
+      const debtsSnapshot = await getDocs(debtsQuery);
+      const unpaidDebts: any[] = [];
+      
+      debtsSnapshot.forEach((docSnap) => {
+        unpaidDebts.push({
+          id: docSnap.id,
+          ...docSnap.data()
+        });
+      });
+      
+      // Sort by date, oldest first
+      unpaidDebts.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      
+      // Mark debts as paid until payment amount is used up
+      let remainingPayment = paymentAmountNum;
+      for (const debt of unpaidDebts) {
+        if (remainingPayment <= 0) break;
+        
+        const debtAmount = debt.amount || 0;
+        const debtRef = doc(db, 'pharmacy_debts', debt.id);
+        
+        if (remainingPayment >= debtAmount) {
+          // Fully pay this debt
+          batch.update(debtRef, {
+            isPaid: true,
+            paidAt: new Date().toISOString(),
+            paidAmount: debtAmount,
+            paymentMethod: debtPaymentMethod,
+            paidFrom: 'muhasebe'
+          });
+          remainingPayment -= debtAmount;
+        } else {
+          // Partially pay this debt - update the amount
+          batch.update(debtRef, {
+            amount: debtAmount - remainingPayment,
+            partialPaymentAt: new Date().toISOString(),
+            partialPaymentAmount: remainingPayment,
+            partialPaymentMethod: debtPaymentMethod
+          });
+          remainingPayment = 0;
+        }
+      }
+      
+      const updateData: any = {
+        updatedAt: new Date().toISOString(),
+        // Record this debt payment
+        lastDebtPaymentAmount: paymentAmountNum,
+        lastDebtPaymentDate: new Date().toISOString(),
+        lastDebtPaymentMethod: debtPaymentMethod,
+      };
+      
+      if (remainingDebt <= 0) {
+        // Debt fully paid
+        updateData.hasDebt = false;
+        updateData.debtAmount = 0;
+        updateData.debtDate = null;
+        updateData.debtReason = null;
+        updateData.debtFullyPaidAt = new Date().toISOString();
+        updateData.debtFullyPaidAmount = currentDebt;
+      } else {
+        // Partial debt payment
+        updateData.hasDebt = true;
+        updateData.debtAmount = Math.round(remainingDebt * 100) / 100;
+        updateData.debtReason = `Kısmi borç ödemesi yapıldı - Ödenen: ${paymentAmountNum.toLocaleString('tr-TR')} TL, Kalan: ${remainingDebt.toLocaleString('tr-TR')} TL`;
+      }
+      
+      batch.update(patientRef, updateData);
+      
+      // Commit all changes
+      await batch.commit();
+
+      if (remainingDebt <= 0) {
+        console.log(`✅ Debt fully paid for patient: ${selectedPatient.fullName}`);
+        alert(`Borç tamamen kapatıldı! Ödenen tutar: ${paymentAmountNum.toLocaleString('tr-TR')} TL`);
+      } else {
+        console.log(`✅ Partial debt payment for patient: ${selectedPatient.fullName}, Remaining: ${remainingDebt.toLocaleString('tr-TR')} TL`);
+        alert(`Kısmi borç ödemesi alındı! Kalan borç: ${remainingDebt.toLocaleString('tr-TR')} TL`);
+      }
+      
+      // Refresh data
+      setIsDebtPaymentModalOpen(false);
+      setSelectedPatient(null);
+      setDebtPaymentAmount('');
+      setDebtPaymentMethod('nakit');
+      
+      // Refetch data
+      window.location.reload();
+
+    } catch (error) {
+      console.error('❌ Error processing debt payment:', error);
+      alert('Borç ödemesi işlenirken bir hata oluştu. Lütfen tekrar deneyin.');
     } finally {
       setLoading(false);
     }
@@ -426,6 +635,92 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
     doc.save(`${periodText}_Muhasebe_Raporu_${currentDate.replace(/\//g, '-')}.pdf`);
   };
 
+  // Excel export function for accounting data
+  const exportToExcel = () => {
+    const workbook = utils.book_new();
+    
+    // Özet sayfası
+    const summaryData = [
+      ['MUHASEBE RAPORU - ÖZET'],
+      [''],
+      ['Rapor Tarihi', new Date().toLocaleDateString('tr-TR')],
+      [''],
+      ['İSTATİSTİKLER'],
+      ['Bekleyen Ödeme Sayısı', stats.totalPendingPayments],
+      ['Bugünkü Ödeme Sayısı', stats.todayPayments],
+      ['Toplam Gelir', formatCurrency(stats.totalRevenue)],
+      ['Bekleyen Tutar', formatCurrency(stats.pendingAmount)],
+      ['Toplam İade', formatCurrency(stats.totalRefunds)],
+      ['İade Bekleyen', stats.notAppliedTreatments],
+      ['Toplam Borçlu Hasta', stats.totalDebtPatients],
+      ['Toplam Borç Tutarı', formatCurrency(stats.totalDebtAmount)]
+    ];
+    const summarySheet = utils.aoa_to_sheet(summaryData);
+    utils.book_append_sheet(workbook, summarySheet, 'Özet');
+
+    // Bekleyen Ödemeler sayfası
+    if (pendingPaymentPatients.length > 0) {
+      const pendingData = pendingPaymentPatients.map(p => ({
+        'Hasta Adı': p.fullName,
+        'TC No': p.tcNo,
+        'Telefon': p.phone,
+        'Tedavi Tarihi': formatDate(p.treatmentStartedAt),
+        'Doktor': p.assignedDoctorName || 'Belirtilmemiş',
+        'Borç Durumu': p.hasDebt && p.debtAmount ? `${p.debtAmount.toLocaleString('tr-TR')} TL` : 'Yok'
+      }));
+      const pendingSheet = utils.json_to_sheet(pendingData);
+      utils.book_append_sheet(workbook, pendingSheet, 'Bekleyen Ödemeler');
+    }
+
+    // Tamamlanan Ödemeler sayfası
+    if (paidPatients.length > 0) {
+      const paidData = paidPatients.map(p => ({
+        'Hasta Adı': p.fullName,
+        'TC No': p.tcNo,
+        'Telefon': p.phone,
+        'Ödeme Tutarı': p.paymentAmount || 0,
+        'Ödeme Tarihi': formatDate(p.paymentDate),
+        'Ödeme Yöntemi': getPaymentMethodLabel(p.paymentMethod || 'nakit'),
+        'Borç Durumu': p.hasDebt && p.debtAmount ? `${p.debtAmount.toLocaleString('tr-TR')} TL` : 'Yok'
+      }));
+      const paidSheet = utils.json_to_sheet(paidData);
+      utils.book_append_sheet(workbook, paidSheet, 'Tamamlanan Ödemeler');
+    }
+
+    // İade Bekleyenler sayfası
+    if (notAppliedTreatmentPatients.length > 0) {
+      const refundData = notAppliedTreatmentPatients.map(p => ({
+        'Hasta Adı': p.fullName,
+        'TC No': p.tcNo,
+        'Telefon': p.phone,
+        'Ödeme Tutarı': p.paymentAmount || 0,
+        'Ödeme Tarihi': formatDate(p.paymentDate),
+        'İade Nedeni': p.treatmentNotAppliedReason || p.unselectedTreatmentReason || 'Belirtilmemiş',
+        'Kısmi Tedavi': p.treatmentPartiallyApplied ? 'Evet' : 'Hayır'
+      }));
+      const refundSheet = utils.json_to_sheet(refundData);
+      utils.book_append_sheet(workbook, refundSheet, 'İade Bekleyenler');
+    }
+
+    // Borçlu Hastalar sayfası
+    if (debtPatients.length > 0) {
+      const debtData = debtPatients.map(p => ({
+        'Hasta Adı': p.fullName,
+        'TC No': p.tcNo,
+        'Telefon': p.phone,
+        'Borç Tutarı': p.debtAmount || 0,
+        'Borç Tarihi': formatDate(p.debtDate),
+        'Borç Sebebi': p.debtReason || 'Belirtilmemiş'
+      }));
+      const debtSheet = utils.json_to_sheet(debtData);
+      utils.book_append_sheet(workbook, debtSheet, 'Borçlu Hastalar');
+    }
+
+    // Excel dosyasını indir
+    const fileName = `Muhasebe_Raporu_${new Date().toLocaleDateString('tr-TR').replace(/\./g, '-')}.xlsx`;
+    writeFile(workbook, fileName);
+  };
+
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'Tarih belirtilmemiş';
     const date = new Date(dateString);
@@ -475,86 +770,129 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
           <span className="text-4xl">💰</span>
           Muhasebe Ekranı
         </h1>
-        <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 py-2">
-          <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-          <span className="text-white/80 text-sm">Aktif</span>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={exportToExcel}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-green-500/25"
+          >
+            <span>📥</span>
+            Raporu İndir
+          </button>
+          <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 py-2">
+            <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+            <span className="text-white/80 text-sm">Aktif</span>
+          </div>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
-        <div className="bg-gradient-to-br from-red-500/20 to-red-600/30 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-white/70 text-sm font-medium">Bekleyen Ödemeler</p>
-              <p className="text-2xl font-bold text-white">{stats.totalPendingPayments}</p>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {/* Bekleyen Ödemeler */}
+        <div className="bg-gradient-to-br from-amber-600/40 to-amber-700/50 backdrop-blur-xl border border-amber-400/30 rounded-2xl p-5 hover:scale-[1.02] transition-transform duration-200">
+          <div className="flex flex-col h-full">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-amber-100/90 text-xs font-medium uppercase tracking-wide">Bekleyen Ödemeler</p>
+              <div className="w-10 h-10 bg-amber-500/40 rounded-xl flex items-center justify-center">
+                <span className="text-xl">⏳</span>
+              </div>
             </div>
-            <div className="w-12 h-12 bg-red-500/30 rounded-xl flex items-center justify-center">
-              <span className="text-2xl">⏳</span>
-            </div>
+            <p className="text-3xl font-bold text-white mt-auto">{stats.totalPendingPayments}</p>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-green-500/20 to-green-600/30 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-white/70 text-sm font-medium">Bugünkü Ödemeler</p>
-              <p className="text-2xl font-bold text-white">{stats.todayPayments}</p>
+        {/* Bugünkü Ödemeler */}
+        <div className="bg-gradient-to-br from-emerald-600/40 to-emerald-700/50 backdrop-blur-xl border border-emerald-400/30 rounded-2xl p-5 hover:scale-[1.02] transition-transform duration-200">
+          <div className="flex flex-col h-full">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-emerald-100/90 text-xs font-medium uppercase tracking-wide">Bugünkü Ödemeler</p>
+              <div className="w-10 h-10 bg-emerald-500/40 rounded-xl flex items-center justify-center">
+                <span className="text-xl">✅</span>
+              </div>
             </div>
-            <div className="w-12 h-12 bg-green-500/30 rounded-xl flex items-center justify-center">
-              <span className="text-2xl">✅</span>
-            </div>
+            <p className="text-3xl font-bold text-white mt-auto">{stats.todayPayments}</p>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/30 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-white/70 text-sm font-medium">Toplam Gelir</p>
-              <p className="text-2xl font-bold text-white">{formatCurrency(stats.totalRevenue)}</p>
+        {/* Toplam Gelir */}
+        <div className="bg-gradient-to-br from-sky-600/40 to-sky-700/50 backdrop-blur-xl border border-sky-400/30 rounded-2xl p-5 hover:scale-[1.02] transition-transform duration-200">
+          <div className="flex flex-col h-full">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sky-100/90 text-xs font-medium uppercase tracking-wide">Toplam Gelir</p>
+              <div className="w-10 h-10 bg-sky-500/40 rounded-xl flex items-center justify-center">
+                <span className="text-xl">💎</span>
+              </div>
             </div>
-            <div className="w-12 h-12 bg-blue-500/30 rounded-xl flex items-center justify-center">
-              <span className="text-2xl">💎</span>
-            </div>
+            <p className="text-2xl font-bold text-white mt-auto">{formatCurrency(stats.totalRevenue)}</p>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-orange-500/20 to-orange-600/30 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-white/70 text-sm font-medium">Bekleyen Tutar</p>
-              <p className="text-2xl font-bold text-white">{formatCurrency(stats.pendingAmount)}</p>
+        {/* Bekleyen Tutar */}
+        <div className="bg-gradient-to-br from-orange-600/40 to-orange-700/50 backdrop-blur-xl border border-orange-400/30 rounded-2xl p-5 hover:scale-[1.02] transition-transform duration-200">
+          <div className="flex flex-col h-full">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-orange-100/90 text-xs font-medium uppercase tracking-wide">Bekleyen Tutar</p>
+              <div className="w-10 h-10 bg-orange-500/40 rounded-xl flex items-center justify-center">
+                <span className="text-xl">💸</span>
+              </div>
             </div>
-            <div className="w-12 h-12 bg-orange-500/30 rounded-xl flex items-center justify-center">
-              <span className="text-2xl">💸</span>
-            </div>
+            <p className="text-2xl font-bold text-white mt-auto">{formatCurrency(stats.pendingAmount)}</p>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-purple-500/20 to-purple-600/30 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-white/70 text-sm font-medium">Toplam İade</p>
-              <p className="text-2xl font-bold text-white">{formatCurrency(stats.totalRefunds)}</p>
+        {/* Toplam İade */}
+        <div className="bg-gradient-to-br from-violet-600/40 to-violet-700/50 backdrop-blur-xl border border-violet-400/30 rounded-2xl p-5 hover:scale-[1.02] transition-transform duration-200">
+          <div className="flex flex-col h-full">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-violet-100/90 text-xs font-medium uppercase tracking-wide">Toplam İade</p>
+              <div className="w-10 h-10 bg-violet-500/40 rounded-xl flex items-center justify-center">
+                <span className="text-xl">🔄</span>
+              </div>
             </div>
-            <div className="w-12 h-12 bg-purple-500/30 rounded-xl flex items-center justify-center">
-              <span className="text-2xl">🔄</span>
-            </div>
+            <p className="text-2xl font-bold text-white mt-auto">{formatCurrency(stats.totalRefunds)}</p>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-yellow-500/20 to-yellow-600/30 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-white/70 text-sm font-medium">İade Bekleyen</p>
-              <p className="text-2xl font-bold text-white">{stats.notAppliedTreatments}</p>
+        {/* İade Bekleyen */}
+        <div className="bg-gradient-to-br from-slate-600/40 to-slate-700/50 backdrop-blur-xl border border-yellow-400/30 rounded-2xl p-5 hover:scale-[1.02] transition-transform duration-200">
+          <div className="flex flex-col h-full">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-yellow-100/90 text-xs font-medium uppercase tracking-wide">İade Bekleyen</p>
+              <div className="w-10 h-10 bg-yellow-500/40 rounded-xl flex items-center justify-center">
+                <span className="text-xl">⚠️</span>
+              </div>
             </div>
-            <div className="w-12 h-12 bg-yellow-500/30 rounded-xl flex items-center justify-center">
-              <span className="text-2xl">⚠️</span>
-            </div>
+            <p className="text-3xl font-bold text-white mt-auto">{stats.notAppliedTreatments}</p>
           </div>
         </div>
       </div>
+
+      {/* Debt Stats Card - Separate prominent display */}
+      {stats.totalDebtPatients > 0 && (
+        <div className="bg-gradient-to-r from-red-600/30 to-orange-600/30 backdrop-blur-xl border-2 border-red-400/50 rounded-2xl p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 bg-red-500/30 rounded-xl flex items-center justify-center">
+                <span className="text-3xl">💳</span>
+              </div>
+              <div>
+                <p className="text-red-200 text-sm font-medium">Toplam Borçlu Hasta</p>
+                <p className="text-3xl font-bold text-white">{stats.totalDebtPatients} Hasta</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-red-200 text-sm font-medium">Toplam Borç Tutarı</p>
+              <p className="text-3xl font-bold text-red-100">{formatCurrency(stats.totalDebtAmount)}</p>
+            </div>
+            <button
+              onClick={() => setActiveListType('debt_patients')}
+              className="px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-all duration-200 flex items-center gap-2 shadow-lg"
+            >
+              <span>💰</span>
+              Borçları Gör
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* List Filter Buttons */}
       <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
@@ -614,6 +952,18 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
             <span className="text-lg">⚠️</span>
             İade Bekleyen Tedaviler ({notAppliedTreatmentPatients.length})
           </button>
+
+          <button
+            onClick={() => setActiveListType('debt_patients')}
+            className={`px-4 py-2 rounded-xl font-medium text-sm transition-all duration-200 flex items-center gap-2 ${
+              activeListType === 'debt_patients'
+                ? 'bg-orange-500/30 border-2 border-orange-400 text-orange-200'
+                : 'bg-white/5 border border-white/20 text-white/70 hover:bg-white/10'
+            }`}
+          >
+            <span className="text-lg">💳</span>
+            Borçlu Hastalar ({debtPatients.length})
+          </button>
         </div>
       </div>
 
@@ -631,6 +981,11 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                 <span className="text-2xl">✅</span>
                 Tamamlanan Ödemeler
               </>
+            ) : activeListType === 'debt_patients' ? (
+              <>
+                <span className="text-2xl">💳</span>
+                Borçlu Hastalar
+              </>
             ) : (
               <>
                 <span className="text-2xl">⚠️</span>
@@ -638,16 +993,49 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
               </>
             )}
           </h3>
+          
+          {/* Search filter for debt patients */}
+          {activeListType === 'debt_patients' && (
+            <div className="mt-3">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={debtSearchQuery}
+                  onChange={(e) => setDebtSearchQuery(e.target.value)}
+                  placeholder="Hasta adı ile ara..."
+                  className="w-full md:w-80 px-4 py-2 pl-10 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent"
+                />
+                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/50">
+                  🔍
+                </span>
+                {debtSearchQuery && (
+                  <button
+                    onClick={() => setDebtSearchQuery('')}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-white/50 hover:text-white transition-colors"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="divide-y divide-white/10">
           {(activeListType === 'pending_payment' ? pendingPaymentPatients : 
             activeListType === 'completed_payment' ? paidPatients : 
+            activeListType === 'debt_patients' ? debtPatients.filter(p => 
+              p.fullName?.toLowerCase().includes(debtSearchQuery.toLowerCase())
+            ) :
             notAppliedTreatmentPatients).map((patient) => (
             <div key={patient.id} className="p-6 hover:bg-white/5 transition-all duration-200">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-sm ${
+                    activeListType === 'debt_patients' 
+                      ? 'bg-gradient-to-br from-red-500 to-orange-500'
+                      : 'bg-gradient-to-br from-blue-400 to-purple-500'
+                  }`}>
                     {patient.fullName?.charAt(0) || '?'}
                   </div>
                   <div>
@@ -658,13 +1046,42 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                 </div>
 
                 <div className="text-right">
-                  {activeListType === 'pending_payment' ? (
+                  {activeListType === 'debt_patients' ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="px-3 py-1 bg-red-500/30 border border-red-400 rounded-full text-red-200 text-xs font-bold">
+                          💳 BORÇLU
+                        </span>
+                      </div>
+                      <p className="text-2xl font-bold text-red-300">
+                        {formatCurrency(patient.debtAmount || 0)}
+                      </p>
+                      <p className="text-white/60 text-sm">
+                        Borç Tarihi: {formatDate(patient.debtDate)}
+                      </p>
+                      {patient.debtReason && (
+                        <p className="text-white/50 text-xs max-w-xs truncate">
+                          {patient.debtReason}
+                        </p>
+                      )}
+                    </div>
+                  ) : activeListType === 'pending_payment' ? (
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
                         <span className="px-3 py-1 bg-red-500/20 border border-red-400 rounded-full text-red-200 text-xs font-medium">
                           Ödeme Bekliyor
                         </span>
+                        {patient.hasDebt && patient.debtAmount && patient.debtAmount > 0 && (
+                          <span className="px-3 py-1 bg-orange-500/30 border border-orange-400 rounded-full text-orange-200 text-xs font-bold animate-pulse">
+                            ⚠️ BORÇLU
+                          </span>
+                        )}
                       </div>
+                      {patient.hasDebt && patient.debtAmount && patient.debtAmount > 0 && (
+                        <p className="text-orange-300 text-sm font-medium">
+                          Borç: {patient.debtAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                        </p>
+                      )}
                       <p className="text-white/60 text-sm">
                         Tedavi: {formatDate(patient.treatmentStartedAt)}
                       </p>
@@ -678,6 +1095,11 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                         <span className="px-3 py-1 bg-green-500/20 border border-green-400 rounded-full text-green-200 text-xs font-medium">
                           Ödendi
                         </span>
+                        {patient.hasDebt && patient.debtAmount && patient.debtAmount > 0 && (
+                          <span className="px-3 py-1 bg-orange-500/30 border border-orange-400 rounded-full text-orange-200 text-xs font-bold">
+                            ⚠️ Borç: {patient.debtAmount.toLocaleString('tr-TR')} TL
+                          </span>
+                        )}
                       </div>
                       <p className="text-white/60 text-sm">
                         {formatCurrency(patient.paymentAmount || 0)}
@@ -688,10 +1110,15 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="px-3 py-1 bg-yellow-500/20 border border-yellow-400 rounded-full text-yellow-200 text-xs font-medium">
                           İade Bekliyor
                         </span>
+                        {patient.treatmentPartiallyApplied && (
+                          <span className="px-3 py-1 bg-orange-500/20 border border-orange-400 rounded-full text-orange-200 text-xs font-medium">
+                            Kısmi Tedavi
+                          </span>
+                        )}
                       </div>
                       <p className="text-white/60 text-sm">
                         Ödeme: {formatCurrency(patient.paymentAmount || 0)}
@@ -699,9 +1126,36 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                       <p className="text-white/60 text-sm">
                         Ödeme Tarihi: {formatDate(patient.paymentDate)}
                       </p>
-                      {patient.treatmentNotAppliedReason && (
+                      {/* Show unselected treatments */}
+                      {patient.unselectedTreatments && patient.unselectedTreatments.length > 0 && (
+                        <div className="mt-2 p-2 bg-red-500/20 border border-red-400/30 rounded-lg">
+                          <p className="text-red-200 text-xs font-medium mb-1">
+                            ❌ Uygulanmayan Tedaviler:
+                          </p>
+                          <p className="text-red-100 text-xs">
+                            {patient.unselectedTreatments.join(', ')}
+                          </p>
+                        </div>
+                      )}
+                      {/* Show applied treatments if partial */}
+                      {patient.treatmentPartiallyApplied && patient.appliedTreatments && patient.appliedTreatments.length > 0 && (
+                        <div className="mt-1 p-2 bg-green-500/20 border border-green-400/30 rounded-lg">
+                          <p className="text-green-200 text-xs font-medium mb-1">
+                            ✅ Uygulanan Tedaviler:
+                          </p>
+                          <p className="text-green-100 text-xs">
+                            {patient.appliedTreatments.join(', ')}
+                          </p>
+                        </div>
+                      )}
+                      {patient.treatmentNotAppliedReason && !patient.treatmentPartiallyApplied && (
                         <p className="text-white/60 text-xs max-w-xs truncate">
                           Neden: {patient.treatmentNotAppliedReason}
+                        </p>
+                      )}
+                      {patient.unselectedTreatmentReason && (
+                        <p className="text-white/60 text-xs max-w-xs truncate">
+                          Neden: {patient.unselectedTreatmentReason}
                         </p>
                       )}
                     </div>
@@ -741,6 +1195,38 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                     </button>
                   </div>
                 )}
+
+                {activeListType === 'debt_patients' && (
+                  <div className="flex flex-col items-end gap-2 ml-4">
+                    <div className="text-right">
+                      <p className="text-red-300 text-sm font-medium">Toplam Borç</p>
+                      <p className="text-red-200 text-xl font-bold">{formatCurrency(patient.debtAmount || 0)}</p>
+                      {patient.debtDate && (
+                        <p className="text-white/50 text-xs">
+                          {formatDate(patient.debtDate)}
+                        </p>
+                      )}
+                      {patient.debtReason && (
+                        <p className="text-white/50 text-xs max-w-[150px] truncate">
+                          {patient.debtReason}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSelectedPatient(patient);
+                        setDebtPaymentAmount(patient.debtAmount?.toString() || '');
+                        setIsPartialPayment(false);
+                        setRemainingDebtAmount('');
+                        setIsDebtPaymentModalOpen(true);
+                      }}
+                      className="px-4 py-2 bg-green-500/20 border border-green-400 rounded-xl text-green-200 hover:bg-green-500/30 transition-all duration-200 flex items-center gap-2"
+                    >
+                      <span className="text-lg">💰</span>
+                      Borç Öde
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Treatment Details */}
@@ -767,23 +1253,28 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
 
           {(activeListType === 'pending_payment' ? pendingPaymentPatients : 
             activeListType === 'completed_payment' ? paidPatients : 
-            notAppliedTreatmentPatients).length === 0 && (
+            activeListType === 'not_applied_treatment' ? notAppliedTreatmentPatients :
+            debtPatients).length === 0 && (
             <div className="p-12 text-center">
               <div className="text-6xl mb-4">
                 {activeListType === 'pending_payment' ? '⏳' : 
-                 activeListType === 'completed_payment' ? '✅' : '⚠️'}
+                 activeListType === 'completed_payment' ? '✅' : 
+                 activeListType === 'not_applied_treatment' ? '⚠️' : '💳'}
               </div>
               <h3 className="text-xl font-bold text-white mb-2">
                 {activeListType === 'pending_payment' ? 'Bekleyen Ödeme Yok' : 
                  activeListType === 'completed_payment' ? 'Henüz Tamamlanan Ödeme Yok' :
-                 'İade Bekleyen Tedavi Yok'}
+                 activeListType === 'not_applied_treatment' ? 'İade Bekleyen Tedavi Yok' :
+                 'Borçlu Hasta Yok'}
               </h3>
               <p className="text-white/60">
                 {activeListType === 'pending_payment' 
                   ? 'Şu anda ödeme bekleyen hasta bulunmuyor.'
                   : activeListType === 'completed_payment'
                   ? 'Henüz tamamlanan ödeme kaydı bulunmuyor.'
-                  : 'Şu anda iade bekleyen tedavi bulunmuyor.'
+                  : activeListType === 'not_applied_treatment'
+                  ? 'Şu anda iade bekleyen tedavi bulunmuyor.'
+                  : 'Şu anda borcu olan hasta bulunmuyor.'
                 }
               </p>
             </div>
@@ -795,7 +1286,68 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       {isPaymentModalOpen && selectedPatient && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-200">
-            <div className="p-6 border-b border-gray-200">
+            {/* Debt Warning Banner - Shows at the very top if patient has debt */}
+            {selectedPatient.hasDebt && selectedPatient.debtAmount && selectedPatient.debtAmount > 0 && (
+              <div className="bg-gradient-to-r from-red-600 to-red-700 p-4 rounded-t-2xl">
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0">
+                    <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                      <span className="text-2xl">⚠️</span>
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-white font-bold text-lg flex items-center gap-2">
+                      <span>🚨 BORÇ UYARISI</span>
+                    </h4>
+                    <p className="text-red-100 text-sm mt-1">
+                      Bu hastanın önceki işlemlerden kalan borcu bulunmaktadır!
+                    </p>
+                    <div className="mt-3 bg-white/10 rounded-lg p-3 backdrop-blur-sm">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-red-100 text-xs">Borç Tutarı</p>
+                          <p className="text-white text-2xl font-bold">
+                            {selectedPatient.debtAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-red-100 text-xs">Borç Tarihi</p>
+                          <p className="text-white text-sm">
+                            {selectedPatient.debtDate ? new Date(selectedPatient.debtDate).toLocaleDateString('tr-TR') : 'Belirtilmemiş'}
+                          </p>
+                        </div>
+                      </div>
+                      {selectedPatient.debtReason && (
+                        <p className="text-red-100 text-xs mt-2 border-t border-white/20 pt-2">
+                          <span className="font-medium">Sebep:</span> {selectedPatient.debtReason}
+                        </p>
+                      )}
+                    </div>
+                    <div className="mt-3 flex items-center gap-2">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={includeDebtInPayment}
+                          onChange={(e) => setIncludeDebtInPayment(e.target.checked)}
+                          className="w-4 h-4 rounded border-white/30 bg-white/20 text-red-500 focus:ring-red-400"
+                        />
+                        <span className="text-white text-sm font-medium">
+                          Bu borcu mevcut ödemeye dahil et
+                        </span>
+                      </label>
+                    </div>
+                    {includeDebtInPayment && (
+                      <p className="text-yellow-200 text-xs mt-2 flex items-center gap-1">
+                        <span>💡</span>
+                        Toplam ödenecek tutara {selectedPatient.debtAmount.toLocaleString('tr-TR')} TL borç eklenecektir.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className={`p-6 border-b border-gray-200 ${selectedPatient.hasDebt && selectedPatient.debtAmount ? '' : ''}`}>
               <h3 className="text-xl font-bold text-gray-900 mb-2">
                 💳 Ödeme Alma
               </h3>
@@ -930,12 +1482,123 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                 <input
                   type="number"
                   value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  onChange={(e) => {
+                    setPaymentAmount(e.target.value);
+                    if (!isDiscountActive) {
+                      setOriginalAmount(e.target.value);
+                    }
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="500"
                   min="0"
                   step="0.01"
                 />
+              </div>
+
+              {/* Discount Section */}
+              <div className="bg-gradient-to-r from-orange-50 to-yellow-50 border border-orange-200 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-semibold text-orange-900 flex items-center gap-2">
+                    <span className="text-lg">🏷️</span>
+                    İndirim Uygula
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isDiscountActive) {
+                        // Disable discount - restore original amount
+                        setIsDiscountActive(false);
+                        setPaymentAmount(originalAmount);
+                        setDiscountPercent('');
+                      } else {
+                        // Enable discount
+                        setIsDiscountActive(true);
+                        setOriginalAmount(paymentAmount);
+                      }
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      isDiscountActive
+                        ? 'bg-orange-500 text-white hover:bg-orange-600'
+                        : 'bg-white border border-orange-300 text-orange-700 hover:bg-orange-100'
+                    }`}
+                  >
+                    {isDiscountActive ? '✓ İndirim Aktif' : 'İndirim Uygula'}
+                  </button>
+                </div>
+                
+                {isDiscountActive && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1">
+                        <label className="block text-xs font-medium text-orange-700 mb-1">
+                          İndirim Oranı (%)
+                        </label>
+                        <input
+                          type="number"
+                          value={discountPercent}
+                          onChange={(e) => {
+                            const percent = e.target.value;
+                            setDiscountPercent(percent);
+                            if (percent && originalAmount) {
+                              const discountValue = parseFloat(percent);
+                              const original = parseFloat(originalAmount);
+                              if (!isNaN(discountValue) && !isNaN(original) && discountValue >= 0 && discountValue <= 100) {
+                                const discountedAmount = original - (original * discountValue / 100);
+                                setPaymentAmount(discountedAmount.toFixed(2));
+                              }
+                            }
+                          }}
+                          className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
+                          placeholder="10"
+                          min="0"
+                          max="100"
+                        />
+                      </div>
+                      <div className="flex gap-1 pt-5">
+                        {[5, 10, 15, 20, 25].map((percent) => (
+                          <button
+                            key={percent}
+                            type="button"
+                            onClick={() => {
+                              setDiscountPercent(percent.toString());
+                              if (originalAmount) {
+                                const original = parseFloat(originalAmount);
+                                if (!isNaN(original)) {
+                                  const discountedAmount = original - (original * percent / 100);
+                                  setPaymentAmount(discountedAmount.toFixed(2));
+                                }
+                              }
+                            }}
+                            className={`px-2 py-1 text-xs rounded-md transition-all ${
+                              discountPercent === percent.toString()
+                                ? 'bg-orange-500 text-white'
+                                : 'bg-white border border-orange-200 text-orange-700 hover:bg-orange-100'
+                            }`}
+                          >
+                            %{percent}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    {discountPercent && originalAmount && parseFloat(discountPercent) > 0 && (
+                      <div className="bg-white rounded-lg p-3 border border-orange-200">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Orijinal Tutar:</span>
+                          <span className="text-gray-900 line-through">{parseFloat(originalAmount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                        </div>
+                        <div className="flex justify-between text-sm text-orange-600">
+                          <span>İndirim (%{discountPercent}):</span>
+                          <span>-{(parseFloat(originalAmount) * parseFloat(discountPercent) / 100).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                        </div>
+                        <div className="flex justify-between text-sm font-bold text-green-600 mt-1 pt-1 border-t border-orange-200">
+                          <span>İndirimli Tutar:</span>
+                          <span>{parseFloat(paymentAmount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -953,6 +1616,64 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   <option value="havale">Havale/EFT</option>
                   <option value="cek">Çek</option>
                 </select>
+              </div>
+
+              {/* Partial Payment Section - Explicit debt creation */}
+              <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="partialPaymentCheckbox"
+                    checked={isPartialPayment}
+                    onChange={(e) => {
+                      setIsPartialPayment(e.target.checked);
+                      if (!e.target.checked) {
+                        setRemainingDebtAmount('');
+                      }
+                    }}
+                    className="w-5 h-5 rounded border-red-300 text-red-500 focus:ring-red-400"
+                  />
+                  <label htmlFor="partialPaymentCheckbox" className="font-semibold text-red-900 flex items-center gap-2 cursor-pointer">
+                    <span className="text-lg">⚠️</span>
+                    Hasta tamamını ödemedi
+                  </label>
+                </div>
+                
+                {isPartialPayment && (
+                  <div className="mt-4 space-y-3">
+                    <div className="bg-white rounded-lg p-3 border border-red-200">
+                      <label className="block text-sm font-medium text-red-700 mb-2">
+                        Kalan Borç Tutarı (TL)
+                      </label>
+                      <input
+                        type="number"
+                        value={remainingDebtAmount}
+                        onChange={(e) => setRemainingDebtAmount(e.target.value)}
+                        className="w-full px-3 py-2 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                        placeholder="Örn: 500"
+                        min="0"
+                        step="0.01"
+                      />
+                      <p className="text-xs text-red-600 mt-2">
+                        📌 Hastanın ne kadar borcu kaldığını girin. Bu tutar hastanın borç kaydına eklenecektir.
+                      </p>
+                    </div>
+                    
+                    {remainingDebtAmount && parseFloat(remainingDebtAmount) > 0 && (
+                      <div className="bg-red-100 rounded-lg p-3 border border-red-300">
+                        <div className="flex items-center gap-2 text-red-800">
+                          <span className="text-xl">🚨</span>
+                          <div>
+                            <p className="font-bold">Borç Kaydı Oluşturulacak</p>
+                            <p className="text-sm">
+                              Ödeme alındıktan sonra hasta <strong>{parseFloat(remainingDebtAmount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</strong> borçlu olarak işaretlenecektir.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Patient Info Summary */}
@@ -983,6 +1704,12 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   setPaymentAmount('');
                   setPaymentMethod('nakit');
                   setSelectedApplications([]);
+                  setDiscountPercent('');
+                  setIsDiscountActive(false);
+                  setOriginalAmount('');
+                  setIncludeDebtInPayment(true);
+                  setIsPartialPayment(false);
+                  setRemainingDebtAmount('');
                 }}
                 className="px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg text-gray-700 hover:text-gray-900 font-medium transition-all duration-200"
               >
@@ -1024,8 +1751,52 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
             </div>
 
             <div className="p-6 space-y-4">
-              {/* Treatment Not Applied Reason */}
-              {selectedPatient.treatmentNotAppliedReason && (
+              {/* Partial Treatment Info - Show which treatments were/weren't applied */}
+              {selectedPatient.treatmentPartiallyApplied && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-4">
+                  <h4 className="font-semibold text-orange-900 mb-3 flex items-center gap-2">
+                    <span className="text-lg">⚠️</span>
+                    Kısmi Tedavi Uygulandı
+                  </h4>
+                  
+                  {/* Applied Treatments */}
+                  {selectedPatient.appliedTreatments && selectedPatient.appliedTreatments.length > 0 && (
+                    <div className="mb-3">
+                      <p className="text-green-700 font-medium text-sm mb-2">✅ Uygulanan Tedaviler:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedPatient.appliedTreatments.map((treatment: string, index: number) => (
+                          <span key={index} className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
+                            {treatment}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Unselected Treatments */}
+                  {selectedPatient.unselectedTreatments && selectedPatient.unselectedTreatments.length > 0 && (
+                    <div className="mb-3">
+                      <p className="text-red-700 font-medium text-sm mb-2">❌ Uygulanmayan Tedaviler (İade Gerekli):</p>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedPatient.unselectedTreatments.map((treatment: string, index: number) => (
+                          <span key={index} className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">
+                            {treatment}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {selectedPatient.unselectedTreatmentReason && (
+                    <p className="text-orange-700 text-sm mt-2 pt-2 border-t border-orange-200">
+                      <span className="font-medium">Neden:</span> {selectedPatient.unselectedTreatmentReason}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Treatment Not Applied Reason - Only show if NO treatment was applied */}
+              {!selectedPatient.treatmentPartiallyApplied && selectedPatient.treatmentNotAppliedReason && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
                   <h4 className="font-semibold text-red-900 mb-2 flex items-center gap-2">
                     <span className="text-lg">❌</span>
@@ -1129,6 +1900,203 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                 ) : (
                   <>
                     🔄 İade İşle
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Debt Payment Modal */}
+      {isDebtPaymentModalOpen && selectedPatient && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-200">
+            <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-green-600 to-emerald-600">
+              <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                <span className="text-2xl">💰</span>
+                Borç Ödeme İşlemi
+              </h3>
+              <p className="text-green-100">
+                {selectedPatient.fullName} için borç ödeme
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Current Debt Info */}
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <h4 className="font-semibold text-red-900 mb-3 flex items-center gap-2">
+                  <span className="text-lg">💳</span>
+                  Mevcut Borç Bilgisi
+                </h4>
+                <div className="space-y-2 text-sm text-red-800">
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium">Toplam Borç:</span>
+                    <span className="text-xl font-bold text-red-600">{formatCurrency(selectedPatient.debtAmount || 0)}</span>
+                  </div>
+                  {selectedPatient.debtDate && (
+                    <p><span className="font-medium">Borç Tarihi:</span> {formatDate(selectedPatient.debtDate)}</p>
+                  )}
+                  {selectedPatient.debtReason && (
+                    <p><span className="font-medium">Borç Sebebi:</span> {selectedPatient.debtReason}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Partial Payment Checkbox */}
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isPartialPayment}
+                    onChange={(e) => {
+                      setIsPartialPayment(e.target.checked);
+                      if (!e.target.checked) {
+                        setRemainingDebtAmount('');
+                        setDebtPaymentAmount(selectedPatient.debtAmount?.toString() || '');
+                      }
+                    }}
+                    className="mt-1 h-5 w-5 text-yellow-600 rounded border-yellow-300 focus:ring-yellow-500"
+                  />
+                  <div>
+                    <span className="font-medium text-yellow-900">Hasta borcun tamamını ödemiyor</span>
+                    <p className="text-yellow-700 text-sm mt-1">
+                      Hasta kısmi ödeme yapacaksa bu seçeneği işaretleyin.
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              {/* Payment Amount */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {isPartialPayment ? 'Ödenen Tutar (TL)' : 'Ödeme Tutarı (TL)'}
+                </label>
+                <input
+                  type="number"
+                  value={debtPaymentAmount}
+                  onChange={(e) => {
+                    setDebtPaymentAmount(e.target.value);
+                    if (isPartialPayment && e.target.value) {
+                      const paid = parseFloat(e.target.value) || 0;
+                      const totalDebt = selectedPatient.debtAmount || 0;
+                      const remaining = Math.max(0, totalDebt - paid);
+                      setRemainingDebtAmount(remaining.toString());
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  placeholder={selectedPatient.debtAmount?.toString() || "0"}
+                  min="0"
+                  step="0.01"
+                />
+                {!isPartialPayment && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Toplam borç: {formatCurrency(selectedPatient.debtAmount || 0)}
+                  </p>
+                )}
+              </div>
+
+              {/* Remaining Debt (shown only for partial payment) */}
+              {isPartialPayment && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                  <label className="block text-sm font-medium text-orange-700 mb-2">
+                    Kalan Borç (Otomatik Hesaplanır)
+                  </label>
+                  <div className="text-2xl font-bold text-orange-600">
+                    {formatCurrency(parseFloat(remainingDebtAmount) || (selectedPatient.debtAmount || 0) - (parseFloat(debtPaymentAmount) || 0))}
+                  </div>
+                  <p className="text-xs text-orange-600 mt-1">
+                    Bu tutar hastanın yeni borç tutarı olarak kaydedilecektir.
+                  </p>
+                </div>
+              )}
+
+              {/* Payment Method */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Ödeme Yöntemi
+                </label>
+                <select
+                  value={debtPaymentMethod}
+                  onChange={(e) => setDebtPaymentMethod(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                >
+                  <option value="nakit">Nakit</option>
+                  <option value="kartkredi">Kredi Kartı</option>
+                  <option value="kartdebit">Banka Kartı</option>
+                  <option value="havale">Havale/EFT</option>
+                  <option value="cek">Çek</option>
+                </select>
+              </div>
+
+              {/* Patient Info Summary */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h4 className="font-medium text-gray-900 mb-2">Hasta Bilgileri</h4>
+                <div className="space-y-1 text-sm text-gray-600">
+                  <p>Ad Soyad: {selectedPatient.fullName}</p>
+                  <p>TC No: {selectedPatient.tcNo}</p>
+                  <p>Telefon: {selectedPatient.phone}</p>
+                </div>
+              </div>
+
+              {/* Summary Box */}
+              <div className={`border rounded-lg p-4 ${isPartialPayment ? 'bg-orange-50 border-orange-200' : 'bg-green-50 border-green-200'}`}>
+                <h4 className={`font-medium mb-2 ${isPartialPayment ? 'text-orange-900' : 'text-green-900'}`}>
+                  İşlem Özeti
+                </h4>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Mevcut Borç:</span>
+                    <span className="font-medium text-red-600">{formatCurrency(selectedPatient.debtAmount || 0)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Ödenecek Tutar:</span>
+                    <span className="font-medium text-green-600">{formatCurrency(parseFloat(debtPaymentAmount) || 0)}</span>
+                  </div>
+                  <div className="border-t pt-1 mt-1">
+                    <div className="flex justify-between">
+                      <span className={`font-medium ${isPartialPayment ? 'text-orange-700' : 'text-green-700'}`}>
+                        {isPartialPayment ? 'Kalan Borç:' : 'Sonuç:'}
+                      </span>
+                      <span className={`font-bold ${isPartialPayment ? 'text-orange-600' : 'text-green-600'}`}>
+                        {isPartialPayment 
+                          ? formatCurrency(Math.max(0, (selectedPatient.debtAmount || 0) - (parseFloat(debtPaymentAmount) || 0)))
+                          : 'Borç Kapatılacak ✓'
+                        }
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex items-center justify-end gap-3">
+              <button
+                onClick={() => {
+                  setIsDebtPaymentModalOpen(false);
+                  setSelectedPatient(null);
+                  setDebtPaymentAmount('');
+                  setDebtPaymentMethod('nakit');
+                  setIsPartialPayment(false);
+                  setRemainingDebtAmount('');
+                }}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg text-gray-700 hover:text-gray-900 font-medium transition-all duration-200"
+              >
+                İptal
+              </button>
+              <button
+                onClick={handleProcessDebtPayment}
+                disabled={loading || !debtPaymentAmount || parseFloat(debtPaymentAmount) <= 0}
+                className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    İşleniyor...
+                  </>
+                ) : (
+                  <>
+                    💰 Borç Ödemesini Kaydet
                   </>
                 )}
               </button>

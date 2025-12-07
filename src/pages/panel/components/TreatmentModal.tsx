@@ -1321,10 +1321,10 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                         ...editedProtocol,
                                         phases: {
                                           ...editedProtocol.phases,
-                                          remember: { ...editedProtocol.phases.remember!, treatment: e.target.value }
+                                          remember: { ...editedProtocol.phases.remember!, treatment: e.target.value.toUpperCase() }
                                         }
                                       })}
-                                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2"
+                                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2 uppercase"
                                       placeholder="Tedavi adı"
                                     />
                                     <input
@@ -1375,10 +1375,10 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                         ...editedProtocol,
                                         phases: {
                                           ...editedProtocol.phases,
-                                          regeneration1: { ...editedProtocol.phases.regeneration1!, treatment: e.target.value }
+                                          regeneration1: { ...editedProtocol.phases.regeneration1!, treatment: e.target.value.toUpperCase() }
                                         }
                                       })}
-                                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2"
+                                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2 uppercase"
                                       placeholder="Tedavi adı"
                                     />
                                     <input
@@ -1436,10 +1436,10 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                         ...editedProtocol,
                                         phases: {
                                           ...editedProtocol.phases,
-                                          regeneration2: { ...editedProtocol.phases.regeneration2!, treatment: e.target.value }
+                                          regeneration2: { ...editedProtocol.phases.regeneration2!, treatment: e.target.value.toUpperCase() }
                                         }
                                       })}
-                                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2"
+                                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2 uppercase"
                                       placeholder="Tedavi adı"
                                     />
                                     <input
@@ -1498,12 +1498,12 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                         phases: {
                                           ...editedProtocol.phases,
                                           regeneration3: { 
-                                            treatment: e.target.value, 
+                                            treatment: e.target.value.toUpperCase(), 
                                             dosage: editedProtocol.phases.regeneration3?.dosage || '' 
                                           }
                                         }
                                       })}
-                                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2"
+                                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2 uppercase"
                                       placeholder="Tedavi adı"
                                     />
                                     <input
@@ -1565,12 +1565,12 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                         phases: {
                                           ...editedProtocol.phases,
                                           regeneration4: { 
-                                            treatment: e.target.value,
+                                            treatment: e.target.value.toUpperCase(),
                                             dosage: editedProtocol.phases.regeneration4?.dosage || '' 
                                           }
                                         }
                                       })}
-                                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2"
+                                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2 uppercase"
                                       placeholder="Tedavi adı"
                                     />
                                     <input
@@ -1651,7 +1651,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                             const updatedMainTreatments = [...editedProtocol.phases.mainTreatments];
                                             updatedMainTreatments[mtIndex] = {
                                               ...updatedMainTreatments[mtIndex],
-                                              treatment: e.target.value
+                                              treatment: e.target.value.toUpperCase()
                                             };
                                             setEditedProtocol({
                                               ...editedProtocol,
@@ -1661,7 +1661,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                               }
                                             });
                                           }}
-                                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-semibold focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-semibold focus:ring-2 focus:ring-purple-500 focus:border-transparent uppercase"
                                           placeholder="Ana uygulama adını girin"
                                         />
                                       </div>
@@ -1696,7 +1696,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                   <button
                                     onClick={() => {
                                       const newMainTreatment = {
-                                        treatment: 'Yeni Ana Uygulama',
+                                        treatment: 'YENİ ANA UYGULAMA',
                                         description: ''
                                       };
                                       setEditedProtocol({
