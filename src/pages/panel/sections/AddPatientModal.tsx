@@ -35,7 +35,9 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
     residenceCity: '',
     visitReason: '',
     indirim_check: false,
+    indirim_tipi: 'yuzde' as 'yuzde' | 'tutar',
     indirim_orani: 20,
+    indirim_tutar: 0,
   });
 
   const [loading, setLoading] = useState(false);
@@ -214,7 +216,9 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
         residenceCity: '',
         visitReason: '',
         indirim_check: false,
+        indirim_tipi: 'yuzde' as 'yuzde' | 'tutar',
         indirim_orani: 20,
+        indirim_tutar: 0,
       });
 
       setErrors({});
@@ -568,23 +572,83 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
                 </span>
               </label>
             </div>
-            
+
             {formData.indirim_check && (
-              <div className="ml-8">
-                <label className="block text-sm font-medium text-green-800 mb-2">
-                  İndirim Oranı (%)
-                </label>
-                <input
-                  type="number"
-                  name="indirim_orani"
-                  value={formData.indirim_orani}
-                  onChange={handleInputChange}
-                  min="0"
-                  max="100"
-                  className="w-32 px-3 py-2 bg-white border border-green-300 rounded-lg text-green-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  placeholder="20"
-                />
-                <span className="ml-2 text-sm text-green-700">%</span>
+              <div className="ml-8 space-y-4">
+                {/* Discount Type Toggle */}
+                <div>
+                  <label className="block text-sm font-medium text-green-800 mb-2">
+                    İndirim Türü
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, indirim_tipi: 'yuzde' }))}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        formData.indirim_tipi === 'yuzde'
+                          ? 'bg-green-500 text-white'
+                          : 'bg-white border border-green-300 text-green-700 hover:bg-green-100'
+                      }`}
+                    >
+                      % Yüzde
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, indirim_tipi: 'tutar' }))}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        formData.indirim_tipi === 'tutar'
+                          ? 'bg-green-500 text-white'
+                          : 'bg-white border border-green-300 text-green-700 hover:bg-green-100'
+                      }`}
+                    >
+                      ₺ Tutar
+                    </button>
+                  </div>
+                </div>
+
+                {/* Percentage Input */}
+                {formData.indirim_tipi === 'yuzde' && (
+                  <div>
+                    <label className="block text-sm font-medium text-green-800 mb-2">
+                      İndirim Oranı (%)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        name="indirim_orani"
+                        value={formData.indirim_orani}
+                        onChange={handleInputChange}
+                        min="0"
+                        max="100"
+                        className="w-32 px-3 py-2 bg-white border border-green-300 rounded-lg text-green-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        placeholder="20"
+                      />
+                      <span className="text-sm text-green-700">%</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Fixed Amount Input */}
+                {formData.indirim_tipi === 'tutar' && (
+                  <div>
+                    <label className="block text-sm font-medium text-green-800 mb-2">
+                      İndirim Tutarı (TL)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        name="indirim_tutar"
+                        value={formData.indirim_tutar}
+                        onChange={handleInputChange}
+                        min="0"
+                        step="0.01"
+                        className="w-32 px-3 py-2 bg-white border border-green-300 rounded-lg text-green-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        placeholder="100"
+                      />
+                      <span className="text-sm text-green-700">TL</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

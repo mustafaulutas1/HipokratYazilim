@@ -34,6 +34,14 @@ interface PaymentPatient {
   updatedAt?: string;
   indirim_check?: boolean;
   indirim_orani?: number;
+  indirim_tipi?: 'yuzde' | 'tutar';
+  indirim_tutar?: number;
+  // Discount tracking for reporting
+  discountApplied?: boolean;
+  discountType?: 'yuzde' | 'tutar';
+  discountValue?: number;
+  discountAmount?: number;
+  originalPaymentAmount?: number;
   treatmentApplied?: boolean;
   treatmentNotAppliedReason?: string;
   treatmentNotes?: string;
@@ -102,6 +110,8 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
   const [debtPaymentAmount, setDebtPaymentAmount] = useState<string>('');
   const [debtPaymentMethod, setDebtPaymentMethod] = useState<string>('nakit');
   const [discountPercent, setDiscountPercent] = useState<string>('');
+  const [discountFixedAmount, setDiscountFixedAmount] = useState<string>('');
+  const [discountType, setDiscountType] = useState<'yuzde' | 'tutar'>('yuzde');
   const [isDiscountActive, setIsDiscountActive] = useState<boolean>(false);
   const [originalAmount, setOriginalAmount] = useState<string>('');
   const [includeDebtInPayment, setIncludeDebtInPayment] = useState<boolean>(true);
@@ -271,6 +281,20 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       // Total debt = new debt from this payment + any previous debt NOT being paid off
       const totalRemainingDebt = newDebtAmount + (!includeDebtInPayment && selectedPatient.debtAmount ? selectedPatient.debtAmount : 0);
       
+      // Calculate discount amount based on type
+      let calculatedDiscountAmount = 0;
+      let calculatedDiscountPercent = 0;
+      if (isDiscountActive && originalAmount) {
+        const original = parseFloat(originalAmount);
+        if (discountType === 'yuzde' && discountPercent) {
+          calculatedDiscountPercent = parseFloat(discountPercent);
+          calculatedDiscountAmount = original * calculatedDiscountPercent / 100;
+        } else if (discountType === 'tutar' && discountFixedAmount) {
+          calculatedDiscountAmount = parseFloat(discountFixedAmount);
+          calculatedDiscountPercent = (calculatedDiscountAmount / original) * 100;
+        }
+      }
+
       const updateData: any = {
         paymentCompleted: true,
         paymentAmount: currentPayment,
@@ -281,6 +305,12 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         removedApplications: removedApplications,
         status: 'treatment_continue', // Send to treatment continue (TreatmentPanel)
         updatedAt: new Date().toISOString(),
+        // Discount tracking for reporting
+        discountApplied: isDiscountActive && calculatedDiscountAmount > 0,
+        discountType: isDiscountActive ? discountType : null,
+        discountValue: isDiscountActive ? (discountType === 'yuzde' ? calculatedDiscountPercent : calculatedDiscountAmount) : null,
+        discountAmount: isDiscountActive ? Math.round(calculatedDiscountAmount * 100) / 100 : null,
+        originalPaymentAmount: isDiscountActive && originalAmount ? parseFloat(originalAmount) : null,
       };
       
       // Handle debt tracking - simplified with explicit checkbox
@@ -325,6 +355,12 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       setSelectedApplications([]);
       setIsPartialPayment(false);
       setRemainingDebtAmount('');
+      // Reset discount states
+      setIsDiscountActive(false);
+      setDiscountPercent('');
+      setDiscountFixedAmount('');
+      setDiscountType('yuzde');
+      setOriginalAmount('');
       
       // Refetch data
       window.location.reload(); // Simple refresh for now
@@ -1241,7 +1277,9 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                     {patient.indirim_check && (
                       <div className="mt-2 p-2 bg-green-500/20 border border-green-400/30 rounded-lg">
                         <p className="text-green-200 font-medium text-xs">
-                          🎯 İndirim Aktif: %{patient.indirim_orani || 20} indirim uygulanacak
+                          🎯 İndirim Aktif: {patient.indirim_tipi === 'tutar'
+                            ? `${patient.indirim_tutar || 0} TL indirim uygulanacak`
+                            : `%${patient.indirim_orani || 20} indirim uygulanacak`}
                         </p>
                       </div>
                     )}
@@ -1510,6 +1548,8 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                         setIsDiscountActive(false);
                         setPaymentAmount(originalAmount);
                         setDiscountPercent('');
+                        setDiscountFixedAmount('');
+                        setDiscountType('yuzde');
                       } else {
                         // Enable discount
                         setIsDiscountActive(true);
@@ -1525,63 +1565,161 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                     {isDiscountActive ? '✓ İndirim Aktif' : 'İndirim Uygula'}
                   </button>
                 </div>
-                
+
                 {isDiscountActive && (
                   <div className="space-y-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1">
-                        <label className="block text-xs font-medium text-orange-700 mb-1">
-                          İndirim Oranı (%)
-                        </label>
-                        <input
-                          type="number"
-                          value={discountPercent}
-                          onChange={(e) => {
-                            const percent = e.target.value;
-                            setDiscountPercent(percent);
-                            if (percent && originalAmount) {
-                              const discountValue = parseFloat(percent);
-                              const original = parseFloat(originalAmount);
-                              if (!isNaN(discountValue) && !isNaN(original) && discountValue >= 0 && discountValue <= 100) {
-                                const discountedAmount = original - (original * discountValue / 100);
-                                setPaymentAmount(discountedAmount.toFixed(2));
-                              }
-                            }
-                          }}
-                          className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
-                          placeholder="10"
-                          min="0"
-                          max="100"
-                        />
-                      </div>
-                      <div className="flex gap-1 pt-5">
-                        {[5, 10, 15, 20, 25].map((percent) => (
-                          <button
-                            key={percent}
-                            type="button"
-                            onClick={() => {
-                              setDiscountPercent(percent.toString());
-                              if (originalAmount) {
+                    {/* Discount Type Toggle */}
+                    <div className="flex items-center gap-2 bg-white rounded-lg p-2 border border-orange-200">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDiscountType('yuzde');
+                          setDiscountFixedAmount('');
+                          if (originalAmount) {
+                            setPaymentAmount(originalAmount);
+                          }
+                        }}
+                        className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+                          discountType === 'yuzde'
+                            ? 'bg-orange-500 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        % Yüzde
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDiscountType('tutar');
+                          setDiscountPercent('');
+                          if (originalAmount) {
+                            setPaymentAmount(originalAmount);
+                          }
+                        }}
+                        className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+                          discountType === 'tutar'
+                            ? 'bg-orange-500 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        ₺ Tutar
+                      </button>
+                    </div>
+
+                    {/* Percentage Discount Input */}
+                    {discountType === 'yuzde' && (
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1">
+                          <label className="block text-xs font-medium text-orange-700 mb-1">
+                            İndirim Oranı (%)
+                          </label>
+                          <input
+                            type="number"
+                            value={discountPercent}
+                            onChange={(e) => {
+                              const percent = e.target.value;
+                              setDiscountPercent(percent);
+                              if (percent && originalAmount) {
+                                const discountValue = parseFloat(percent);
                                 const original = parseFloat(originalAmount);
-                                if (!isNaN(original)) {
-                                  const discountedAmount = original - (original * percent / 100);
+                                if (!isNaN(discountValue) && !isNaN(original) && discountValue >= 0 && discountValue <= 100) {
+                                  const discountedAmount = original - (original * discountValue / 100);
                                   setPaymentAmount(discountedAmount.toFixed(2));
                                 }
                               }
                             }}
-                            className={`px-2 py-1 text-xs rounded-md transition-all ${
-                              discountPercent === percent.toString()
-                                ? 'bg-orange-500 text-white'
-                                : 'bg-white border border-orange-200 text-orange-700 hover:bg-orange-100'
-                            }`}
-                          >
-                            %{percent}
-                          </button>
-                        ))}
+                            className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
+                            placeholder="10"
+                            min="0"
+                            max="100"
+                          />
+                        </div>
+                        <div className="flex gap-1 pt-5">
+                          {[5, 10, 15, 20, 25].map((percent) => (
+                            <button
+                              key={percent}
+                              type="button"
+                              onClick={() => {
+                                setDiscountPercent(percent.toString());
+                                if (originalAmount) {
+                                  const original = parseFloat(originalAmount);
+                                  if (!isNaN(original)) {
+                                    const discountedAmount = original - (original * percent / 100);
+                                    setPaymentAmount(discountedAmount.toFixed(2));
+                                  }
+                                }
+                              }}
+                              className={`px-2 py-1 text-xs rounded-md transition-all ${
+                                discountPercent === percent.toString()
+                                  ? 'bg-orange-500 text-white'
+                                  : 'bg-white border border-orange-200 text-orange-700 hover:bg-orange-100'
+                              }`}
+                            >
+                              %{percent}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                    
-                    {discountPercent && originalAmount && parseFloat(discountPercent) > 0 && (
+                    )}
+
+                    {/* Fixed Amount Discount Input */}
+                    {discountType === 'tutar' && (
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1">
+                          <label className="block text-xs font-medium text-orange-700 mb-1">
+                            İndirim Tutarı (TL)
+                          </label>
+                          <input
+                            type="number"
+                            value={discountFixedAmount}
+                            onChange={(e) => {
+                              const amount = e.target.value;
+                              setDiscountFixedAmount(amount);
+                              if (amount && originalAmount) {
+                                const discountValue = parseFloat(amount);
+                                const original = parseFloat(originalAmount);
+                                if (!isNaN(discountValue) && !isNaN(original) && discountValue >= 0 && discountValue <= original) {
+                                  const discountedAmount = original - discountValue;
+                                  setPaymentAmount(discountedAmount.toFixed(2));
+                                }
+                              }
+                            }}
+                            className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
+                            placeholder="100"
+                            min="0"
+                            step="0.01"
+                          />
+                        </div>
+                        <div className="flex gap-1 pt-5">
+                          {[50, 100, 200, 500].map((amount) => (
+                            <button
+                              key={amount}
+                              type="button"
+                              onClick={() => {
+                                setDiscountFixedAmount(amount.toString());
+                                if (originalAmount) {
+                                  const original = parseFloat(originalAmount);
+                                  if (!isNaN(original) && amount <= original) {
+                                    const discountedAmount = original - amount;
+                                    setPaymentAmount(discountedAmount.toFixed(2));
+                                  }
+                                }
+                              }}
+                              className={`px-2 py-1 text-xs rounded-md transition-all ${
+                                discountFixedAmount === amount.toString()
+                                  ? 'bg-orange-500 text-white'
+                                  : 'bg-white border border-orange-200 text-orange-700 hover:bg-orange-100'
+                              }`}
+                            >
+                              {amount}₺
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Discount Summary - Percentage */}
+                    {discountType === 'yuzde' && discountPercent && originalAmount && parseFloat(discountPercent) > 0 && (
                       <div className="bg-white rounded-lg p-3 border border-orange-200">
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-600">Orijinal Tutar:</span>
@@ -1590,6 +1728,28 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                         <div className="flex justify-between text-sm text-orange-600">
                           <span>İndirim (%{discountPercent}):</span>
                           <span>-{(parseFloat(originalAmount) * parseFloat(discountPercent) / 100).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                        </div>
+                        <div className="flex justify-between text-sm font-bold text-green-600 mt-1 pt-1 border-t border-orange-200">
+                          <span>İndirimli Tutar:</span>
+                          <span>{parseFloat(paymentAmount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Discount Summary - Fixed Amount */}
+                    {discountType === 'tutar' && discountFixedAmount && originalAmount && parseFloat(discountFixedAmount) > 0 && (
+                      <div className="bg-white rounded-lg p-3 border border-orange-200">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Orijinal Tutar:</span>
+                          <span className="text-gray-900 line-through">{parseFloat(originalAmount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                        </div>
+                        <div className="flex justify-between text-sm text-orange-600">
+                          <span>İndirim (Tutar):</span>
+                          <span>-{parseFloat(discountFixedAmount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                        </div>
+                        <div className="flex justify-between text-sm text-gray-500">
+                          <span>İndirim Oranı:</span>
+                          <span>%{((parseFloat(discountFixedAmount) / parseFloat(originalAmount)) * 100).toFixed(1)}</span>
                         </div>
                         <div className="flex justify-between text-sm font-bold text-green-600 mt-1 pt-1 border-t border-orange-200">
                           <span>İndirimli Tutar:</span>
@@ -1688,7 +1848,9 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   {selectedPatient.indirim_check && (
                     <div className="mt-2 p-2 bg-green-100 border border-green-300 rounded-lg">
                       <p className="text-green-800 font-medium">
-                        🎯 İndirim Aktif: %{selectedPatient.indirim_orani || 20} indirim uygulanacak
+                        🎯 İndirim Aktif: {selectedPatient.indirim_tipi === 'tutar'
+                          ? `${selectedPatient.indirim_tutar || 0} TL indirim uygulanacak`
+                          : `%${selectedPatient.indirim_orani || 20} indirim uygulanacak`}
                       </p>
                     </div>
                   )}

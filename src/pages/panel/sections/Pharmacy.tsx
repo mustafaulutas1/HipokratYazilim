@@ -123,6 +123,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const [patientDebtHistory, setPatientDebtHistory] = useState<any[]>([]);
   const [selectedDebts, setSelectedDebts] = useState<string[]>([]);
   const [loadingDebtHistory, setLoadingDebtHistory] = useState(false);
+  const [debtsAddedToPayment, setDebtsAddedToPayment] = useState<boolean>(false);
+  const [singleDebtAddedToPayment, setSingleDebtAddedToPayment] = useState<boolean>(false);
   // Sale detail modal state
   const [selectedSaleDetail, setSelectedSaleDetail] = useState<any | null>(null);
   const [formData, setFormData] = useState<Medication>({
@@ -718,6 +720,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       setPharmacyRemainingDebt('');
       setPatientDebtHistory([]);
       setSelectedDebts([]);
+      setDebtsAddedToPayment(false);
+      setSingleDebtAddedToPayment(false);
       
       fetchPatients();
       fetchCompletedSales();
@@ -2458,12 +2462,33 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                             onClick={() => {
                               const currentAmount = parseFloat(pharmacyPaymentAmount) || 0;
                               const debtAmount = selectedPatientForSale.debtAmount || 0;
-                              setPharmacyPaymentAmount((currentAmount + debtAmount).toFixed(2));
+                              if (singleDebtAddedToPayment) {
+                                // Remove from payment
+                                setPharmacyPaymentAmount(Math.max(0, currentAmount - debtAmount).toFixed(2));
+                                setSingleDebtAddedToPayment(false);
+                              } else {
+                                // Add to payment
+                                setPharmacyPaymentAmount((currentAmount + debtAmount).toFixed(2));
+                                setSingleDebtAddedToPayment(true);
+                              }
                             }}
-                            className="w-full mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+                            className={`w-full mt-3 px-4 py-2 ${
+                              singleDebtAddedToPayment
+                                ? 'bg-orange-500 hover:bg-orange-600'
+                                : 'bg-red-600 hover:bg-red-700'
+                            } text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2`}
                           >
-                            <span>➕</span>
-                            Ödemeye Ekle ({selectedPatientForSale.debtAmount.toFixed(2)} TL)
+                            {singleDebtAddedToPayment ? (
+                              <>
+                                <span>↩️</span>
+                                Geri Al ({selectedPatientForSale.debtAmount.toFixed(2)} TL)
+                              </>
+                            ) : (
+                              <>
+                                <span>➕</span>
+                                Ödemeye Ekle ({selectedPatientForSale.debtAmount.toFixed(2)} TL)
+                              </>
+                            )}
                           </button>
                         </div>
                       )}
@@ -2519,25 +2544,48 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
 
                       {/* Selected Debts Summary */}
                       {selectedDebts.length > 0 && (
-                        <div className="bg-green-100 border-2 border-green-400 rounded-xl p-4 mt-4">
+                        <div className={`${debtsAddedToPayment ? 'bg-orange-100 border-orange-400' : 'bg-green-100 border-green-400'} border-2 rounded-xl p-4 mt-4`}>
                           <div className="flex items-center justify-between mb-2">
-                            <span className="font-semibold text-green-800">Seçilen Borçlar:</span>
-                            <span className="text-green-600">{selectedDebts.length} adet</span>
+                            <span className={`font-semibold ${debtsAddedToPayment ? 'text-orange-800' : 'text-green-800'}`}>
+                              {debtsAddedToPayment ? 'Eklenen Borçlar:' : 'Seçilen Borçlar:'}
+                            </span>
+                            <span className={debtsAddedToPayment ? 'text-orange-600' : 'text-green-600'}>{selectedDebts.length} adet</span>
                           </div>
                           <div className="flex items-center justify-between text-xl font-bold">
-                            <span className="text-green-800">Toplam:</span>
-                            <span className="text-green-600">{calculateSelectedDebtTotal().toFixed(2)} TL</span>
+                            <span className={debtsAddedToPayment ? 'text-orange-800' : 'text-green-800'}>Toplam:</span>
+                            <span className={debtsAddedToPayment ? 'text-orange-600' : 'text-green-600'}>{calculateSelectedDebtTotal().toFixed(2)} TL</span>
                           </div>
                           <button
                             onClick={() => {
                               const currentAmount = parseFloat(pharmacyPaymentAmount) || 0;
                               const debtTotal = calculateSelectedDebtTotal();
-                              setPharmacyPaymentAmount((currentAmount + debtTotal).toFixed(2));
+                              if (debtsAddedToPayment) {
+                                // Remove from payment
+                                setPharmacyPaymentAmount(Math.max(0, currentAmount - debtTotal).toFixed(2));
+                                setDebtsAddedToPayment(false);
+                              } else {
+                                // Add to payment
+                                setPharmacyPaymentAmount((currentAmount + debtTotal).toFixed(2));
+                                setDebtsAddedToPayment(true);
+                              }
                             }}
-                            className="w-full mt-3 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+                            className={`w-full mt-3 px-4 py-2 ${
+                              debtsAddedToPayment
+                                ? 'bg-orange-500 hover:bg-orange-600'
+                                : 'bg-green-600 hover:bg-green-700'
+                            } text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2`}
                           >
-                            <span>➕</span>
-                            Ödemeye Ekle
+                            {debtsAddedToPayment ? (
+                              <>
+                                <span>↩️</span>
+                                Geri Al
+                              </>
+                            ) : (
+                              <>
+                                <span>➕</span>
+                                Ödemeye Ekle
+                              </>
+                            )}
                           </button>
                         </div>
                       )}
@@ -2593,6 +2641,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       setPharmacyRemainingDebt('');
                       setPatientDebtHistory([]);
                       setSelectedDebts([]);
+                      setDebtsAddedToPayment(false);
+                      setSingleDebtAddedToPayment(false);
                     }}
                     className="px-6 py-3 bg-gray-200 hover:bg-gray-300 border border-gray-300 rounded-xl text-gray-700 font-medium transition-all duration-200"
                   >
@@ -2610,7 +2660,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       </>
                     ) : (
                       <>
-                        💰 KASA
+                        ✅ Ödemeyi Tamamla
                       </>
                     )}
                   </button>
