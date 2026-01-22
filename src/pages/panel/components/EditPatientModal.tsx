@@ -199,7 +199,9 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
     try {
       const patientData = {
         ...formData,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
+        // Mark registration as complete since all required fields are validated
+        registrationStatus: 'complete'
       };
 
       const patientRef = doc(db, 'patients', patient.id);

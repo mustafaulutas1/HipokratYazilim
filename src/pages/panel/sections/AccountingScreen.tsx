@@ -4,6 +4,8 @@ import { db } from '../../../firebase/config';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { utils, writeFile } from 'xlsx';
+import MultiPaymentMethodSelector, { formatPaymentMethods } from '../../../components/UI/MultiPaymentMethodSelector';
+import type { PaymentMethodEntry } from '../../../components/UI/MultiPaymentMethodSelector';
 
 interface AccountingScreenProps {
   doctorProfile?: any;
@@ -31,6 +33,7 @@ interface PaymentPatient {
   paymentAmount?: number;
   paymentDate?: string;
   paymentMethod?: string;
+  paymentMethods?: PaymentMethodEntry[];
   updatedAt?: string;
   indirim_check?: boolean;
   indirim_orani?: number;
@@ -49,6 +52,7 @@ interface PaymentPatient {
   refundDate?: string;
   refundAmount?: number;
   refundMethod?: string;
+  refundMethods?: PaymentMethodEntry[];
   optionalScans?: {
     meridianScan?: { enabled?: boolean };
     thermalScan?: { enabled?: boolean };
@@ -104,11 +108,14 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<string>('nakit');
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodEntry[]>([{ method: 'nakit', amount: 0 }]);
   const [selectedApplications, setSelectedApplications] = useState<string[]>([]);
   const [refundAmount, setRefundAmount] = useState<string>('');
   const [refundMethod, setRefundMethod] = useState<string>('nakit');
+  const [refundMethods, setRefundMethods] = useState<PaymentMethodEntry[]>([{ method: 'nakit', amount: 0 }]);
   const [debtPaymentAmount, setDebtPaymentAmount] = useState<string>('');
   const [debtPaymentMethod, setDebtPaymentMethod] = useState<string>('nakit');
+  const [debtPaymentMethods, setDebtPaymentMethods] = useState<PaymentMethodEntry[]>([{ method: 'nakit', amount: 0 }]);
   const [discountPercent, setDiscountPercent] = useState<string>('');
   const [discountFixedAmount, setDiscountFixedAmount] = useState<string>('');
   const [discountType, setDiscountType] = useState<'yuzde' | 'tutar'>('yuzde');
@@ -300,6 +307,8 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         paymentAmount: currentPayment,
         paymentDate: new Date().toISOString(),
         paymentMethod: paymentMethod,
+        // Multi-payment method support
+        paymentMethods: paymentMethods.filter(m => m.amount > 0),
         // Save which applications the patient will actually receive
         approvedApplications: selectedApplications,
         removedApplications: removedApplications,
@@ -352,6 +361,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       setSelectedPatient(null);
       setPaymentAmount('');
       setPaymentMethod('nakit');
+      setPaymentMethods([{ method: 'nakit', amount: 0 }]);
       setSelectedApplications([]);
       setIsPartialPayment(false);
       setRemainingDebtAmount('');
@@ -379,24 +389,27 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
     try {
       setLoading(true);
       const patientRef = doc(db, 'patients', selectedPatient.id);
-      
+
       await updateDoc(patientRef, {
         refundProcessed: true,
         refundAmount: parseFloat(refundAmount),
         refundDate: new Date().toISOString(),
         refundMethod: refundMethod,
+        // Multi-payment method support for refunds
+        refundMethods: refundMethods.filter(m => m.amount > 0),
         status: 'refund_processed',
         updatedAt: new Date().toISOString()
       });
 
       console.log(`✅ Refund processed for patient: ${selectedPatient.fullName}`);
-      
+
       // Refresh data
       setIsRefundModalOpen(false);
       setSelectedPatient(null);
       setRefundAmount('');
       setRefundMethod('nakit');
-      
+      setRefundMethods([{ method: 'nakit', amount: 0 }]);
+
       // Refetch data
       window.location.reload(); // Simple refresh for now
 
@@ -478,6 +491,8 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         lastDebtPaymentAmount: paymentAmountNum,
         lastDebtPaymentDate: new Date().toISOString(),
         lastDebtPaymentMethod: debtPaymentMethod,
+        // Multi-payment method support for debt payments
+        lastDebtPaymentMethods: debtPaymentMethods.filter(m => m.amount > 0),
       };
       
       if (remainingDebt <= 0) {
@@ -513,7 +528,8 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       setSelectedPatient(null);
       setDebtPaymentAmount('');
       setDebtPaymentMethod('nakit');
-      
+      setDebtPaymentMethods([{ method: 'nakit', amount: 0 }]);
+
       // Refetch data
       window.location.reload();
 
@@ -634,7 +650,9 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         patient.tcNo,
         formatCurrency(patient.paymentAmount || 0),
         formatDate(patient.paymentDate),
-        getPaymentMethodLabel(patient.paymentMethod || 'nakit')
+        patient.paymentMethods && patient.paymentMethods.length > 0
+          ? formatPaymentMethods(patient.paymentMethods)
+          : getPaymentMethodLabel(patient.paymentMethod || 'nakit')
       ]);
       
       (doc as any).autoTable({
@@ -656,7 +674,9 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         patient.tcNo,
         formatCurrency(patient.refundAmount || 0),
         formatDate(patient.refundDate),
-        getPaymentMethodLabel(patient.refundMethod || 'nakit')
+        patient.refundMethods && patient.refundMethods.length > 0
+          ? formatPaymentMethods(patient.refundMethods)
+          : getPaymentMethodLabel(patient.refundMethod || 'nakit')
       ]);
       
       (doc as any).autoTable({
@@ -716,7 +736,9 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         'Telefon': p.phone,
         'Ödeme Tutarı': p.paymentAmount || 0,
         'Ödeme Tarihi': formatDate(p.paymentDate),
-        'Ödeme Yöntemi': getPaymentMethodLabel(p.paymentMethod || 'nakit'),
+        'Ödeme Yöntemi': p.paymentMethods && p.paymentMethods.length > 0
+          ? formatPaymentMethods(p.paymentMethods)
+          : getPaymentMethodLabel(p.paymentMethod || 'nakit'),
         'Borç Durumu': p.hasDebt && p.debtAmount ? `${p.debtAmount.toLocaleString('tr-TR')} TL` : 'Yok'
       }));
       const paidSheet = utils.json_to_sheet(paidData);
@@ -1141,7 +1163,9 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                         {formatCurrency(patient.paymentAmount || 0)}
                       </p>
                       <p className="text-white/60 text-sm">
-                        {formatDate(patient.paymentDate)} • {getPaymentMethodLabel(patient.paymentMethod || 'nakit')}
+                        {formatDate(patient.paymentDate)} • {patient.paymentMethods && patient.paymentMethods.length > 0
+                          ? formatPaymentMethods(patient.paymentMethods)
+                          : getPaymentMethodLabel(patient.paymentMethod || 'nakit')}
                       </p>
                     </div>
                   ) : (
@@ -1478,7 +1502,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                         <div className="w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">
                           ✓
                         </div>
-                        <span className="text-purple-900 font-medium">Meridyen Tarama Tek Seans</span>
+                        <span className="text-purple-900 font-medium">Meridyen Tarama</span>
                         <span className="ml-auto text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded-full">
                           Tarama
                         </span>
@@ -1500,7 +1524,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                         <div className="w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">
                           ✓
                         </div>
-                        <span className="text-purple-900 font-medium">Toksisite Ölçümü (TEK SEANS)</span>
+                        <span className="text-purple-900 font-medium">Toksisite Ölçümü</span>
                         <span className="ml-auto text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded-full">
                           Tarama
                         </span>
@@ -1761,21 +1785,21 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                 )}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Ödeme Yöntemi
-                </label>
-                <select
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="nakit">Nakit</option>
-                  <option value="kartkredi">Kredi Kartı</option>
-                  <option value="kartdebit">Banka Kartı</option>
-                  <option value="havale">Havale/EFT</option>
-                  <option value="cek">Çek</option>
-                </select>
+              {/* Multi Payment Method Selector */}
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
+                <MultiPaymentMethodSelector
+                  totalAmount={parseFloat(paymentAmount) || 0}
+                  value={paymentMethods}
+                  onChange={(methods) => {
+                    setPaymentMethods(methods);
+                    // Keep backwards compatibility - set primary method
+                    if (methods.length > 0) {
+                      setPaymentMethod(methods[0].method);
+                    }
+                  }}
+                  disabled={loading}
+                  showValidation={true}
+                />
               </div>
 
               {/* Partial Payment Section - Explicit debt creation */}
@@ -1865,6 +1889,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   setSelectedPatient(null);
                   setPaymentAmount('');
                   setPaymentMethod('nakit');
+                  setPaymentMethods([{ method: 'nakit', amount: 0 }]);
                   setSelectedApplications([]);
                   setDiscountPercent('');
                   setIsDiscountActive(false);
@@ -1979,7 +2004,9 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                 <div className="space-y-2 text-sm text-blue-800">
                   <p><span className="font-medium">Ödeme Tutarı:</span> {formatCurrency(selectedPatient.paymentAmount || 0)}</p>
                   <p><span className="font-medium">Ödeme Tarihi:</span> {formatDate(selectedPatient.paymentDate)}</p>
-                  <p><span className="font-medium">Ödeme Yöntemi:</span> {getPaymentMethodLabel(selectedPatient.paymentMethod || 'nakit')}</p>
+                  <p><span className="font-medium">Ödeme Yöntemi:</span> {selectedPatient.paymentMethods && selectedPatient.paymentMethods.length > 0
+                    ? formatPaymentMethods(selectedPatient.paymentMethods)
+                    : getPaymentMethodLabel(selectedPatient.paymentMethod || 'nakit')}</p>
                 </div>
               </div>
 
@@ -2001,21 +2028,21 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                 </p>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  İade Yöntemi
-                </label>
-                <select
-                  value={refundMethod}
-                  onChange={(e) => setRefundMethod(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
-                >
-                  <option value="nakit">Nakit</option>
-                  <option value="kartkredi">Kredi Kartı</option>
-                  <option value="kartdebit">Banka Kartı</option>
-                  <option value="havale">Havale/EFT</option>
-                  <option value="cek">Çek</option>
-                </select>
+              {/* Multi Payment Method Selector for Refund */}
+              <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-lg p-4">
+                <MultiPaymentMethodSelector
+                  totalAmount={parseFloat(refundAmount) || 0}
+                  value={refundMethods}
+                  onChange={(methods) => {
+                    setRefundMethods(methods);
+                    // Keep backwards compatibility - set primary method
+                    if (methods.length > 0) {
+                      setRefundMethod(methods[0].method);
+                    }
+                  }}
+                  disabled={loading}
+                  showValidation={true}
+                />
               </div>
 
               {/* Patient Info Summary */}
@@ -2044,6 +2071,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   setSelectedPatient(null);
                   setRefundAmount('');
                   setRefundMethod('nakit');
+                  setRefundMethods([{ method: 'nakit', amount: 0 }]);
                 }}
                 className="px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg text-gray-700 hover:text-gray-900 font-medium transition-all duration-200"
               >
@@ -2173,22 +2201,21 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                 </div>
               )}
 
-              {/* Payment Method */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Ödeme Yöntemi
-                </label>
-                <select
-                  value={debtPaymentMethod}
-                  onChange={(e) => setDebtPaymentMethod(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                >
-                  <option value="nakit">Nakit</option>
-                  <option value="kartkredi">Kredi Kartı</option>
-                  <option value="kartdebit">Banka Kartı</option>
-                  <option value="havale">Havale/EFT</option>
-                  <option value="cek">Çek</option>
-                </select>
+              {/* Multi Payment Method Selector for Debt Payment */}
+              <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4">
+                <MultiPaymentMethodSelector
+                  totalAmount={parseFloat(debtPaymentAmount) || 0}
+                  value={debtPaymentMethods}
+                  onChange={(methods) => {
+                    setDebtPaymentMethods(methods);
+                    // Keep backwards compatibility - set primary method
+                    if (methods.length > 0) {
+                      setDebtPaymentMethod(methods[0].method);
+                    }
+                  }}
+                  disabled={loading}
+                  showValidation={true}
+                />
               </div>
 
               {/* Patient Info Summary */}
@@ -2239,6 +2266,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   setSelectedPatient(null);
                   setDebtPaymentAmount('');
                   setDebtPaymentMethod('nakit');
+                  setDebtPaymentMethods([{ method: 'nakit', amount: 0 }]);
                   setIsPartialPayment(false);
                   setRemainingDebtAmount('');
                 }}
@@ -2373,7 +2401,9 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                           </div>
                           <div className="text-right">
                             <p className="font-medium text-sm text-green-600">{formatCurrency(payment.paymentAmount || 0)}</p>
-                            <p className="text-xs text-gray-600">{getPaymentMethodLabel(payment.paymentMethod || 'nakit')}</p>
+                            <p className="text-xs text-gray-600">{payment.paymentMethods && payment.paymentMethods.length > 0
+                              ? formatPaymentMethods(payment.paymentMethods)
+                              : getPaymentMethodLabel(payment.paymentMethod || 'nakit')}</p>
                           </div>
                         </div>
                       ))}
@@ -2399,7 +2429,9 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                           </div>
                           <div className="text-right">
                             <p className="font-medium text-sm text-red-600">{formatCurrency(refund.refundAmount || 0)}</p>
-                            <p className="text-xs text-gray-600">{getPaymentMethodLabel(refund.refundMethod || 'nakit')}</p>
+                            <p className="text-xs text-gray-600">{refund.refundMethods && refund.refundMethods.length > 0
+                              ? formatPaymentMethods(refund.refundMethods)
+                              : getPaymentMethodLabel(refund.refundMethod || 'nakit')}</p>
                           </div>
                         </div>
                       ))}

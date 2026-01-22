@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, doc, updateDoc, getDocs, query, where } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { toast } from 'react-toastify';
 import { db, storage } from '../../../firebase/config';
 import { DIAGNOSIS_SYSTEMS, DIAGNOSIS_SPECIFIC_QUESTIONS } from '../../../constants';
 import FileUpload from '../../../components/UI/FileUpload';
@@ -18,6 +19,8 @@ interface Patient {
   clinicId: string;
   isAnamnezCompleted: boolean;
   createdAt: string;
+  registrationStatus?: 'incomplete' | 'complete';
+  createdVia?: 'quick_reservation' | string;
 }
 
 interface Doctor {
@@ -412,6 +415,11 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showSuccessToast, setShowSuccessToast] = useState(false);
 
+  // Previous anamnez state
+  const [previousAnamnez, setPreviousAnamnez] = useState<any>(null);
+  const [loadingPreviousAnamnez, setLoadingPreviousAnamnez] = useState(false);
+  const [usePreviousAnamnez, setUsePreviousAnamnez] = useState(false);
+
   // Fetch doctors from the clinic when modal opens
   useEffect(() => {
     const fetchDoctors = async () => {
@@ -498,6 +506,200 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
     fetchDoctors();
   }, [patient?.clinicId, isOpen]);
+
+  // Fetch previous anamnez record for the patient
+  useEffect(() => {
+    const fetchPreviousAnamnez = async () => {
+      if (!patient?.id || !isOpen) return;
+
+      setLoadingPreviousAnamnez(true);
+      try {
+        // Query anamnez records for this patient
+        const anamnezQuery = query(
+          collection(db, 'anamrezRecords'),
+          where('patientId', '==', patient.id)
+        );
+        const anamnezSnapshot = await getDocs(anamnezQuery);
+
+        if (!anamnezSnapshot.empty) {
+          // Filter completed records and sort by createdAt (newest first)
+          const completedRecords = anamnezSnapshot.docs
+            .map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            }))
+            .filter((record: any) => record.status === 'completed')
+            .sort((a: any, b: any) => {
+              const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+              const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+              return dateB - dateA; // Newest first
+            });
+
+          if (completedRecords.length > 0) {
+            setPreviousAnamnez(completedRecords[0]);
+          } else {
+            setPreviousAnamnez(null);
+          }
+        } else {
+          setPreviousAnamnez(null);
+        }
+      } catch (error) {
+        console.error('Önceki anamnez yüklenirken hata oluştu:', error);
+        setPreviousAnamnez(null);
+      } finally {
+        setLoadingPreviousAnamnez(false);
+      }
+    };
+
+    fetchPreviousAnamnez();
+  }, [patient?.id, isOpen]);
+
+  // Apply previous anamnez data when toggle is enabled
+  useEffect(() => {
+    if (usePreviousAnamnez && previousAnamnez) {
+      // Pre-fill form with previous anamnez data
+      setFormData(prev => ({
+        ...prev,
+        selectedDiagnosisSystems: previousAnamnez.selectedDiagnosisSystems || [],
+        selectedDoctorId: previousAnamnez.selectedDoctor?.id || '',
+        complaintDetails: previousAnamnez.complaintDetails || '',
+        pastMedicalHistory: previousAnamnez.pastMedicalHistory || '',
+        familyHistory: previousAnamnez.familyHistory || '',
+        hasSurgery: previousAnamnez.hasSurgery || '',
+        surgicalHistory: previousAnamnez.surgicalHistory || '',
+        allergies: previousAnamnez.allergies || '',
+        vitalSigns: previousAnamnez.vitalSigns || prev.vitalSigns,
+        systemsReview: previousAnamnez.systemsReview || prev.systemsReview,
+        physicalExamination: previousAnamnez.physicalExamination || '',
+        medications: previousAnamnez.medications || '',
+        socialHistory: previousAnamnez.socialHistory || '',
+        additionalNotes: previousAnamnez.additionalNotes || '',
+        symptomRatings: previousAnamnez.symptomRatings || prev.symptomRatings,
+        diagnosisResponses: previousAnamnez.diagnosisResponses || {},
+        additionalQuestions: previousAnamnez.additionalQuestions || prev.additionalQuestions,
+        customQuestions: previousAnamnez.customQuestions || [],
+        conventionalTreatment: {
+          currentMedications: previousAnamnez.conventionalTreatment?.currentMedications || '',
+          otherTreatments: previousAnamnez.conventionalTreatment?.otherTreatments || '',
+          deviceScanFileUrl: '' // Don't copy file URLs
+        },
+        optionalScans: prev.optionalScans // Don't copy file URLs
+      }));
+
+      // Also set toxicity ratings if available
+      if (previousAnamnez.toxicityAssessment?.toxicityScores) {
+        setToxicityRatings(previousAnamnez.toxicityAssessment.toxicityScores);
+      }
+    } else if (!usePreviousAnamnez) {
+      // Reset to empty form when toggle is off
+      setFormData({
+        selectedDiagnosisSystems: [],
+        selectedDoctorId: '',
+        complaintDetails: '',
+        pastMedicalHistory: '',
+        familyHistory: '',
+        hasSurgery: '',
+        surgicalHistory: '',
+        allergies: '',
+        vitalSigns: {
+          bloodPressure: '',
+          pulse: '',
+          temperature: '',
+          respiratoryRate: '',
+          oxygenSaturation: '',
+          weight: '',
+          height: ''
+        },
+        systemsReview: {
+          cardiovascular: '',
+          respiratory: '',
+          gastrointestinal: '',
+          genitourinary: '',
+          neurological: '',
+          musculoskeletal: '',
+          skin: ''
+        },
+        physicalExamination: '',
+        medications: '',
+        socialHistory: '',
+        additionalNotes: '',
+        symptomRatings: {
+          uykuHali: 0,
+          gozdeUcusmalar: 0,
+          carpinti: 0,
+          siskinlik: 0,
+          adetDuzensizligi: 0,
+          dengeKaybi: 0,
+          yayginKasAgrisi: 0,
+          nefesAlmadaGucluk: 0,
+          ustume: 0,
+          terleme: 0,
+          stres: 0,
+          agriliAdet: 0,
+          uykuDuzensizligi: 0,
+          oksuruk: 0,
+          balgam: 0,
+          kasilmaVeKramplar: 0,
+          elAyakUyusmalari: 0,
+          unutkanlik: 0,
+          kasinti: 0,
+          idrarKacirma: 0,
+          idrardaYanma: 0,
+          geceIdraraKalkma: 0,
+          kesikKesikIdrar: 0,
+          kabizlik: 0,
+          karindaGaz: 0,
+          belAgrisi: 0,
+          ishal: 0,
+          boyunAgrisi: 0,
+          yayginOdem: 0,
+          basur: 0,
+          eklemAgrilari: 0,
+          algiBozuklugu: 0,
+          halsizlikYorgunluk: 0,
+          yorgunUyanma: 0,
+          basDonmesi: 0,
+          basAgrisi: 0,
+          mideAgisi: 0,
+          mideYanmasi: 0
+        } as SymptomRatings,
+        diagnosisResponses: {} as Record<string, Record<string, number>>,
+        additionalQuestions: {
+          education: '',
+          profession: '',
+          exerciseFrequency: '',
+          dailySleepHours: '',
+          monthlyVegetableConsumption: '',
+          monthlyRedMeatConsumption: '',
+          monthlyChickenConsumption: '',
+          dailyWaterConsumption: '',
+          smokingFrequency: '',
+          alcoholFrequency: ''
+        },
+        customQuestions: [],
+        conventionalTreatment: {
+          currentMedications: '',
+          otherTreatments: '',
+          deviceScanFileUrl: ''
+        },
+        optionalScans: {
+          meridianScan: {
+            enabled: false,
+            fileUrl: ''
+          },
+          thermalScan: {
+            enabled: false,
+            fileUrl: ''
+          },
+          toxicityScan: {
+            enabled: false,
+            fileUrl: ''
+          }
+        }
+      });
+      setToxicityRatings(initialToxicityRatings);
+    }
+  }, [usePreviousAnamnez, previousAnamnez]);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -1127,8 +1329,29 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
       setCurrentPage(1);
       // Reset toxicity ratings to avoid carrying over from previous patients/sessions
       setToxicityRatings(initialToxicityRatings);
+      // Reset previous anamnez toggle
+      setUsePreviousAnamnez(false);
     }
   }, [isOpen]);
+
+  // Check if patient has incomplete registration (from Hızlı Rezervasyon)
+  React.useEffect(() => {
+    if (isOpen && patient) {
+      // Block if registrationStatus is explicitly 'incomplete'
+      // OR if patient was created via quick_reservation and registrationStatus is not 'complete'
+      const isIncompleteRegistration =
+        patient.registrationStatus === 'incomplete' ||
+        (patient.createdVia === 'quick_reservation' && patient.registrationStatus !== 'complete');
+
+      if (isIncompleteRegistration) {
+        toast.info(
+          'Bu hasta Hızlı Rezervasyon ile kayıt olmuştur. Anamnez doldurmak için önce hasta kaydını tamamlayın.',
+          { autoClose: 5000 }
+        );
+        onClose();
+      }
+    }
+  }, [isOpen, patient, onClose]);
 
   if (!isOpen || !patient) return null;
 
@@ -1164,6 +1387,48 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                 ✕
               </button>
             </div>
+
+            {/* Previous Anamnez Toggle */}
+            {previousAnamnez && (
+              <div className="mt-4 p-3 bg-white/80 rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-blue-600 text-lg">📋</span>
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">
+                        Önceki Anamnez Kaydı Bulundu
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {previousAnamnez.createdAt ? new Date(previousAnamnez.createdAt).toLocaleDateString('tr-TR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric'
+                        }) : 'Tarih bilinmiyor'}
+                        {previousAnamnez.completedBy?.name && ` - ${previousAnamnez.completedBy.name}`}
+                      </p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={usePreviousAnamnez}
+                      onChange={(e) => setUsePreviousAnamnez(e.target.checked)}
+                      className="sr-only peer"
+                      disabled={loadingPreviousAnamnez}
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    <span className="ms-3 text-sm font-medium text-gray-700">
+                      {usePreviousAnamnez ? 'Önceki Değerleri Kullan' : 'Sıfırdan Başla'}
+                    </span>
+                  </label>
+                </div>
+                {usePreviousAnamnez && (
+                  <p className="mt-2 text-xs text-amber-600 bg-amber-50 p-2 rounded">
+                    Önceki anamnez değerleri forma yüklendi. Gerekli güncellemeleri yapabilirsiniz.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <form onSubmit={handleSubmit} className="p-6 space-y-8 bg-white">
@@ -2078,7 +2343,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                           className="w-5 h-5 text-purple-600 bg-white border-gray-300 rounded focus:ring-purple-500 focus:ring-2"
                         />
                         <label htmlFor="meridianScan" className="text-lg font-semibold text-gray-800 cursor-pointer">
-                          Meridyen Tarama Tek Seans
+                          Meridyen Tarama
                         </label>
                       </div>
 
@@ -2154,7 +2419,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                           className="w-5 h-5 text-purple-600 bg-white border-gray-300 rounded focus:ring-purple-500 focus:ring-2"
                         />
                         <label htmlFor="toxicityScan" className="text-lg font-semibold text-gray-800 cursor-pointer">
-                          Toksisite Ölçümü (TEK SEANS)
+                          Toksisite Ölçümü
                         </label>
                       </div>
 

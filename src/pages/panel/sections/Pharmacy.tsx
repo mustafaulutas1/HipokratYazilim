@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, query, deleteDoc, doc, where, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { utils, writeFile } from 'xlsx';
+import MultiPaymentMethodSelector, { formatPaymentMethods } from '../../../components/UI/MultiPaymentMethodSelector';
+import type { PaymentMethodEntry } from '../../../components/UI/MultiPaymentMethodSelector';
 
 interface Medication {
   id?: string;
@@ -115,6 +117,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [pharmacyPaymentAmount, setPharmacyPaymentAmount] = useState<string>('');
   const [pharmacyPaymentMethod, setPharmacyPaymentMethod] = useState<string>('nakit');
+  const [pharmacyPaymentMethods, setPharmacyPaymentMethods] = useState<PaymentMethodEntry[]>([{ method: 'nakit', amount: 0 }]);
   const [pendingSoldItems, setPendingSoldItems] = useState<any[]>([]);
   const [selectedMedicines, setSelectedMedicines] = useState<string[]>([]);
   const [isPharmacyPartialPayment, setIsPharmacyPartialPayment] = useState<boolean>(false);
@@ -392,14 +395,16 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       'Satılan Ürünler': sale.pharmacySoldItems?.map((item: any) => `${item.name} (${item.quantity})`).join(', ') || '-',
       'Ürün Sayısı': sale.pharmacySoldItems?.length || 0,
       'Ödeme Tutarı': sale.pharmacyPaymentAmount || 0,
-      'Ödeme Yöntemi': sale.pharmacyPaymentMethod === 'nakit' ? 'Nakit' : 
-                       sale.pharmacyPaymentMethod === 'kartkredi' ? 'Kredi Kartı' :
-                       sale.pharmacyPaymentMethod === 'kartdebit' ? 'Banka Kartı' :
-                       sale.pharmacyPaymentMethod === 'kredi_karti' ? 'Kredi Kartı' :
-                       sale.pharmacyPaymentMethod === 'banka_karti' ? 'Banka Kartı' :
-                       sale.pharmacyPaymentMethod === 'havale' ? 'Havale/EFT' :
-                       sale.pharmacyPaymentMethod === 'cari' ? 'Cari' :
-                       sale.pharmacyPaymentMethod || '-',
+      'Ödeme Yöntemi': sale.pharmacyPaymentMethods && sale.pharmacyPaymentMethods.length > 0
+        ? formatPaymentMethods(sale.pharmacyPaymentMethods)
+        : (sale.pharmacyPaymentMethod === 'nakit' ? 'Nakit' :
+           sale.pharmacyPaymentMethod === 'kartkredi' ? 'Kredi Kartı' :
+           sale.pharmacyPaymentMethod === 'kartdebit' ? 'Banka Kartı' :
+           sale.pharmacyPaymentMethod === 'kredi_karti' ? 'Kredi Kartı' :
+           sale.pharmacyPaymentMethod === 'banka_karti' ? 'Banka Kartı' :
+           sale.pharmacyPaymentMethod === 'havale' ? 'Havale/EFT' :
+           sale.pharmacyPaymentMethod === 'cari' ? 'Cari' :
+           sale.pharmacyPaymentMethod || '-'),
       'Borç Durumu': sale.hasDebt && sale.debtAmount ? `${sale.debtAmount.toLocaleString('tr-TR')} TL` : 'Yok'
     }));
     const salesSheet = utils.json_to_sheet(salesData);
@@ -665,6 +670,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
         pharmacyRemovedItems: removedMedicines,
         pharmacyPaymentAmount: totalPaymentReceived,
         pharmacyPaymentMethod: pharmacyPaymentMethod,
+        // Multi-payment method support
+        pharmacyPaymentMethods: pharmacyPaymentMethods.filter(m => m.amount > 0),
         pharmacyPaymentDate: new Date().toISOString(),
         // Record what debts were paid in this transaction
         lastDebtPayment: selectedDebts.length > 0 ? {
@@ -716,6 +723,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       setSelectedMedicines([]);
       setPharmacyPaymentAmount('');
       setPharmacyPaymentMethod('nakit');
+      setPharmacyPaymentMethods([{ method: 'nakit', amount: 0 }]);
       setIsPharmacyPartialPayment(false);
       setPharmacyRemainingDebt('');
       setPatientDebtHistory([]);
@@ -1746,24 +1754,40 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                              sale.pharmacyPaymentMethod === 'nakit' 
-                                ? 'bg-green-500/20 text-green-300'
-                                : sale.pharmacyPaymentMethod === 'kredi_karti'
-                                ? 'bg-blue-500/20 text-blue-300'
-                                : sale.pharmacyPaymentMethod === 'banka_karti'
-                                ? 'bg-purple-500/20 text-purple-300'
-                                : sale.pharmacyPaymentMethod === 'cari'
-                                ? 'bg-orange-500/20 text-orange-300'
-                                : 'bg-yellow-500/20 text-yellow-300'
-                            }`}>
-                              {sale.pharmacyPaymentMethod === 'nakit' ? '💵 Nakit' :
-                               sale.pharmacyPaymentMethod === 'kredi_karti' ? '💳 Kredi Kartı' :
-                               sale.pharmacyPaymentMethod === 'banka_karti' ? '💳 Banka Kartı' :
-                               sale.pharmacyPaymentMethod === 'havale' ? '🏦 Havale/EFT' :
-                               sale.pharmacyPaymentMethod === 'cari' ? '📋 Cari' :
-                               sale.pharmacyPaymentMethod || '-'}
-                            </span>
+                            {sale.pharmacyPaymentMethods && sale.pharmacyPaymentMethods.length > 1 ? (
+                              <div className="flex flex-col gap-1">
+                                {sale.pharmacyPaymentMethods.map((pm: PaymentMethodEntry, idx: number) => (
+                                  <span key={idx} className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                    pm.method === 'nakit' ? 'bg-green-500/20 text-green-300'
+                                    : pm.method === 'kredi_karti' ? 'bg-blue-500/20 text-blue-300'
+                                    : pm.method === 'banka_karti' ? 'bg-purple-500/20 text-purple-300'
+                                    : pm.method === 'cari' ? 'bg-orange-500/20 text-orange-300'
+                                    : 'bg-yellow-500/20 text-yellow-300'
+                                  }`}>
+                                    {pm.method === 'nakit' ? '💵' : pm.method === 'kredi_karti' ? '💳' : pm.method === 'banka_karti' ? '💳' : pm.method === 'havale' ? '🏦' : '📋'} {pm.amount.toFixed(2)} TL
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                                sale.pharmacyPaymentMethod === 'nakit'
+                                  ? 'bg-green-500/20 text-green-300'
+                                  : sale.pharmacyPaymentMethod === 'kredi_karti'
+                                  ? 'bg-blue-500/20 text-blue-300'
+                                  : sale.pharmacyPaymentMethod === 'banka_karti'
+                                  ? 'bg-purple-500/20 text-purple-300'
+                                  : sale.pharmacyPaymentMethod === 'cari'
+                                  ? 'bg-orange-500/20 text-orange-300'
+                                  : 'bg-yellow-500/20 text-yellow-300'
+                              }`}>
+                                {sale.pharmacyPaymentMethod === 'nakit' ? '💵 Nakit' :
+                                 sale.pharmacyPaymentMethod === 'kredi_karti' ? '💳 Kredi Kartı' :
+                                 sale.pharmacyPaymentMethod === 'banka_karti' ? '💳 Banka Kartı' :
+                                 sale.pharmacyPaymentMethod === 'havale' ? '🏦 Havale/EFT' :
+                                 sale.pharmacyPaymentMethod === 'cari' ? '📋 Cari' :
+                                 sale.pharmacyPaymentMethod || '-'}
+                              </span>
+                            )}
                           </td>
                           <td className="px-6 py-4 text-right">
                             <p className="text-white font-bold text-lg">
@@ -2245,6 +2269,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                     setSelectedMedicines([]);
                     setPharmacyPaymentAmount('');
                     setPharmacyPaymentMethod('nakit');
+                    setPharmacyPaymentMethods([{ method: 'nakit', amount: 0 }]);
                     setIsPharmacyPartialPayment(false);
                     setPharmacyRemainingDebt('');
                     setPatientDebtHistory([]);
@@ -2340,22 +2365,22 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                     />
                   </div>
 
-                  {/* Payment Method */}
-                  <div className="bg-white border border-gray-200 rounded-xl p-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      💳 Ödeme Yöntemi
-                    </label>
-                    <select
-                      value={pharmacyPaymentMethod}
-                      onChange={(e) => setPharmacyPaymentMethod(e.target.value)}
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="nakit">💵 Nakit</option>
-                      <option value="kredi_karti">💳 Kredi Kartı</option>
-                      <option value="banka_karti">💳 Banka Kartı</option>
-                      <option value="havale">🏦 Havale/EFT</option>
-                      <option value="cari">📋 Cari</option>
-                    </select>
+                  {/* Multi Payment Method Selector */}
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
+                    <MultiPaymentMethodSelector
+                      totalAmount={parseFloat(pharmacyPaymentAmount) || 0}
+                      value={pharmacyPaymentMethods}
+                      onChange={(methods) => {
+                        setPharmacyPaymentMethods(methods);
+                        // Keep backwards compatibility - set primary method
+                        if (methods.length > 0) {
+                          setPharmacyPaymentMethod(methods[0].method);
+                        }
+                      }}
+                      disabled={loading}
+                      showValidation={true}
+                      allowedMethods={['nakit', 'kredi_karti', 'banka_karti', 'havale', 'cari']}
+                    />
                   </div>
 
                   {/* Partial Payment Checkbox */}
@@ -2637,6 +2662,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       setSelectedMedicines([]);
                       setPharmacyPaymentAmount('');
                       setPharmacyPaymentMethod('nakit');
+                      setPharmacyPaymentMethods([{ method: 'nakit', amount: 0 }]);
                       setIsPharmacyPartialPayment(false);
                       setPharmacyRemainingDebt('');
                       setPatientDebtHistory([]);
@@ -2743,13 +2769,27 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                   </div>
                   <div>
                     <p className="text-xs text-gray-400">Ödeme Yöntemi</p>
-                    <p className="text-gray-800 font-medium">
-                      {selectedSaleDetail.pharmacyPaymentMethod === 'nakit' ? '💵 Nakit' :
-                       selectedSaleDetail.pharmacyPaymentMethod === 'kredi_karti' ? '💳 Kredi Kartı' :
-                       selectedSaleDetail.pharmacyPaymentMethod === 'banka_karti' ? '💳 Banka Kartı' :
-                       selectedSaleDetail.pharmacyPaymentMethod === 'havale' ? '🏦 Havale/EFT' :
-                       selectedSaleDetail.pharmacyPaymentMethod || '-'}
-                    </p>
+                    {selectedSaleDetail.pharmacyPaymentMethods && selectedSaleDetail.pharmacyPaymentMethods.length > 0 ? (
+                      <div className="space-y-1">
+                        {selectedSaleDetail.pharmacyPaymentMethods.map((pm: PaymentMethodEntry, idx: number) => (
+                          <p key={idx} className="text-gray-800 font-medium text-sm">
+                            {pm.method === 'nakit' ? '💵 Nakit' :
+                             pm.method === 'kredi_karti' ? '💳 Kredi Kartı' :
+                             pm.method === 'banka_karti' ? '💳 Banka Kartı' :
+                             pm.method === 'havale' ? '🏦 Havale/EFT' :
+                             pm.method === 'cari' ? '📋 Cari' : pm.method}: {pm.amount.toFixed(2)} TL
+                          </p>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-gray-800 font-medium">
+                        {selectedSaleDetail.pharmacyPaymentMethod === 'nakit' ? '💵 Nakit' :
+                         selectedSaleDetail.pharmacyPaymentMethod === 'kredi_karti' ? '💳 Kredi Kartı' :
+                         selectedSaleDetail.pharmacyPaymentMethod === 'banka_karti' ? '💳 Banka Kartı' :
+                         selectedSaleDetail.pharmacyPaymentMethod === 'havale' ? '🏦 Havale/EFT' :
+                         selectedSaleDetail.pharmacyPaymentMethod || '-'}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <p className="text-xs text-gray-400">Toplam Tutar</p>

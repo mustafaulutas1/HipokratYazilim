@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import AddPatientModal from './AddPatientModal';
 import EditPatientModal from '../components/EditPatientModal';
@@ -120,16 +120,33 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
     return new Date(dateString).toLocaleDateString('tr-TR');
   };
 
+  // Toggle patient active/passive status
+  const togglePatientStatus = async (patient: Patient) => {
+    try {
+      const newStatus = patient.status === 'passive' ? 'active' : 'passive';
+      const patientRef = doc(db, 'patients', patient.id);
+      await updateDoc(patientRef, { status: newStatus });
+
+      // Update local state
+      setPatients(prevPatients =>
+        prevPatients.map(p =>
+          p.id === patient.id ? { ...p, status: newStatus } : p
+        )
+      );
+    } catch (error) {
+      console.error('Error toggling patient status:', error);
+    }
+  };
+
   const filteredPatients = patients.filter(patient => {
     const matchesSearch = patient.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (patient.tcNo && patient.tcNo.includes(searchTerm)) ||
       (patient.email && patient.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (patient.phone && patient.phone.includes(searchTerm));
 
-    const isIncomplete = (patient as any).registrationStatus === 'incomplete';
     const matchesFilter = filterStatus === 'all' ||
-      (filterStatus === 'active' && !isIncomplete) ||
-      (filterStatus === 'inactive' && isIncomplete);
+      (filterStatus === 'active' && patient.status !== 'passive') ||
+      (filterStatus === 'passive' && patient.status === 'passive');
     return matchesSearch && matchesFilter;
   });
 
@@ -188,8 +205,8 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
               className="px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-green-500"
             >
               <option value="all">Tüm Hastalar</option>
-              <option value="active">Kayıtlı</option>
-              <option value="inactive">Kayıtsız</option>
+              <option value="active">Aktif</option>
+              <option value="passive">Pasif</option>
             </select>
           </div>
         </div>
@@ -200,7 +217,7 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           {[
             { title: 'Toplam Hasta', value: patients.length.toString(), icon: '👥', color: 'from-blue-500 to-cyan-500' },
-            { title: 'Kayıtlı Hasta', value: patients.filter(p => (p as any).registrationStatus !== 'incomplete').length.toString(), icon: '✅', color: 'from-green-500 to-emerald-500' },
+            { title: 'Aktif Hasta', value: patients.filter(p => p.status !== 'passive').length.toString(), icon: '✅', color: 'from-green-500 to-emerald-500' },
             {
               title: 'Bu Ay Yeni', value: patients.filter(p => {
                 const createdAt = new Date(p.createdAt);
@@ -208,7 +225,7 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
                 return createdAt.getMonth() === now.getMonth() && createdAt.getFullYear() === now.getFullYear();
               }).length.toString(), icon: '🆕', color: 'from-yellow-500 to-orange-500'
             },
-            { title: 'Kayıtsız Hasta', value: patients.filter(p => (p as any).registrationStatus === 'incomplete').length.toString(), icon: '📅', color: 'from-purple-500 to-pink-500' }
+            { title: 'Pasif Hasta', value: patients.filter(p => p.status === 'passive').length.toString(), icon: '⏸️', color: 'from-gray-500 to-gray-600' }
           ].map((stat, index) => (
           <div key={index} className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
             <div className="flex items-center gap-4">
@@ -271,8 +288,12 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
                         : '-'}
                   </td>
                   <td className="px-6 py-4">
-                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-green-500/20 text-green-300">
-                      Kayıtlı
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                      patient.status === 'passive'
+                        ? 'bg-gray-500/20 text-gray-300'
+                        : 'bg-green-500/20 text-green-300'
+                    }`}>
+                      {patient.status === 'passive' ? 'Pasif' : 'Aktif'}
                     </span>
                   </td>
                   <td className="px-6 py-4">
@@ -297,8 +318,16 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
                           >
                             ✏️
                           </button>
-                          <button className="p-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-all duration-200">
-                            🗑️
+                          <button
+                            onClick={() => togglePatientStatus(patient)}
+                            className={`p-2 rounded-lg transition-all duration-200 ${
+                              patient.status === 'passive'
+                                ? 'bg-gray-500/20 hover:bg-gray-500/30 border border-gray-500/30 text-gray-300 hover:text-gray-200'
+                                : 'bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 text-green-300 hover:text-green-200'
+                            }`}
+                            title={patient.status === 'passive' ? 'Aktif Yap' : 'Pasif Yap'}
+                          >
+                            {patient.status === 'passive' ? '🔴' : '🟢'}
                           </button>
                         </>
                       )}

@@ -316,9 +316,9 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
           <div class="section no-break">
             <div class="section-title">Opsiyonel Taramalar</div>
             <div style="display:flex; flex-direction:column; gap:5px;">
-              ${anamrezData.optionalScans.meridianScan?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Meridyen Tarama Tek Seans</div>' : ''}
+              ${anamrezData.optionalScans.meridianScan?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Meridyen Tarama</div>' : ''}
               ${anamrezData.optionalScans.thermalScan?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Termal Tarama (IRIS-XP)</div>' : ''}
-              ${anamrezData.optionalScans.toxicityScan?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Toksisite Ölçümü (TEK SEANS)</div>' : ''}
+              ${anamrezData.optionalScans.toxicityScan?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Toksisite Ölçümü</div>' : ''}
             </div>
           </div>` : ''}
 
@@ -1051,7 +1051,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                     ✓
                                   </div>
                                   <div>
-                                    <h4 className="font-bold text-purple-900">Meridyen Tarama Tek Seans</h4>
+                                    <h4 className="font-bold text-purple-900">Meridyen Tarama</h4>
                                     <p className="text-sm text-purple-700">Seçilmiş</p>
                                   </div>
                                 </div>
@@ -1079,7 +1079,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                     ✓
                                   </div>
                                   <div>
-                                    <h4 className="font-bold text-purple-900">Toksisite Ölçümü (TEK SEANS)</h4>
+                                    <h4 className="font-bold text-purple-900">Toksisite Ölçümü</h4>
                                     <p className="text-sm text-purple-700">Seçilmiş</p>
                                   </div>
                                 </div>
