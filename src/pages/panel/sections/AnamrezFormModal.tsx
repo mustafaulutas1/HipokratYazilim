@@ -9,16 +9,16 @@ import FileUpload from '../../../components/UI/FileUpload';
 interface Patient {
   id: string;
   fullName: string;
-  tcNo: string;
-  phone: string;
-  birthDate: string;
-  gender: string;
-  address: string;
-  emergencyPhone: string;
-  visitReason: string;
-  clinicId: string;
-  isAnamnezCompleted: boolean;
-  createdAt: string;
+  tcNo?: string;
+  phone?: string;
+  birthDate?: string;
+  gender?: string;
+  address?: string;
+  emergencyPhone?: string;
+  visitReason?: string;
+  clinicId?: string;
+  isAnamnezCompleted?: boolean;
+  createdAt?: string;
   registrationStatus?: 'incomplete' | 'complete';
   createdVia?: 'quick_reservation' | string;
 }
@@ -44,6 +44,8 @@ interface AnamrezFormModalProps {
   onAnamrezCompleted: () => void;
   anamrezRecordId?: string;
   appointmentId?: string;
+  isPastHistory?: boolean;
+  initialHistoryDate?: string;
 }
 
 type SymptomKey =
@@ -238,9 +240,12 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   doctorProfile,
   onAnamrezCompleted,
   anamrezRecordId,
-  appointmentId
+  appointmentId,
+  isPastHistory = false,
+  initialHistoryDate = ''
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
+  const [historyDate, setHistoryDate] = useState(initialHistoryDate);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [loadingDoctors, setLoadingDoctors] = useState(false);
   // Keep toxicity ratings isolated so they don't inherit values from other sections
@@ -1160,37 +1165,60 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         updatedAt: new Date().toISOString()
       };
 
-      // If we have an existing anamnez record ID, update it instead of creating new
-      if (anamrezRecordId) {
-        // Update existing anamnez record
-        const anamrezRef = doc(db, 'anamrezRecords', anamrezRecordId);
-        await updateDoc(anamrezRef, {
+      // Handle past history mode vs normal mode
+      if (isPastHistory) {
+        // Validate history date for past history mode
+        if (!historyDate) {
+          toast.error('Lütfen geçmiş tarih seçin');
+          setLoading(false);
+          return;
+        }
+
+        // Save to patientHistoryRecords collection for past history
+        await addDoc(collection(db, 'patientHistoryRecords'), {
           ...anamrezData,
-          appointmentId: appointmentId || '',
-        });
-      } else {
-        // Create new anamnez record (legacy flow)
-        await addDoc(collection(db, 'anamrezRecords'), {
-          ...anamrezData,
+          historyDate: historyDate,
+          isPastHistory: true,
+          hasAnamnesis: true,
+          hasTreatment: false,
+          hasMedications: false,
           createdAt: new Date().toISOString(),
-          appointmentId: appointmentId || '',
+        });
+
+        toast.success('Geçmiş anamnez kaydı başarıyla eklendi!');
+      } else {
+        // Normal mode: Save to anamrezRecords
+        if (anamrezRecordId) {
+          // Update existing anamnez record
+          const anamrezRef = doc(db, 'anamrezRecords', anamrezRecordId);
+          await updateDoc(anamrezRef, {
+            ...anamrezData,
+            appointmentId: appointmentId || '',
+          });
+        } else {
+          // Create new anamnez record (legacy flow)
+          await addDoc(collection(db, 'anamrezRecords'), {
+            ...anamrezData,
+            createdAt: new Date().toISOString(),
+            appointmentId: appointmentId || '',
+          });
+        }
+
+        // Update patient's anamnez completion status (only for normal mode)
+        const patientRef = doc(db, 'patients', patient.id);
+        await updateDoc(patientRef, {
+          isAnamnezCompleted: true,
+          anamrezCompletedAt: new Date().toISOString(),
+          anamrezCompletedBy: doctorProfile?.fullName || '',
+          optionalScans: updatedOptionalScans,
+          // Reset assignment status for new visit - patient can be reassigned to a doctor
+          status: 'anamnez_completed',
+          assignedDoctorId: null,
+          assignedDoctorName: null,
+          assignedAt: null,
+          updatedAt: new Date().toISOString()
         });
       }
-
-      // Update patient's anamnez completion status (keep for backwards compatibility)
-      const patientRef = doc(db, 'patients', patient.id);
-      await updateDoc(patientRef, {
-        isAnamnezCompleted: true,
-        anamrezCompletedAt: new Date().toISOString(),
-        anamrezCompletedBy: doctorProfile?.fullName || '',
-        optionalScans: updatedOptionalScans,
-        // Reset assignment status for new visit - patient can be reassigned to a doctor
-        status: 'anamnez_completed',
-        assignedDoctorId: null,
-        assignedDoctorName: null,
-        assignedAt: null,
-        updatedAt: new Date().toISOString()
-      });
 
       // Show success toast
       setShowSuccessToast(true);
@@ -1372,10 +1400,12 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div className="bg-white/95 backdrop-blur-xl border border-gray-200 rounded-2xl max-w-6xl w-full max-h-[95vh] overflow-y-auto shadow-2xl anamnez-modal-content">
-          <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-2xl sticky top-0 z-10">
+          <div className={`p-6 border-b border-gray-200 bg-gradient-to-r ${isPastHistory ? 'from-purple-50 to-indigo-50' : 'from-blue-50 to-indigo-50'} rounded-t-2xl sticky top-0 z-10`}>
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-2xl font-bold text-gray-800">📝 Anamnez Formu</h2>
+                <h2 className="text-2xl font-bold text-gray-800">
+                  {isPastHistory ? '📜 Geçmiş Anamnez Girişi' : '📝 Anamnez Formu'}
+                </h2>
                 <p className="text-gray-600 mt-1">
                   Hasta: {patient.fullName} - TC: {patient.tcNo}
                 </p>
@@ -1387,6 +1417,30 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                 ✕
               </button>
             </div>
+
+            {/* Past History Date Picker */}
+            {isPastHistory && (
+              <div className="mt-4 p-4 bg-purple-100 rounded-xl border border-purple-300">
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <label className="block text-purple-800 font-semibold mb-2">
+                      📅 Geçmiş Tarih Seçin *
+                    </label>
+                    <input
+                      type="date"
+                      value={historyDate}
+                      onChange={(e) => setHistoryDate(e.target.value)}
+                      className="w-full px-4 py-3 bg-white border border-purple-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      max={new Date().toISOString().split('T')[0]}
+                      required
+                    />
+                  </div>
+                  <div className="text-purple-700 text-sm max-w-xs">
+                    <p>Bu tarih, hastanın geçmiş tedavi/anamnez kaydının tarihini temsil eder.</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Previous Anamnez Toggle */}
             {previousAnamnez && (

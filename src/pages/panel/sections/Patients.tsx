@@ -4,6 +4,7 @@ import { db } from '../../../firebase/config';
 import AddPatientModal from './AddPatientModal';
 import EditPatientModal from '../components/EditPatientModal';
 import PatientDetailsModal from './PatientDetailsModal';
+import AnamrezFormModal from './AnamrezFormModal';
 
 interface TreatmentOptions {
   protocol?: string;
@@ -38,6 +39,7 @@ interface Patient {
   treatmentOptions?: TreatmentOptions;
   treatmentStartedAt?: string;
   status?: string;
+  clinicId?: string;
 }
 
 interface PatientsProps {
@@ -54,6 +56,8 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [selectedPatientForDetails, setSelectedPatientForDetails] = useState<Patient | null>(null);
+  const [isPastHistoryModalOpen, setIsPastHistoryModalOpen] = useState(false);
+  const [selectedPatientForHistory, setSelectedPatientForHistory] = useState<Patient | null>(null);
 
   // Fetch patients from Firestore
   const fetchPatients = async () => {
@@ -311,6 +315,16 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
                         <>
                           <button
                             onClick={() => {
+                              setSelectedPatientForHistory(patient);
+                              setIsPastHistoryModalOpen(true);
+                            }}
+                            className="p-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-lg text-purple-300 hover:text-purple-200 transition-all duration-200"
+                            title="Geçmiş Kayıt Ekle"
+                          >
+                            📜
+                          </button>
+                          <button
+                            onClick={() => {
                               setSelectedPatient(patient);
                               setIsEditModalOpen(true);
                             }}
@@ -379,6 +393,25 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
         }}
         patient={selectedPatientForDetails}
       />
+
+      {/* Past History Modal - Using AnamrezFormModal in past history mode */}
+      {!isCallCenter && (
+        <AnamrezFormModal
+          isOpen={isPastHistoryModalOpen}
+          onClose={() => {
+            setIsPastHistoryModalOpen(false);
+            setSelectedPatientForHistory(null);
+          }}
+          patient={selectedPatientForHistory}
+          doctorProfile={doctorProfile}
+          onAnamrezCompleted={() => {
+            fetchPatients();
+            setIsPastHistoryModalOpen(false);
+            setSelectedPatientForHistory(null);
+          }}
+          isPastHistory={true}
+        />
+      )}
     </div>
   );
 };

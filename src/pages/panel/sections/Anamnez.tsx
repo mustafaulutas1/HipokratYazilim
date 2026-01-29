@@ -54,20 +54,25 @@ interface AnamrezRecord {
   nurseName?: string;
   createdAt: string;
   updatedAt: string;
+  // For past history records
+  historyDate?: string;
+  isPastHistory?: boolean;
 }
 
 const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [pendingAnamrezRecords, setPendingAnamrezRecords] = useState<AnamrezRecord[]>([]);
   const [completedAnamrezRecords, setCompletedAnamrezRecords] = useState<AnamrezRecord[]>([]);
+  const [pastHistoryRecords, setPastHistoryRecords] = useState<AnamrezRecord[]>([]);
   const [selectedAnamrezRecord, setSelectedAnamrezRecord] = useState<AnamrezRecord | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [completedSearchTerm, setCompletedSearchTerm] = useState('');
+  const [pastHistorySearchTerm, setPastHistorySearchTerm] = useState('');
   const [isAnamrezModalOpen, setIsAnamrezModalOpen] = useState(false);
   const [isAnamrezViewModalOpen, setIsAnamrezViewModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'pending' | 'completed'>('pending');
+  const [activeTab, setActiveTab] = useState<'pending' | 'completed' | 'pastHistory'>('pending');
 
   // Fetch anamnez records and patients
   const fetchData = async () => {
@@ -101,6 +106,29 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
       setPendingAnamrezRecords(pendingRecords);
       setCompletedAnamrezRecords(completedRecords);
 
+      // Fetch past history records from patientHistoryRecords collection
+      const pastHistoryQuery = query(
+        collection(db, 'patientHistoryRecords'),
+        where('clinicId', '==', doctorProfile.clinicId)
+      );
+      const pastHistorySnapshot = await getDocs(pastHistoryQuery);
+      const pastHistoryData = pastHistorySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        isPastHistory: true,
+        status: 'completed' as const
+      } as AnamrezRecord));
+
+      // Sort past history by historyDate (newest first)
+      pastHistoryData.sort((a, b) => {
+        const dateA = new Date(a.historyDate || a.createdAt).getTime();
+        const dateB = new Date(b.historyDate || b.createdAt).getTime();
+        return dateB - dateA;
+      });
+
+      console.log('📜 Anamnez: Found past history records:', pastHistoryData.length);
+      setPastHistoryRecords(pastHistoryData);
+
       // Also fetch all patients for reference
       const patientsQuery = query(
         collection(db, 'patients'),
@@ -132,6 +160,11 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
   // Filter completed anamnez records by patient name
   const filteredCompletedRecords = completedAnamrezRecords.filter(record =>
     record.patientName.toLowerCase().includes(completedSearchTerm.toLowerCase())
+  );
+
+  // Filter past history records by patient name
+  const filteredPastHistoryRecords = pastHistoryRecords.filter(record =>
+    record.patientName.toLowerCase().includes(pastHistorySearchTerm.toLowerCase())
   );
 
   // Get patient by ID
@@ -246,7 +279,7 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
           <div className="flex items-center mb-6 bg-white/5 rounded-xl p-1">
             <button
               onClick={() => setActiveTab('pending')}
-              className={`relative flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all duration-200 ${
+              className={`relative flex-1 py-2 px-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
                 activeTab === 'pending'
                   ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
                   : 'text-white/70 hover:text-white/90'
@@ -262,7 +295,7 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
             </button>
             <button
               onClick={() => setActiveTab('completed')}
-              className={`flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all duration-200 ${
+              className={`flex-1 py-2 px-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
                 activeTab === 'completed'
                   ? 'bg-green-500/20 text-green-300 border border-green-500/30'
                   : 'text-white/70 hover:text-white/90'
@@ -270,9 +303,19 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
             >
               Tamamlanan ({completedAnamrezRecords.length})
             </button>
+            <button
+              onClick={() => setActiveTab('pastHistory')}
+              className={`flex-1 py-2 px-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
+                activeTab === 'pastHistory'
+                  ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                  : 'text-white/70 hover:text-white/90'
+              }`}
+            >
+              📜 Geçmiş ({pastHistoryRecords.length})
+            </button>
           </div>
 
-          {activeTab === 'pending' ? (
+          {activeTab === 'pending' && (
             <>
               {/* Search for Pending */}
               <div className="mb-4">
@@ -333,7 +376,9 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                 )}
               </div>
             </>
-          ) : (
+          )}
+
+          {activeTab === 'completed' && (
             <>
               {/* Search for Completed */}
               <div className="mb-4">
@@ -395,6 +440,68 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
               </div>
             </>
           )}
+
+          {activeTab === 'pastHistory' && (
+            <>
+              {/* Search for Past History */}
+              <div className="mb-4">
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <span className="text-white/50">🔍</span>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Geçmiş kayıtlarda ara..."
+                    value={pastHistorySearchTerm}
+                    onChange={(e) => setPastHistorySearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  />
+                </div>
+              </div>
+
+              {/* Past History Records List */}
+              <div className="space-y-2 max-h-96 overflow-y-auto admin-panel-scrollbar">
+                {filteredPastHistoryRecords.length === 0 ? (
+                  <div className="text-center py-8">
+                    <div className="text-white/50 text-lg mb-2">📜</div>
+                    <p className="text-white/70 text-sm">Geçmiş anamnez kaydı bulunmuyor.</p>
+                    <p className="text-white/50 text-xs mt-2">Hasta Yönetimi sayfasından 📜 butonunu kullanarak geçmiş kayıt ekleyebilirsiniz.</p>
+                  </div>
+                ) : (
+                  filteredPastHistoryRecords.map((record) => {
+                    return (
+                      <div
+                        key={record.id}
+                        onClick={() => handleSelectAnamrezRecord(record)}
+                        className={`p-3 rounded-xl cursor-pointer transition-all duration-200 ${
+                          selectedAnamrezRecord?.id === record.id
+                            ? 'bg-purple-500/20 border border-purple-500/30'
+                            : 'bg-white/5 hover:bg-white/10 border border-transparent'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="text-white font-semibold text-sm">{record.patientName}</h3>
+                            <p className="text-white/60 text-xs">
+                              📅 Geçmiş Tarih: {new Date(record.historyDate || record.createdAt).toLocaleDateString('tr-TR')}
+                            </p>
+                            <p className="text-white/60 text-xs">
+                              Eklendi: {new Date(record.createdAt).toLocaleDateString('tr-TR')}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <div className="px-2 py-1 bg-purple-500/20 text-purple-300 rounded-full text-xs">
+                              📜 Geçmiş
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Patient Details & Records */}
@@ -406,7 +513,11 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <h2 className="text-xl font-bold text-white">Hasta Bilgileri</h2>
-                    {selectedAnamrezRecord.status === 'completed' ? (
+                    {selectedAnamrezRecord.isPastHistory ? (
+                      <div className="px-3 py-1 bg-purple-500/20 text-purple-300 rounded-full text-xs font-semibold">
+                        📜 Geçmiş Kayıt
+                      </div>
+                    ) : selectedAnamrezRecord.status === 'completed' ? (
                       <div className="px-3 py-1 bg-green-500/20 text-green-300 rounded-full text-xs font-semibold">
                         ✅ Anamnez Tamamlandı
                       </div>
@@ -416,12 +527,20 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                       </div>
                     )}
                   </div>
-                  {selectedAnamrezRecord.status === 'pending' && (
+                  {selectedAnamrezRecord.status === 'pending' && !selectedAnamrezRecord.isPastHistory && (
                     <button
                       onClick={() => setIsAnamrezModalOpen(true)}
                       className="px-4 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-xl text-green-300 hover:text-green-200 transition-all duration-200"
                     >
                       Anamnez Doldur
+                    </button>
+                  )}
+                  {selectedAnamrezRecord.isPastHistory && (
+                    <button
+                      onClick={() => setIsAnamrezViewModalOpen(true)}
+                      className="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-xl text-purple-300 hover:text-purple-200 transition-all duration-200"
+                    >
+                      👁️ Detayları Gör
                     </button>
                   )}
                 </div>
@@ -451,7 +570,15 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                     <label className="block text-white/70 text-xs font-medium mb-1">Acil Telefon</label>
                     <div className="text-white font-semibold">{selectedPatient.emergencyPhone}</div>
                   </div>
-                  {selectedAnamrezRecord.appointmentDate && (
+                  {selectedAnamrezRecord.historyDate && (
+                    <div>
+                      <label className="block text-white/70 text-xs font-medium mb-1">📅 Geçmiş Tarih</label>
+                      <div className="text-purple-300 font-semibold">
+                        {new Date(selectedAnamrezRecord.historyDate).toLocaleDateString('tr-TR')}
+                      </div>
+                    </div>
+                  )}
+                  {selectedAnamrezRecord.appointmentDate && !selectedAnamrezRecord.isPastHistory && (
                     <div>
                       <label className="block text-white/70 text-xs font-medium mb-1">Randevu Tarihi</label>
                       <div className="text-white font-semibold">

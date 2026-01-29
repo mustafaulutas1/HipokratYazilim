@@ -8,18 +8,18 @@ import { DIAGNOSIS_SPECIFIC_QUESTIONS } from '../../../constants';
 interface Patient {
   id: string;
   fullName: string;
-  tcNo: string;
-  phone: string;
-  birthDate: string;
-  gender: string;
-  address: string;
-  emergencyPhone: string;
-  visitReason: string;
-  clinicId: string;
-  isAnamnezCompleted: boolean;
+  tcNo?: string;
+  phone?: string;
+  birthDate?: string;
+  gender?: string;
+  address?: string;
+  emergencyPhone?: string;
+  visitReason?: string;
+  clinicId?: string;
+  isAnamnezCompleted?: boolean;
   anamrezCompletedAt?: string;
   anamrezCompletedBy?: string;
-  createdAt: string;
+  createdAt?: string;
   doctorProfile?: any;
 }
 
@@ -70,6 +70,7 @@ interface AnamrezData {
   conventionalTreatment: {
     currentMedications: string;
     otherTreatments: string;
+    deviceScanFileUrl?: string;
   };
   optionalScans?: {
     meridianScan?: {
@@ -1050,11 +1051,84 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                   <div className="w-10 h-10 bg-purple-500 text-white rounded-full flex items-center justify-center font-bold">
                                     ✓
                                   </div>
-                                  <div>
+                                  <div className="flex-1">
                                     <h4 className="font-bold text-purple-900">Meridyen Tarama</h4>
                                     <p className="text-sm text-purple-700">Seçilmiş</p>
                                   </div>
                                 </div>
+                                {/* Display uploaded file */}
+                                {anamrezData.optionalScans.meridianScan?.fileUrl && 
+                                 anamrezData.optionalScans.meridianScan.fileUrl !== 'pending' && (
+                                  <div className="mt-4 border-t border-purple-200 pt-4">
+                                    <p className="text-sm font-medium text-purple-800 mb-3">📎 Yüklenen Dosya:</p>
+                                    {(() => {
+                                      const fileUrl = anamrezData.optionalScans.meridianScan.fileUrl;
+                                      const isImage = /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(fileUrl);
+                                      const isPdf = /\.pdf(\?|$)/i.test(fileUrl);
+                                      
+                                      if (isImage) {
+                                        return (
+                                          <div className="space-y-3">
+                                            <img 
+                                              src={fileUrl} 
+                                              alt="Meridyen Tarama" 
+                                              className="max-w-full h-auto max-h-64 rounded-lg border border-purple-300 shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
+                                              onClick={() => window.open(fileUrl, '_blank')}
+                                            />
+                                            <a 
+                                              href={fileUrl} 
+                                              target="_blank" 
+                                              rel="noopener noreferrer"
+                                              className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                            >
+                                              🔍 Tam Boyut Görüntüle
+                                            </a>
+                                          </div>
+                                        );
+                                      } else if (isPdf) {
+                                        return (
+                                          <div className="flex items-center gap-3 p-4 bg-white rounded-lg border border-purple-200">
+                                            <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+                                              <span className="text-red-600 text-xl">📄</span>
+                                            </div>
+                                            <div className="flex-1">
+                                              <p className="font-medium text-gray-800">PDF Dosyası</p>
+                                              <p className="text-sm text-gray-500">Görüntülemek için tıklayın</p>
+                                            </div>
+                                            <a 
+                                              href={fileUrl} 
+                                              target="_blank" 
+                                              rel="noopener noreferrer"
+                                              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                            >
+                                              📄 PDF Aç
+                                            </a>
+                                          </div>
+                                        );
+                                      } else {
+                                        return (
+                                          <div className="flex items-center gap-3 p-4 bg-white rounded-lg border border-purple-200">
+                                            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                                              <span className="text-gray-600 text-xl">📎</span>
+                                            </div>
+                                            <div className="flex-1">
+                                              <p className="font-medium text-gray-800">Dosya</p>
+                                              <p className="text-sm text-gray-500">İndirmek için tıklayın</p>
+                                            </div>
+                                            <a 
+                                              href={fileUrl} 
+                                              target="_blank" 
+                                              rel="noopener noreferrer"
+                                              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                            >
+                                              ⬇️ İndir
+                                            </a>
+                                          </div>
+                                        );
+                                      }
+                                    })()}
+                                  </div>
+                                )}
                               </div>
                             )}
 
@@ -1064,11 +1138,84 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                   <div className="w-10 h-10 bg-purple-500 text-white rounded-full flex items-center justify-center font-bold">
                                     ✓
                                   </div>
-                                  <div>
+                                  <div className="flex-1">
                                     <h4 className="font-bold text-purple-900">Termal Tarama (IRIS-XP)</h4>
                                     <p className="text-sm text-purple-700">Seçilmiş</p>
                                   </div>
                                 </div>
+                                {/* Display uploaded file */}
+                                {anamrezData.optionalScans.thermalScan?.fileUrl && 
+                                 anamrezData.optionalScans.thermalScan.fileUrl !== 'pending' && (
+                                  <div className="mt-4 border-t border-purple-200 pt-4">
+                                    <p className="text-sm font-medium text-purple-800 mb-3">📎 Yüklenen Dosya:</p>
+                                    {(() => {
+                                      const fileUrl = anamrezData.optionalScans.thermalScan.fileUrl;
+                                      const isImage = /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(fileUrl);
+                                      const isPdf = /\.pdf(\?|$)/i.test(fileUrl);
+                                      
+                                      if (isImage) {
+                                        return (
+                                          <div className="space-y-3">
+                                            <img 
+                                              src={fileUrl} 
+                                              alt="Termal Tarama" 
+                                              className="max-w-full h-auto max-h-64 rounded-lg border border-purple-300 shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
+                                              onClick={() => window.open(fileUrl, '_blank')}
+                                            />
+                                            <a 
+                                              href={fileUrl} 
+                                              target="_blank" 
+                                              rel="noopener noreferrer"
+                                              className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                            >
+                                              🔍 Tam Boyut Görüntüle
+                                            </a>
+                                          </div>
+                                        );
+                                      } else if (isPdf) {
+                                        return (
+                                          <div className="flex items-center gap-3 p-4 bg-white rounded-lg border border-purple-200">
+                                            <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+                                              <span className="text-red-600 text-xl">📄</span>
+                                            </div>
+                                            <div className="flex-1">
+                                              <p className="font-medium text-gray-800">PDF Dosyası</p>
+                                              <p className="text-sm text-gray-500">Görüntülemek için tıklayın</p>
+                                            </div>
+                                            <a 
+                                              href={fileUrl} 
+                                              target="_blank" 
+                                              rel="noopener noreferrer"
+                                              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                            >
+                                              📄 PDF Aç
+                                            </a>
+                                          </div>
+                                        );
+                                      } else {
+                                        return (
+                                          <div className="flex items-center gap-3 p-4 bg-white rounded-lg border border-purple-200">
+                                            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                                              <span className="text-gray-600 text-xl">📎</span>
+                                            </div>
+                                            <div className="flex-1">
+                                              <p className="font-medium text-gray-800">Dosya</p>
+                                              <p className="text-sm text-gray-500">İndirmek için tıklayın</p>
+                                            </div>
+                                            <a 
+                                              href={fileUrl} 
+                                              target="_blank" 
+                                              rel="noopener noreferrer"
+                                              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                            >
+                                              ⬇️ İndir
+                                            </a>
+                                          </div>
+                                        );
+                                      }
+                                    })()}
+                                  </div>
+                                )}
                               </div>
                             )}
 
@@ -1078,11 +1225,84 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                   <div className="w-10 h-10 bg-purple-500 text-white rounded-full flex items-center justify-center font-bold">
                                     ✓
                                   </div>
-                                  <div>
+                                  <div className="flex-1">
                                     <h4 className="font-bold text-purple-900">Toksisite Ölçümü</h4>
                                     <p className="text-sm text-purple-700">Seçilmiş</p>
                                   </div>
                                 </div>
+                                {/* Display uploaded file */}
+                                {anamrezData.optionalScans.toxicityScan?.fileUrl && 
+                                 anamrezData.optionalScans.toxicityScan.fileUrl !== 'pending' && (
+                                  <div className="mt-4 border-t border-purple-200 pt-4">
+                                    <p className="text-sm font-medium text-purple-800 mb-3">📎 Yüklenen Dosya:</p>
+                                    {(() => {
+                                      const fileUrl = anamrezData.optionalScans.toxicityScan.fileUrl;
+                                      const isImage = /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(fileUrl);
+                                      const isPdf = /\.pdf(\?|$)/i.test(fileUrl);
+                                      
+                                      if (isImage) {
+                                        return (
+                                          <div className="space-y-3">
+                                            <img 
+                                              src={fileUrl} 
+                                              alt="Toksisite Ölçümü" 
+                                              className="max-w-full h-auto max-h-64 rounded-lg border border-purple-300 shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
+                                              onClick={() => window.open(fileUrl, '_blank')}
+                                            />
+                                            <a 
+                                              href={fileUrl} 
+                                              target="_blank" 
+                                              rel="noopener noreferrer"
+                                              className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                            >
+                                              🔍 Tam Boyut Görüntüle
+                                            </a>
+                                          </div>
+                                        );
+                                      } else if (isPdf) {
+                                        return (
+                                          <div className="flex items-center gap-3 p-4 bg-white rounded-lg border border-purple-200">
+                                            <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+                                              <span className="text-red-600 text-xl">📄</span>
+                                            </div>
+                                            <div className="flex-1">
+                                              <p className="font-medium text-gray-800">PDF Dosyası</p>
+                                              <p className="text-sm text-gray-500">Görüntülemek için tıklayın</p>
+                                            </div>
+                                            <a 
+                                              href={fileUrl} 
+                                              target="_blank" 
+                                              rel="noopener noreferrer"
+                                              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                            >
+                                              📄 PDF Aç
+                                            </a>
+                                          </div>
+                                        );
+                                      } else {
+                                        return (
+                                          <div className="flex items-center gap-3 p-4 bg-white rounded-lg border border-purple-200">
+                                            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                                              <span className="text-gray-600 text-xl">📎</span>
+                                            </div>
+                                            <div className="flex-1">
+                                              <p className="font-medium text-gray-800">Dosya</p>
+                                              <p className="text-sm text-gray-500">İndirmek için tıklayın</p>
+                                            </div>
+                                            <a 
+                                              href={fileUrl} 
+                                              target="_blank" 
+                                              rel="noopener noreferrer"
+                                              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                            >
+                                              ⬇️ İndir
+                                            </a>
+                                          </div>
+                                        );
+                                      }
+                                    })()}
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
@@ -1120,6 +1340,79 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                             </div>
                           </div>
                         </div>
+
+                        {/* Device Scan File */}
+                        {anamrezData.conventionalTreatment?.deviceScanFileUrl && (
+                          <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
+                            <h4 className="font-bold text-blue-900 mb-4">📎 Cihaz Tarama Dosyası</h4>
+                            {(() => {
+                              const fileUrl = anamrezData.conventionalTreatment.deviceScanFileUrl;
+                              const isImage = /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(fileUrl);
+                              const isPdf = /\.pdf(\?|$)/i.test(fileUrl);
+                              
+                              if (isImage) {
+                                return (
+                                  <div className="space-y-3">
+                                    <img 
+                                      src={fileUrl} 
+                                      alt="Cihaz Tarama" 
+                                      className="max-w-full h-auto max-h-64 rounded-lg border border-blue-300 shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
+                                      onClick={() => window.open(fileUrl, '_blank')}
+                                    />
+                                    <a 
+                                      href={fileUrl} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                    >
+                                      🔍 Tam Boyut Görüntüle
+                                    </a>
+                                  </div>
+                                );
+                              } else if (isPdf) {
+                                return (
+                                  <div className="flex items-center gap-3 p-4 bg-white rounded-lg border border-blue-200">
+                                    <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+                                      <span className="text-red-600 text-xl">📄</span>
+                                    </div>
+                                    <div className="flex-1">
+                                      <p className="font-medium text-gray-800">PDF Dosyası</p>
+                                      <p className="text-sm text-gray-500">Görüntülemek için tıklayın</p>
+                                    </div>
+                                    <a 
+                                      href={fileUrl} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                    >
+                                      📄 PDF Aç
+                                    </a>
+                                  </div>
+                                );
+                              } else {
+                                return (
+                                  <div className="flex items-center gap-3 p-4 bg-white rounded-lg border border-blue-200">
+                                    <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                                      <span className="text-gray-600 text-xl">📎</span>
+                                    </div>
+                                    <div className="flex-1">
+                                      <p className="font-medium text-gray-800">Dosya</p>
+                                      <p className="text-sm text-gray-500">İndirmek için tıklayın</p>
+                                    </div>
+                                    <a 
+                                      href={fileUrl} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                    >
+                                      ⬇️ İndir
+                                    </a>
+                                  </div>
+                                );
+                              }
+                            })()}
+                          </div>
+                        )}
                       </div>
                     )}
                   </>

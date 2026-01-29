@@ -761,7 +761,12 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
   // Check if all diseases have at least one treatment method selected
   const areAllDiseasesValidated = () => {
     const allTreatments = getTreatmentsForAllSystems();
-    if (allTreatments.length === 0) return false;
+    
+    // If no automatic treatments were found, check if doctor manually selected at least one treatment
+    if (allTreatments.length === 0) {
+      // Check if any main applications are selected from manual selection
+      return selectedMainApplications.length > 0;
+    }
 
     // If there's only one disease, use the existing validation
     if (allTreatments.length === 1) {
@@ -1051,19 +1056,71 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
 
   const handleStartTreatment = async () => {
     const allTreatments = getTreatmentsForAllSystems();
-    if (allTreatments.length === 0) return;
-
-    const selectedProtocol = allTreatments[0]; // First (best) protocol
-
+    
     setLoading(true);
     try {
-      const treatmentOptions = {
-        protocolId: selectedProtocol.id,
-        protocolName: selectedProtocol.name,
-        isCustomized: false,
-        selectedProtocol: selectedProtocol,
-        selectedMainApplications: selectedMainApplications
-      };
+      let treatmentOptions: TreatmentOptions;
+      
+      if (allTreatments.length === 0) {
+        // Manual selection mode: find the protocol that contains the selected main applications
+        const patientAgeGroup = patient ? getPatientAgeGroup(patient.birthDate) : 'adult';
+        const allAvailableProtocols = savedProtocols.filter(p => p.ageGroup === patientAgeGroup);
+        
+        // Find the protocol(s) that contain the selected main applications
+        let matchingProtocol = allAvailableProtocols.find(protocol => 
+          protocol.phases.mainTreatments.some(mt => 
+            selectedMainApplications.includes(mt.treatment)
+          )
+        );
+        
+        // If no matching protocol found, use the first available one
+        if (!matchingProtocol && allAvailableProtocols.length > 0) {
+          matchingProtocol = allAvailableProtocols[0];
+        }
+        
+        if (!matchingProtocol) {
+          console.error('No protocol found for manual selection');
+          alert('Tedavi protokolü bulunamadı. Lütfen tekrar deneyin.');
+          setLoading(false);
+          return;
+        }
+        
+        // Build protocol with sequence for the manually selected protocol
+        const treatmentSequence = buildTreatmentSequence(matchingProtocol);
+        const manualProtocol = {
+          ...matchingProtocol,
+          system: matchingProtocol.diagnosisSystem,
+          patientAgeGroup,
+          treatmentSequence,
+          isCustomized: false,
+          isManualSelection: true, // Mark as manual selection
+          ageGroupData: {
+            sessions: '',
+            frequency: matchingProtocol.frequency,
+            treatmentSequence: treatmentSequence
+          }
+        };
+        
+        treatmentOptions = {
+          protocolId: manualProtocol.id,
+          protocolName: manualProtocol.name,
+          isCustomized: false,
+          selectedProtocol: manualProtocol,
+          selectedMainApplications: selectedMainApplications,
+          notes: 'Manuel seçim - Hasta anamnezine uygun otomatik tedavi bulunamadı'
+        };
+      } else {
+        // Normal mode: use the automatically selected protocol
+        const selectedProtocol = allTreatments[0]; // First (best) protocol
+        
+        treatmentOptions = {
+          protocolId: selectedProtocol.id,
+          protocolName: selectedProtocol.name,
+          isCustomized: false,
+          selectedProtocol: selectedProtocol,
+          selectedMainApplications: selectedMainApplications
+        };
+      }
 
       await onStartTreatment(patient, treatmentOptions);
       onClose();
@@ -1200,22 +1257,254 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                     const allTreatments = getTreatmentsForAllSystems();
 
                     if (!allTreatments || allTreatments.length === 0) {
+                      // Show all available protocols when no matching treatment is found
+                      const patientAgeGroup = patient ? getPatientAgeGroup(patient.birthDate) : 'adult';
+                      const allAvailableProtocols = savedProtocols.filter(p => p.ageGroup === patientAgeGroup);
+                      
+                      if (allAvailableProtocols.length === 0) {
+                        return (
+                          <div className="text-center py-8">
+                            <div className="text-4xl mb-4">🔍</div>
+                            <h4 className="text-gray-700 text-lg font-semibold mb-2">
+                              Tedavi Protokolü Bulunamadı
+                            </h4>
+                            <p className="text-gray-600 text-sm mb-4">
+                              Bu yaş grubuna uygun tedavi protokolü sistemde kayıtlı değil.
+                            </p>
+                            <div className="text-sm text-gray-500">
+                              <p>Yaş Grubu: {patientAgeGroup === 'adult' ? 'Yetişkin' : patientAgeGroup + ' Yaş'}</p>
+                            </div>
+                          </div>
+                        );
+                      }
+                      
+                      // Group protocols by diagnosis system
+                      const protocolsBySystem: { [key: string]: SavedProtocol[] } = {};
+                      allAvailableProtocols.forEach(protocol => {
+                        if (!protocolsBySystem[protocol.diagnosisSystem]) {
+                          protocolsBySystem[protocol.diagnosisSystem] = [];
+                        }
+                        protocolsBySystem[protocol.diagnosisSystem].push(protocol);
+                      });
+                      
                       return (
-                        <div className="text-center py-8">
-                          <div className="text-4xl mb-4">🔍</div>
-                          <h4 className="text-gray-700 text-lg font-semibold mb-2">
-                            Uygun Tedavi Bulunamadı
-                          </h4>
-                          <p className="text-gray-600 text-sm mb-4">
-                            Hasta durumuna uygun tedavi protokolü bulunamadı.
-                          </p>
-                          <div className="text-sm text-gray-500">
-                            {anamrezData?.symptomRatings?.stres && (
-                              <p>Stres değeri: {anamrezData.symptomRatings.stres}/10</p>
-                            )}
-                            {anamrezData?.selectedDiagnosisSystems?.length && anamrezData.selectedDiagnosisSystems.length > 0 && (
-                              <p>Tanı sistemleri: {anamrezData.selectedDiagnosisSystems.join(', ')}</p>
-                            )}
+                        <div className="space-y-6">
+                          {/* Warning Banner */}
+                          <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4">
+                            <div className="flex items-start gap-3">
+                              <div className="text-2xl">⚠️</div>
+                              <div>
+                                <h4 className="text-amber-800 font-semibold mb-1">
+                                  Hasta Anamnezine Uygun Tedavi Bulunamadı
+                                </h4>
+                                <p className="text-amber-700 text-sm">
+                                  Hasta değerlerine göre otomatik eşleşen bir tedavi protokolü bulunamadı. 
+                                  Aşağıdaki mevcut tedavi seçeneklerinden manuel olarak seçim yapabilirsiniz.
+                                </p>
+                                <div className="mt-2 text-xs text-amber-600">
+                                  {anamrezData?.symptomRatings?.stres !== undefined && (
+                                    <span className="mr-3">Stres: {anamrezData.symptomRatings.stres}/10</span>
+                                  )}
+                                  {anamrezData?.toxicityAssessment?.hasToxicity !== undefined && (
+                                    <span className="mr-3">Toksisite: {anamrezData.toxicityAssessment.hasToxicity ? 'Yüksek' : 'Normal'}</span>
+                                  )}
+                                  {anamrezData?.selectedDiagnosisSystems?.length && anamrezData.selectedDiagnosisSystems.length > 0 && (
+                                    <span>Tanı: {anamrezData.selectedDiagnosisSystems.join(', ')}</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* Patient Info Summary */}
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <h5 className="font-medium text-blue-900 mb-2">Hasta Durumu & Tedavi Kriterleri</h5>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                              <div>
+                                <span className="text-blue-700 font-medium">Yaş Grubu:</span>
+                                <span className="ml-2 text-blue-900">{patientAgeGroup === 'adult' ? 'Yetişkin' : patientAgeGroup + ' Yaş'}</span>
+                              </div>
+                              <div>
+                                <span className="text-blue-700 font-medium">Tanı Sistemleri:</span>
+                                <span className="ml-2 text-blue-900">{anamrezData?.selectedDiagnosisSystems?.length || 0}</span>
+                              </div>
+                              <div>
+                                <span className="text-blue-700 font-medium">Stres Değeri:</span>
+                                <span className={`ml-2 font-medium ${
+                                  (anamrezData?.symptomRatings?.stres || 0) >= 7
+                                    ? 'text-red-600'
+                                    : 'text-green-600'
+                                }`}>
+                                  {anamrezData?.symptomRatings?.stres || 0}/10
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-blue-700 font-medium">Toksisite:</span>
+                                <span className={`ml-2 font-medium ${
+                                  anamrezData?.toxicityAssessment?.hasToxicity
+                                    ? 'text-red-600'
+                                    : 'text-green-600'
+                                }`}>
+                                  {anamrezData?.toxicityAssessment?.hasToxicity ? 'Yüksek' : 'Normal'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* All Available Protocols by System */}
+                          <div>
+                            <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                              📋 Mevcut Tedavi Protokolleri
+                            </h4>
+                            <p className="text-sm text-gray-600 mb-4">
+                              Tedaviye devam etmek için aşağıdaki protokollerden birini seçin ve ana uygulamalardan en az birini işaretleyin.
+                            </p>
+                            
+                            {Object.entries(protocolsBySystem).map(([systemName, protocols]) => (
+                              <div key={systemName} className="mb-6">
+                                <h5 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                                  <span className="w-3 h-3 bg-purple-500 rounded-full"></span>
+                                  {systemName}
+                                </h5>
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                  {protocols.sort((a, b) => (b.priority || 0) - (a.priority || 0)).map((protocol) => {
+                                    // Build treatment sequence for this protocol
+                                    const treatmentSequence = buildTreatmentSequence(protocol);
+                                    const protocolWithSequence = {
+                                      ...protocol,
+                                      system: systemName,
+                                      patientAgeGroup,
+                                      treatmentSequence,
+                                      isCustomized: protocol.isCustomized || false,
+                                      isFallback: false,
+                                      ageGroupData: {
+                                        sessions: '',
+                                        frequency: protocol.frequency,
+                                        treatmentSequence: treatmentSequence
+                                      }
+                                    };
+                                    
+                                    const systemSelections = selectedApplicationsBySystem[systemName] || [];
+                                    const hasAnySelection = systemSelections.length > 0;
+                                    
+                                    return (
+                                      <div
+                                        key={protocol.id}
+                                        className={`border-2 rounded-xl p-4 transition-all duration-200 ${
+                                          hasAnySelection
+                                            ? 'bg-green-50 border-green-300 shadow-md'
+                                            : 'bg-white border-gray-200 hover:border-blue-300'
+                                        }`}
+                                      >
+                                        {/* Protocol Header */}
+                                        <div className="flex items-center justify-between mb-3">
+                                          <div>
+                                            <h6 className="font-bold text-gray-900">{protocol.name}</h6>
+                                            <div className="flex items-center gap-2 mt-1">
+                                              <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">
+                                                Öncelik: {protocol.priority}
+                                              </span>
+                                              {protocol.frequency && (
+                                                <span className="text-xs px-2 py-1 bg-blue-100 text-blue-600 rounded-full">
+                                                  {protocol.frequency}
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <button
+                                            onClick={() => handleEditProtocol(protocolWithSequence)}
+                                            className="px-3 py-1 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-xs font-medium transition-all duration-200"
+                                          >
+                                            ✏️ Düzenle
+                                          </button>
+                                        </div>
+                                        
+                                        {/* Treatment Phases Summary */}
+                                        <div className="flex flex-wrap gap-2 mb-3">
+                                          {protocol.phases.remember && (
+                                            <span className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded">
+                                              R: {protocol.phases.remember.treatment}
+                                            </span>
+                                          )}
+                                          {protocol.phases.regeneration1 && (
+                                            <span className="text-xs px-2 py-1 bg-orange-100 text-orange-700 rounded">
+                                              1: {protocol.phases.regeneration1.treatment}
+                                            </span>
+                                          )}
+                                          {protocol.phases.regeneration2 && (
+                                            <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-700 rounded">
+                                              2: {protocol.phases.regeneration2.treatment}
+                                            </span>
+                                          )}
+                                          {protocol.phases.regeneration3 && (
+                                            <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded">
+                                              3: {protocol.phases.regeneration3.treatment}
+                                            </span>
+                                          )}
+                                          {protocol.phases.regeneration4 && (
+                                            <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">
+                                              4: {protocol.phases.regeneration4.treatment}
+                                            </span>
+                                          )}
+                                        </div>
+                                        
+                                        {/* Main Treatments Selection */}
+                                        <div className="border-t border-gray-200 pt-3">
+                                          <p className="text-xs text-gray-600 mb-2 font-medium">Ana Uygulamalar (seçim yapın):</p>
+                                          <div className="flex flex-wrap gap-2">
+                                            {protocol.phases.mainTreatments.map((mainTreatment, mtIndex) => {
+                                              const isSelected = systemSelections.includes(mainTreatment.treatment);
+                                              return (
+                                                <button
+                                                  key={mtIndex}
+                                                  onClick={() => handleMainApplicationToggle(mainTreatment.treatment, systemName)}
+                                                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                                                    isSelected
+                                                      ? 'bg-purple-500 text-white shadow-md'
+                                                      : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                                                  }`}
+                                                >
+                                                  {isSelected ? '✓ ' : ''}{mainTreatment.treatment}
+                                                </button>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                        
+                                        {/* Protocol Conditions Info */}
+                                        {(protocol.toxicityRequired || (protocol.symptomConditions && protocol.symptomConditions.length > 0)) && (
+                                          <div className="mt-3 pt-3 border-t border-gray-200">
+                                            <p className="text-xs text-gray-500 mb-1">Protokol Gereksinimleri:</p>
+                                            <div className="flex flex-wrap gap-1">
+                                              {protocol.toxicityRequired && (
+                                                <span className={`text-xs px-2 py-0.5 rounded ${
+                                                  anamrezData?.toxicityAssessment?.hasToxicity
+                                                    ? 'bg-green-100 text-green-700'
+                                                    : 'bg-red-100 text-red-700'
+                                                }`}>
+                                                  Toksisite {anamrezData?.toxicityAssessment?.hasToxicity ? '✓' : '✗'}
+                                                </span>
+                                              )}
+                                              {protocol.symptomConditions?.map((cond, idx) => {
+                                                const patientVal = anamrezData?.symptomRatings?.[cond.symptomKey] || 0;
+                                                const met = patientVal >= cond.threshold;
+                                                return (
+                                                  <span key={idx} className={`text-xs px-2 py-0.5 rounded ${
+                                                    met ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                                  }`}>
+                                                    {cond.symptomLabel}: {patientVal}/{cond.threshold} {met ? '✓' : '✗'}
+                                                  </span>
+                                                );
+                                              })}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
                       );

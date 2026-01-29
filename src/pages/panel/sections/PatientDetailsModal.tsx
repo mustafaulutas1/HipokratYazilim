@@ -1,4 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db } from '../../../firebase/config';
+import AnamrezViewModal from './AnamrezViewModal';
+
+interface PatientHistoryRecord {
+  id: string;
+  patientId: string;
+  patientName: string;
+  clinicId: string;
+  historyDate: string;
+  hasAnamnesis: boolean;
+  hasTreatment: boolean;
+  hasMedications: boolean;
+  anamnesis?: {
+    chiefComplaint?: string;
+    complaintDetails?: string;
+  };
+  treatment?: {
+    treatmentType?: string;
+    outcome?: string;
+  };
+  medications?: {
+    medicationList?: Array<{ name: string }>;
+  };
+  createdAt: string;
+}
 
 interface TreatmentOptions {
   protocol?: string;
@@ -44,6 +70,42 @@ interface PatientDetailsModalProps {
 
 const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClose, patient }) => {
   const [activeTab, setActiveTab] = useState('personal');
+  const [historyRecords, setHistoryRecords] = useState<PatientHistoryRecord[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [selectedHistoryRecord, setSelectedHistoryRecord] = useState<PatientHistoryRecord | null>(null);
+  const [isHistoryViewModalOpen, setIsHistoryViewModalOpen] = useState(false);
+
+  // Fetch patient history records
+  useEffect(() => {
+    const fetchHistoryRecords = async () => {
+      if (!patient?.id || !isOpen) return;
+
+      setLoadingHistory(true);
+      try {
+        const historyQuery = query(
+          collection(db, 'patientHistoryRecords'),
+          where('patientId', '==', patient.id)
+        );
+        const historySnapshot = await getDocs(historyQuery);
+
+        const records = historySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as PatientHistoryRecord));
+
+        // Sort by historyDate (oldest first for timeline view)
+        records.sort((a, b) => new Date(b.historyDate).getTime() - new Date(a.historyDate).getTime());
+
+        setHistoryRecords(records);
+      } catch (error) {
+        console.error('Error fetching history records:', error);
+      } finally {
+        setLoadingHistory(false);
+      }
+    };
+
+    fetchHistoryRecords();
+  }, [patient?.id, isOpen]);
 
   if (!isOpen || !patient) return null;
 
@@ -71,6 +133,7 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
     { id: 'contact', label: 'İletişim', icon: '📞' },
     { id: 'medical', label: 'Tıbbi Bilgi', icon: '🏥' },
     { id: 'treatment', label: 'Tedavi Bilgileri', icon: '💊' },
+    { id: 'history', label: 'Geçmiş Kayıtları', icon: '📜' },
     { id: 'address', label: 'Adres', icon: '📍' },
     { id: 'notes', label: 'Notlar', icon: '📝' }
   ];
@@ -504,6 +567,149 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
               </div>
             )}
 
+            {/* History Records Tab */}
+            {activeTab === 'history' && (
+              <div className="space-y-6">
+                <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                      📜 Geçmiş Kayıtları
+                    </h3>
+                    <span className="text-sm text-gray-500">
+                      {historyRecords.length} kayıt bulundu
+                    </span>
+                  </div>
+
+                  {loadingHistory ? (
+                    <div className="text-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mx-auto"></div>
+                      <p className="text-gray-500 mt-2">Yükleniyor...</p>
+                    </div>
+                  ) : historyRecords.length === 0 ? (
+                    <div className="text-center py-12">
+                      <div className="text-6xl mb-4">📜</div>
+                      <h3 className="text-gray-900 text-xl font-semibold mb-2">Henüz Geçmiş Kaydı Yok</h3>
+                      <p className="text-gray-600">
+                        Bu hasta için henüz geçmiş tedavi/anamnez kaydı girilmemiş.
+                      </p>
+                      <p className="text-gray-500 text-sm mt-2">
+                        Hasta listesindeki 📜 butonunu kullanarak geçmiş kayıt ekleyebilirsiniz.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Timeline */}
+                      <div className="relative">
+                        {historyRecords.map((record, index) => (
+                          <div key={record.id} className="relative pl-8 pb-6">
+                            {/* Timeline line */}
+                            {index !== historyRecords.length - 1 && (
+                              <div className="absolute left-3 top-6 bottom-0 w-0.5 bg-gray-200"></div>
+                            )}
+
+                            {/* Timeline dot */}
+                            <div className="absolute left-0 top-1 w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center">
+                              <span className="text-white text-xs">●</span>
+                            </div>
+
+                            {/* Record card */}
+                            <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold text-gray-800">
+                                    {new Date(record.historyDate).toLocaleDateString('tr-TR', {
+                                      day: '2-digit',
+                                      month: 'long',
+                                      year: 'numeric'
+                                    })}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {record.hasAnamnesis && (
+                                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                                      📋 Anamnez
+                                    </span>
+                                  )}
+                                  {record.hasTreatment && (
+                                    <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                                      💊 Tedavi
+                                    </span>
+                                  )}
+                                  {record.hasMedications && (
+                                    <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-medium">
+                                      💉 İlaç
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Summary */}
+                              <div className="space-y-2 text-sm">
+                                {record.anamnesis?.complaintDetails && (
+                                  <div>
+                                    <span className="text-gray-600">Şikayet: </span>
+                                    <span className="text-gray-800">
+                                      {record.anamnesis.complaintDetails.length > 100
+                                        ? record.anamnesis.complaintDetails.substring(0, 100) + '...'
+                                        : record.anamnesis.complaintDetails}
+                                    </span>
+                                  </div>
+                                )}
+                                {record.treatment?.treatmentType && (
+                                  <div>
+                                    <span className="text-gray-600">Tedavi Türü: </span>
+                                    <span className="text-gray-800">{record.treatment.treatmentType}</span>
+                                    {record.treatment.outcome && (
+                                      <span className={`ml-2 px-2 py-0.5 rounded text-xs ${
+                                        record.treatment.outcome === 'successful' ? 'bg-green-100 text-green-700' :
+                                        record.treatment.outcome === 'partially_successful' ? 'bg-yellow-100 text-yellow-700' :
+                                        record.treatment.outcome === 'unsuccessful' ? 'bg-red-100 text-red-700' :
+                                        record.treatment.outcome === 'ongoing' ? 'bg-blue-100 text-blue-700' :
+                                        'bg-gray-100 text-gray-700'
+                                      }`}>
+                                        {record.treatment.outcome === 'successful' ? 'Başarılı' :
+                                         record.treatment.outcome === 'partially_successful' ? 'Kısmen Başarılı' :
+                                         record.treatment.outcome === 'unsuccessful' ? 'Başarısız' :
+                                         record.treatment.outcome === 'ongoing' ? 'Devam Ediyor' :
+                                         'Bilinmiyor'}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                                {record.medications?.medicationList && record.medications.medicationList.length > 0 && (
+                                  <div>
+                                    <span className="text-gray-600">İlaçlar: </span>
+                                    <span className="text-gray-800">
+                                      {record.medications.medicationList.map(m => m.name).join(', ')}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="mt-3 pt-3 border-t border-gray-200 flex justify-between items-center">
+                                <span className="text-xs text-gray-500">
+                                  Eklendi: {new Date(record.createdAt).toLocaleDateString('tr-TR')}
+                                </span>
+                                <button
+                                  className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg text-sm font-medium transition-colors"
+                                  onClick={() => {
+                                    setSelectedHistoryRecord(record as any);
+                                    setIsHistoryViewModalOpen(true);
+                                  }}
+                                >
+                                  👁️ Görüntüle
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Address Information Tab */}
             {activeTab === 'address' && (
               <div className="space-y-6">
@@ -602,6 +808,17 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
           </div>
         </div>
       </div>
+
+      {/* Past History View Modal - Using AnamrezViewModal */}
+      <AnamrezViewModal
+        isOpen={isHistoryViewModalOpen}
+        onClose={() => {
+          setIsHistoryViewModalOpen(false);
+          setSelectedHistoryRecord(null);
+        }}
+        patient={patient}
+        anamrezRecord={selectedHistoryRecord}
+      />
     </div>
   );
 };
