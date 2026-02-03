@@ -127,7 +127,7 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
     conditionsLogic: 'any',
     clinicId: doctorProfile?.clinicId || 'default-clinic',
     priority: 1,
-    control: '3 AYDA 1 KONTROL',
+    control: '4 AYDA 1 KONTROL',
     createdBy: doctorProfile?.fullName || '',
     createdAt: new Date().toISOString()
   });
@@ -322,7 +322,7 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
         conditionsLogic: formData.conditionsLogic || 'any',
         clinicId: doctorProfile.clinicId,
         priority: formData.priority || 1,
-        control: formData.control || '3 AYDA 1 KONTROL',
+        control: formData.control || '4 AYDA 1 KONTROL',
         createdBy: formData.createdBy || doctorProfile?.fullName || '',
         createdAt: formData.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -377,7 +377,7 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
         conditionsLogic: 'any',
         clinicId: doctorProfile?.clinicId || 'default-clinic',
         priority: 1,
-        control: '3 AYDA 1 KONTROL',
+        control: '4 AYDA 1 KONTROL',
         createdBy: doctorProfile?.fullName || '',
         createdAt: new Date().toISOString()
       });
@@ -415,7 +415,7 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
       conditionsLogic: protocol.conditionsLogic || 'any',
       clinicId: isStandard ? (doctorProfile?.clinicId || '') : protocol.clinicId,
       priority: protocol.priority || 1,
-      control: protocol.control || '3 AYDA 1 KONTROL',
+      control: protocol.control || '4 AYDA 1 KONTROL',
       createdBy: isStandard ? (doctorProfile?.fullName || '') : (protocol.createdBy || doctorProfile?.fullName || ''),
       createdAt: isStandard ? new Date().toISOString() : protocol.createdAt
     };

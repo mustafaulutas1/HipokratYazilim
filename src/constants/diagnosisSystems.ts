@@ -1,4 +1,5 @@
 export const DIAGNOSIS_SYSTEMS = [
+  'Genel Kontrol',
   'Dermatolojik Sistem',
   'Solunum Sistemi', 
   'Kas – İskelet Sistemi',

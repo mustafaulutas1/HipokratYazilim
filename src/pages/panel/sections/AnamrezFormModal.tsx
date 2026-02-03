@@ -268,6 +268,9 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   const [thermalScanFile, setThermalScanFile] = useState<File | null>(null);
   const [toxicityScanFile, setToxicityScanFile] = useState<File | null>(null);
   const [deviceScanFile, setDeviceScanFile] = useState<File | null>(null);
+  const [biyokimyaFile, setBiyokimyaFile] = useState<File | null>(null);
+  const [radyolojiFile, setRadyolojiFile] = useState<File | null>(null);
+  const [patolojiFile, setPatolojiFile] = useState<File | null>(null);
 
   const [formData, setFormData] = useState({
     // Ana Şikayetler - Now array for multiple selections
@@ -275,6 +278,10 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
     // Doktor Seçimi
     selectedDoctorId: '',
+
+    // Bulaşıcı Hastalık
+    hasContagiousDisease: '', // 'var' or 'yok'
+    contagiousDiseaseDetails: '',
 
     // Şikayet Detayları
     complaintDetails: '',
@@ -291,6 +298,15 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
     // Alerji Durumu
     allergies: '',
+
+    // Covid Aşısı
+    hasCovidVaccine: '', // 'var' or 'yok'
+    covidVaccineDetails: '',
+
+    // Doğum Geçmişi (Kadın hastalar için)
+    hasBirthHistory: '', // 'var' or 'yok'
+    birthHistoryDetails: '',
+    numberOfBirths: '',
 
     // Vital Signs
     vitalSigns: {
@@ -412,7 +428,20 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
       toxicityScan: {
         enabled: false,
         fileUrl: ''
-      }
+      },
+      biyokimya: {
+        enabled: false,
+        fileUrl: ''
+      },
+      radyoloji: {
+        enabled: false,
+        fileUrl: ''
+      },
+      patoloji: {
+        enabled: false,
+        fileUrl: ''
+      },
+      hasMediaGallery: false
     }
   });
 
@@ -600,6 +629,13 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
       setFormData({
         selectedDiagnosisSystems: [],
         selectedDoctorId: '',
+        hasContagiousDisease: '',
+        contagiousDiseaseDetails: '',
+        hasCovidVaccine: '',
+        covidVaccineDetails: '',
+        hasBirthHistory: '',
+        birthHistoryDetails: '',
+        numberOfBirths: '',
         complaintDetails: '',
         pastMedicalHistory: '',
         familyHistory: '',
@@ -697,6 +733,18 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
             fileUrl: ''
           },
           toxicityScan: {
+            enabled: false,
+            fileUrl: ''
+          },
+          biyokimya: {
+            enabled: false,
+            fileUrl: ''
+          },
+          radyoloji: {
+            enabled: false,
+            fileUrl: ''
+          },
+          patoloji: {
             enabled: false,
             fileUrl: ''
           }
@@ -924,6 +972,93 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         ...prev.optionalScans,
         toxicityScan: {
           ...prev.optionalScans.toxicityScan,
+          fileUrl: ''
+        }
+      }
+    }));
+  };
+
+  // Biyokimya file handlers
+  const handleBiyokimyaFileUpload = (file: File) => {
+    setBiyokimyaFile(file);
+    setFormData(prev => ({
+      ...prev,
+      optionalScans: {
+        ...prev.optionalScans,
+        biyokimya: {
+          ...(prev.optionalScans.biyokimya || { enabled: false, fileUrl: '' }),
+          fileUrl: 'pending'
+        }
+      }
+    }));
+  };
+
+  const handleBiyokimyaFileRemove = () => {
+    setBiyokimyaFile(null);
+    setFormData(prev => ({
+      ...prev,
+      optionalScans: {
+        ...prev.optionalScans,
+        biyokimya: {
+          ...(prev.optionalScans.biyokimya || { enabled: false, fileUrl: '' }),
+          fileUrl: ''
+        }
+      }
+    }));
+  };
+
+  // Radyoloji file handlers
+  const handleRadyolojiFileUpload = (file: File) => {
+    setRadyolojiFile(file);
+    setFormData(prev => ({
+      ...prev,
+      optionalScans: {
+        ...prev.optionalScans,
+        radyoloji: {
+          ...(prev.optionalScans.radyoloji || { enabled: false, fileUrl: '' }),
+          fileUrl: 'pending'
+        }
+      }
+    }));
+  };
+
+  const handleRadyolojiFileRemove = () => {
+    setRadyolojiFile(null);
+    setFormData(prev => ({
+      ...prev,
+      optionalScans: {
+        ...prev.optionalScans,
+        radyoloji: {
+          ...(prev.optionalScans.radyoloji || { enabled: false, fileUrl: '' }),
+          fileUrl: ''
+        }
+      }
+    }));
+  };
+
+  // Patoloji file handlers
+  const handlePatolojiFileUpload = (file: File) => {
+    setPatolojiFile(file);
+    setFormData(prev => ({
+      ...prev,
+      optionalScans: {
+        ...prev.optionalScans,
+        patoloji: {
+          ...(prev.optionalScans.patoloji || { enabled: false, fileUrl: '' }),
+          fileUrl: 'pending'
+        }
+      }
+    }));
+  };
+
+  const handlePatolojiFileRemove = () => {
+    setPatolojiFile(null);
+    setFormData(prev => ({
+      ...prev,
+      optionalScans: {
+        ...prev.optionalScans,
+        patoloji: {
+          ...(prev.optionalScans.patoloji || { enabled: false, fileUrl: '' }),
           fileUrl: ''
         }
       }
@@ -1775,6 +1910,180 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                     />
                   </div>
                 </div>
+
+                {/* Bulaşıcı Hastalık Sorgulaması */}
+                <div className="bg-red-50 rounded-xl p-6 border border-red-200">
+                  <h3 className="text-lg font-bold text-red-700 mb-4 flex items-center gap-2">
+                    ⚠️ Bulaşıcı Hastalık
+                  </h3>
+                  <div>
+                    <label className="block text-gray-700 text-sm font-medium mb-3">
+                      Bulaşıcı hastalığı var mı? *
+                    </label>
+                    <div className="flex gap-6 mb-4">
+                      <label className="inline-flex items-center cursor-pointer">
+                        <input
+                          type="radio"
+                          name="hasContagiousDisease"
+                          value="var"
+                          checked={formData.hasContagiousDisease === 'var'}
+                          onChange={handleInputChange}
+                          className="w-5 h-5 text-red-600 bg-white border-gray-300 focus:ring-red-500 focus:ring-2"
+                        />
+                        <span className="ml-2 text-gray-700 font-medium">Evet</span>
+                      </label>
+                      <label className="inline-flex items-center cursor-pointer">
+                        <input
+                          type="radio"
+                          name="hasContagiousDisease"
+                          value="yok"
+                          checked={formData.hasContagiousDisease === 'yok'}
+                          onChange={handleInputChange}
+                          className="w-5 h-5 text-red-600 bg-white border-gray-300 focus:ring-red-500 focus:ring-2"
+                        />
+                        <span className="ml-2 text-gray-700 font-medium">Hayır</span>
+                      </label>
+                    </div>
+                    {formData.hasContagiousDisease === 'var' && (
+                      <div className="mt-3">
+                        <label className="block text-gray-700 text-sm font-medium mb-2">
+                          Bulaşıcı hastalık detayları
+                        </label>
+                        <textarea
+                          name="contagiousDiseaseDetails"
+                          value={formData.contagiousDiseaseDetails}
+                          onChange={handleInputChange}
+                          rows={2}
+                          className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                          placeholder="Hastalık adı ve detaylarını yazınız..."
+                        />
+                      </div>
+                    )}
+                    {errors.hasContagiousDisease && (
+                      <p className="text-red-500 text-sm mt-1">{errors.hasContagiousDisease}</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Covid Aşısı */}
+                <div className="bg-red-50 rounded-xl p-6 border border-red-200">
+                  <h3 className="text-lg font-bold text-red-700 mb-4 flex items-center gap-2">
+                    💉 Covid Aşısı
+                  </h3>
+                  <div>
+                    <label className="block text-gray-700 text-sm font-medium mb-3">
+                      Covid aşısı yaptırdı mı?
+                    </label>
+                    <div className="flex gap-6 mb-4">
+                      <label className="inline-flex items-center cursor-pointer">
+                        <input
+                          type="radio"
+                          name="hasCovidVaccine"
+                          value="var"
+                          checked={formData.hasCovidVaccine === 'var'}
+                          onChange={handleInputChange}
+                          className="w-5 h-5 text-red-600 bg-white border-gray-300 focus:ring-red-500 focus:ring-2"
+                        />
+                        <span className="ml-2 text-gray-700 font-medium">Evet</span>
+                      </label>
+                      <label className="inline-flex items-center cursor-pointer">
+                        <input
+                          type="radio"
+                          name="hasCovidVaccine"
+                          value="yok"
+                          checked={formData.hasCovidVaccine === 'yok'}
+                          onChange={handleInputChange}
+                          className="w-5 h-5 text-red-600 bg-white border-gray-300 focus:ring-red-500 focus:ring-2"
+                        />
+                        <span className="ml-2 text-gray-700 font-medium">Hayır</span>
+                      </label>
+                    </div>
+                    {formData.hasCovidVaccine === 'var' && (
+                      <div className="mt-3">
+                        <label className="block text-gray-700 text-sm font-medium mb-2">
+                          Aşı detayları (kaç doz, hangi aşı)
+                        </label>
+                        <textarea
+                          name="covidVaccineDetails"
+                          value={formData.covidVaccineDetails}
+                          onChange={handleInputChange}
+                          rows={2}
+                          className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                          placeholder="Aşı türü ve doz sayısını yazınız..."
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Doğum Geçmişi - Sadece kadın hastalar için */}
+                {patient?.gender?.toLowerCase() === 'kadın' && (
+                  <div className="bg-red-50 rounded-xl p-6 border border-red-200">
+                    <h3 className="text-lg font-bold text-red-700 mb-4 flex items-center gap-2">
+                      👶 Doğum Geçmişi
+                    </h3>
+                    <div>
+                      <label className="block text-gray-700 text-sm font-medium mb-3">
+                        Doğum yaptı mı?
+                      </label>
+                      <div className="flex gap-6 mb-4">
+                        <label className="inline-flex items-center cursor-pointer">
+                          <input
+                            type="radio"
+                            name="hasBirthHistory"
+                            value="var"
+                            checked={formData.hasBirthHistory === 'var'}
+                            onChange={handleInputChange}
+                            className="w-5 h-5 text-red-600 bg-white border-gray-300 focus:ring-red-500 focus:ring-2"
+                          />
+                          <span className="ml-2 text-gray-700 font-medium">Evet</span>
+                        </label>
+                        <label className="inline-flex items-center cursor-pointer">
+                          <input
+                            type="radio"
+                            name="hasBirthHistory"
+                            value="yok"
+                            checked={formData.hasBirthHistory === 'yok'}
+                            onChange={handleInputChange}
+                            className="w-5 h-5 text-red-600 bg-white border-gray-300 focus:ring-red-500 focus:ring-2"
+                          />
+                          <span className="ml-2 text-gray-700 font-medium">Hayır</span>
+                        </label>
+                      </div>
+                      {formData.hasBirthHistory === 'var' && (
+                        <div className="space-y-4 mt-3">
+                          <div>
+                            <label className="block text-gray-700 text-sm font-medium mb-2">
+                              Kaç doğum yaptı?
+                            </label>
+                            <input
+                              type="number"
+                              name="numberOfBirths"
+                              value={formData.numberOfBirths}
+                              onChange={handleInputChange}
+                              min="1"
+                              className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                              placeholder="Doğum sayısı..."
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-gray-700 text-sm font-medium mb-2">
+                              Doğum detayları (normal/sezaryen, komplikasyonlar)
+                            </label>
+                            <textarea
+                              name="birthHistoryDetails"
+                              value={formData.birthHistoryDetails}
+                              onChange={handleInputChange}
+                              rows={2}
+                              className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                              placeholder="Doğum şekli ve varsa komplikasyonları yazınız..."
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </>
             )}
 
@@ -2487,6 +2796,147 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                           />
                         </div>
                       )}
+                    </div>
+
+                    {/* Biyokimya */}
+                    <div className="bg-white rounded-xl p-6 border border-gray-200">
+                      <div className="flex items-center gap-3 mb-4">
+                        <input
+                          type="checkbox"
+                          id="biyokimya"
+                          checked={formData.optionalScans.biyokimya?.enabled || false}
+                          onChange={(e) => {
+                            setFormData(prev => ({
+                              ...prev,
+                              optionalScans: {
+                                ...prev.optionalScans,
+                                biyokimya: {
+                                  ...(prev.optionalScans.biyokimya || { enabled: false, fileUrl: '' }),
+                                  enabled: e.target.checked
+                                }
+                              }
+                            }));
+                          }}
+                          className="w-5 h-5 text-purple-600 bg-white border-gray-300 rounded focus:ring-purple-500 focus:ring-2"
+                        />
+                        <label htmlFor="biyokimya" className="text-lg font-semibold text-gray-800 cursor-pointer">
+                          Biyokimya
+                        </label>
+                      </div>
+
+                      {formData.optionalScans.biyokimya?.enabled && (
+                        <div className="ml-8 mt-4">
+                          <FileUpload
+                            onFileUpload={handleBiyokimyaFileUpload}
+                            onFileRemove={handleBiyokimyaFileRemove}
+                            uploadedFileUrl={formData.optionalScans.biyokimya?.fileUrl || ''}
+                            fileName={biyokimyaFile ? biyokimyaFile.name : ''}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Radyolojik Görüntüleme */}
+                    <div className="bg-white rounded-xl p-6 border border-gray-200">
+                      <div className="flex items-center gap-3 mb-4">
+                        <input
+                          type="checkbox"
+                          id="radyoloji"
+                          checked={formData.optionalScans.radyoloji?.enabled || false}
+                          onChange={(e) => {
+                            setFormData(prev => ({
+                              ...prev,
+                              optionalScans: {
+                                ...prev.optionalScans,
+                                radyoloji: {
+                                  ...(prev.optionalScans.radyoloji || { enabled: false, fileUrl: '' }),
+                                  enabled: e.target.checked
+                                }
+                              }
+                            }));
+                          }}
+                          className="w-5 h-5 text-purple-600 bg-white border-gray-300 rounded focus:ring-purple-500 focus:ring-2"
+                        />
+                        <label htmlFor="radyoloji" className="text-lg font-semibold text-gray-800 cursor-pointer">
+                          Radyolojik Görüntüleme
+                        </label>
+                      </div>
+
+                      {formData.optionalScans.radyoloji?.enabled && (
+                        <div className="ml-8 mt-4">
+                          <FileUpload
+                            onFileUpload={handleRadyolojiFileUpload}
+                            onFileRemove={handleRadyolojiFileRemove}
+                            uploadedFileUrl={formData.optionalScans.radyoloji?.fileUrl || ''}
+                            fileName={radyolojiFile ? radyolojiFile.name : ''}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Patoloji */}
+                    <div className="bg-white rounded-xl p-6 border border-gray-200">
+                      <div className="flex items-center gap-3 mb-4">
+                        <input
+                          type="checkbox"
+                          id="patoloji"
+                          checked={formData.optionalScans.patoloji?.enabled || false}
+                          onChange={(e) => {
+                            setFormData(prev => ({
+                              ...prev,
+                              optionalScans: {
+                                ...prev.optionalScans,
+                                patoloji: {
+                                  ...(prev.optionalScans.patoloji || { enabled: false, fileUrl: '' }),
+                                  enabled: e.target.checked
+                                }
+                              }
+                            }));
+                          }}
+                          className="w-5 h-5 text-purple-600 bg-white border-gray-300 rounded focus:ring-purple-500 focus:ring-2"
+                        />
+                        <label htmlFor="patoloji" className="text-lg font-semibold text-gray-800 cursor-pointer">
+                          Patoloji
+                        </label>
+                      </div>
+
+                      {formData.optionalScans.patoloji?.enabled && (
+                        <div className="ml-8 mt-4">
+                          <FileUpload
+                            onFileUpload={handlePatolojiFileUpload}
+                            onFileRemove={handlePatolojiFileRemove}
+                            uploadedFileUrl={formData.optionalScans.patoloji?.fileUrl || ''}
+                            fileName={patolojiFile ? patolojiFile.name : ''}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Fotoğraflar ve Videolar checkbox */}
+                    <div className="bg-gradient-to-r from-pink-50 to-purple-50 rounded-xl p-6 border border-pink-200">
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          id="hasMediaGallery"
+                          checked={formData.optionalScans.hasMediaGallery || false}
+                          onChange={(e) => {
+                            setFormData(prev => ({
+                              ...prev,
+                              optionalScans: {
+                                ...prev.optionalScans,
+                                hasMediaGallery: e.target.checked
+                              }
+                            }));
+                          }}
+                          className="w-5 h-5 text-pink-600 bg-white border-gray-300 rounded focus:ring-pink-500 focus:ring-2"
+                        />
+                        <label htmlFor="hasMediaGallery" className="text-lg font-semibold text-gray-800 cursor-pointer flex items-center gap-2">
+                          📷 Fotoğraflar ve Videolar
+                        </label>
+                      </div>
+                      <p className="text-sm text-gray-600 mt-2 ml-8">
+                        Bu seçenek işaretlendiğinde, hasta detay sayfasında fotoğraf ve video yükleme sekmesi aktif olacaktır.
+                      </p>
                     </div>
                   </div>
                 </div>

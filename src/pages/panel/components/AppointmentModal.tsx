@@ -284,8 +284,10 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
     for (let time = startMinutes; time < endMinutes; time += slotDuration) {
       const timeStr = minutesToTime(time);
 
-      // Only block if an appointment STARTS in this exact time slot
+      // Only block if an appointment STARTS in this exact time slot (exclude cancelled appointments)
       const hasConflict = dayAppointments.some(appointment => {
+        // Skip cancelled appointments - they shouldn't block slots
+        if (appointment.status === 'cancelled') return false;
         const apptStart = timeToMinutes(appointment.start ?? appointment.time);
         return apptStart >= time && apptStart < time + slotDuration;
       });
@@ -360,6 +362,8 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
     const end = start + dur;
     for (const d of snap.docs) {
       const data = d.data() as any;
+      // Skip cancelled appointments - they don't block time slots
+      if (data.status === 'cancelled') continue;
       const s = timeToMinutes(data.start ?? data.time);
       const apptDuration = data.durationMinutes ?? data.duration ?? 30;
       const e = s + apptDuration;

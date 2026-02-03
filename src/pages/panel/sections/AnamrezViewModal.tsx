@@ -114,12 +114,12 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
   const [doctorProfile, setDoctorProfile] = useState<any>(null);
   const [activeSection, setActiveSection] = useState('patient-info');
 
-  // If an anamrezRecord is passed directly, use it
+  // If an anamrezRecord is passed directly, use it as current but still fetch all for comparison
   useEffect(() => {
     if (anamrezRecord && isOpen) {
       setAnamrezData(anamrezRecord as AnamrezData);
-      setAllAnamrezRecords([anamrezRecord as AnamrezData]);
       setSelectedRecordIndex(0);
+      // Don't set allAnamrezRecords here - let the fetch handle it
     }
   }, [anamrezRecord, isOpen]);
 
@@ -160,6 +160,133 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
       'alcoholFrequency': 'Alkol Kullanma Sıklığı'
     };
 
+    // Format date for display
+    const formatDate = (dateString: string) => {
+      if (!dateString) return '-';
+      return new Date(dateString).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    };
+
+    // Get all records sorted by date (oldest first for column display)
+    const sortedRecords = [...allAnamrezRecords].sort((a, b) => 
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+
+    // Generate date comparison table for symptoms
+    const generateSymptomComparisonTable = () => {
+      if (sortedRecords.length === 0) return '';
+      
+      // Get all unique symptom keys from all records
+      const allSymptomKeys = new Set<string>();
+      sortedRecords.forEach(record => {
+        if (record.symptomRatings) {
+          Object.keys(record.symptomRatings).forEach(key => allSymptomKeys.add(key));
+        }
+      });
+
+      if (allSymptomKeys.size === 0) return '';
+
+      const headerRow = `
+        <tr style="background: #2c5282; color: white;">
+          <th style="padding: 8px; text-align: left; border: 1px solid #e2e8f0;">Semptom</th>
+          ${sortedRecords.map(record => `
+            <th style="padding: 8px; text-align: center; border: 1px solid #e2e8f0; min-width: 80px;">
+              ${formatDate(record.createdAt)}
+            </th>
+          `).join('')}
+        </tr>
+      `;
+
+      const dataRows = Array.from(allSymptomKeys).map(key => {
+        const label = symptomLabels[key] || key;
+        return `
+          <tr>
+            <td style="padding: 6px; border: 1px solid #e2e8f0; font-weight: 500;">${label}</td>
+            ${sortedRecords.map(record => {
+              const value = record.symptomRatings?.[key] || 0;
+              const bgColor = value <= 3 ? '#f0fff4' : value <= 6 ? '#fffaf0' : '#fff5f5';
+              const textColor = value <= 3 ? '#276749' : value <= 6 ? '#9c4221' : '#c53030';
+              return `
+                <td style="padding: 6px; text-align: center; border: 1px solid #e2e8f0; background: ${bgColor}; color: ${textColor}; font-weight: bold;">
+                  ${value}/10
+                </td>
+              `;
+            }).join('')}
+          </tr>
+        `;
+      }).join('');
+
+      return `
+        <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px;">
+          ${headerRow}
+          ${dataRows}
+        </table>
+      `;
+    };
+
+    // Generate date comparison table for toxicity
+    const generateToxicityComparisonTable = () => {
+      if (sortedRecords.length === 0) return '';
+      
+      const toxicityKeys = ['halsizlikYorgunluk', 'dengeKaybi', 'unutkanlik', 'kasinti', 'carpinti', 
+                           'uykuDuzensizligi', 'gozdeUcusmalar', 'oksuruk', 'yorgunUyanma', 'kabizlik'];
+      
+      const headerRow = `
+        <tr style="background: #742a2a; color: white;">
+          <th style="padding: 8px; text-align: left; border: 1px solid #e2e8f0;">Toksisite Parametresi</th>
+          ${sortedRecords.map(record => `
+            <th style="padding: 8px; text-align: center; border: 1px solid #e2e8f0; min-width: 80px;">
+              ${formatDate(record.createdAt)}
+            </th>
+          `).join('')}
+        </tr>
+      `;
+
+      const dataRows = toxicityKeys.map(key => {
+        const label = symptomLabels[key] || key;
+        return `
+          <tr>
+            <td style="padding: 6px; border: 1px solid #e2e8f0; font-weight: 500;">${label}</td>
+            ${sortedRecords.map(record => {
+              const value = record.toxicityAssessment?.toxicityScores?.[key] || 0;
+              const bgColor = value <= 3 ? '#f0fff4' : value <= 6 ? '#fffaf0' : '#fff5f5';
+              const textColor = value <= 3 ? '#276749' : value <= 6 ? '#9c4221' : '#c53030';
+              return `
+                <td style="padding: 6px; text-align: center; border: 1px solid #e2e8f0; background: ${bgColor}; color: ${textColor}; font-weight: bold;">
+                  ${value}/10
+                </td>
+              `;
+            }).join('')}
+          </tr>
+        `;
+      }).join('');
+
+      // Summary row
+      const summaryRow = `
+        <tr style="background: #f7fafc; font-weight: bold;">
+          <td style="padding: 8px; border: 1px solid #e2e8f0;">TOPLAM PUAN</td>
+          ${sortedRecords.map(record => {
+            const total = record.toxicityAssessment?.totalScore || 0;
+            const hasToxicity = record.toxicityAssessment?.hasToxicity;
+            const bgColor = hasToxicity ? '#fff5f5' : '#f0fff4';
+            const textColor = hasToxicity ? '#c53030' : '#276749';
+            return `
+              <td style="padding: 8px; text-align: center; border: 1px solid #e2e8f0; background: ${bgColor}; color: ${textColor};">
+                ${total}
+              </td>
+            `;
+          }).join('')}
+        </tr>
+      `;
+
+      return `
+        <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px;">
+          ${headerRow}
+          ${dataRows}
+          ${summaryRow}
+        </table>
+      `;
+    };
+
     const htmlContent = `
       <!DOCTYPE html>
       <html>
@@ -167,11 +294,11 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
           <title>Anamnez Raporu - ${patient.fullName}</title>
           <style>
             @media print {
-              @page { size: A4; margin: 15mm; }
+              @page { size: A4 landscape; margin: 10mm; }
               body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
               .no-break { break-inside: avoid; }
             }
-            body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 12px; line-height: 1.5; color: #333; max-width: 210mm; margin: 0 auto; padding: 20px; background: white; }
+            body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 12px; line-height: 1.5; color: #333; margin: 0 auto; padding: 20px; background: white; }
             h1 { text-align: center; font-size: 22px; margin-bottom: 30px; color: #1a365d; text-transform: uppercase; letter-spacing: 1px; }
             .section { margin-bottom: 25px; break-inside: avoid; }
             .section-title { font-size: 14px; font-weight: 700; color: #2c5282; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 12px; text-transform: uppercase; }
@@ -192,11 +319,18 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
             .check-item { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
             .check-icon { color: #38a169; font-weight: bold; }
             .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #edf2f7; text-align: center; color: #a0aec0; font-size: 10px; }
+            .date-badge { display: inline-block; padding: 4px 10px; background: #ebf8ff; color: #2b6cb0; border-radius: 4px; font-size: 11px; font-weight: bold; margin-bottom: 10px; }
+            .records-summary { background: #f7fafc; padding: 10px; border-radius: 4px; margin-bottom: 20px; text-align: center; }
           </style>
         </head>
         <body>
           ${logoHtml}
           <h1>ANAMNEZ RAPORU</h1>
+          
+          <div class="records-summary">
+            <span style="font-weight: bold; color: #2c5282;">📊 Toplam ${allAnamrezRecords.length} Anamnez Kaydı</span>
+            ${allAnamrezRecords.length > 1 ? `<span style="margin-left: 20px; color: #718096;">| Tarih aralığı: ${formatDate(sortedRecords[0]?.createdAt)} - ${formatDate(sortedRecords[sortedRecords.length - 1]?.createdAt)}</span>` : ''}
+          </div>
           
           <div class="section">
             <div class="section-title">Hasta Bilgileri</div>
@@ -218,7 +352,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
           </div>
 
           <div class="section">
-            <div class="section-title">Tıbbi Geçmiş</div>
+            <div class="section-title">Tıbbi Geçmiş <span class="date-badge">📅 ${formatDate(anamrezData.createdAt)}</span></div>
             <div class="grid">
               <div class="field full-width">
                 <span class="label">Şikayet Detayları</span>
@@ -243,25 +377,23 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
             </div>
           </div>
 
-          ${anamrezData.symptomRatings && Object.keys(anamrezData.symptomRatings).length > 0 ? `
+          ${allAnamrezRecords.length > 0 ? `
           <div class="section no-break">
-            <div class="section-title">Semptom Değerlendirmesi</div>
-            <div class="grid-3" style="border: 1px solid #e2e8f0; border-radius: 4px; padding: 10px;">
-              ${Object.entries(anamrezData.symptomRatings).map(([key, value]) => {
-                const scoreClass = value <= 3 ? 'score-low' : value <= 6 ? 'score-med' : 'score-high';
-                return `
-                  <div class="score-item">
-                    <span>${symptomLabels[key] || key}</span>
-                    <span class="score-val ${scoreClass}">${value}/10</span>
-                  </div>
-                `;
-              }).join('')}
-            </div>
+            <div class="section-title">📊 Semptom Değerlendirmesi - Tarihsel Karşılaştırma</div>
+            <p style="font-size: 10px; color: #718096; margin-bottom: 10px;">Her sütun bir anamnez kaydının tarihini gösterir. Değerler 1-10 arasındadır.</p>
+            ${generateSymptomComparisonTable()}
+          </div>` : ''}
+
+          ${allAnamrezRecords.some(r => r.toxicityAssessment) ? `
+          <div class="section no-break">
+            <div class="section-title">🔬 Toksisite Değerlendirmesi - Tarihsel Karşılaştırma</div>
+            <p style="font-size: 10px; color: #718096; margin-bottom: 10px;">Her sütun bir anamnez kaydının tarihini gösterir. 5+ semptomda yüksek puan = Toksisite riski.</p>
+            ${generateToxicityComparisonTable()}
           </div>` : ''}
 
           ${anamrezData.selectedDiagnosisSystems && anamrezData.selectedDiagnosisSystems.length > 0 ? `
           <div class="section no-break">
-            <div class="section-title">Sistem Sorgulaması</div>
+            <div class="section-title">Sistem Sorgulaması <span class="date-badge">📅 ${formatDate(anamrezData.createdAt)}</span></div>
             ${anamrezData.selectedDiagnosisSystems.map(diagnosis => {
               const questionSet = DIAGNOSIS_SPECIFIC_QUESTIONS[diagnosis];
               if (!questionSet) return '';
@@ -286,7 +418,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
           </div>` : ''}
 
           <div class="section no-break">
-            <div class="section-title">Yaşam Tarzı</div>
+            <div class="section-title">Yaşam Tarzı <span class="date-badge">📅 ${formatDate(anamrezData.createdAt)}</span></div>
             <div class="grid">
               ${Object.entries(anamrezData.additionalQuestions || {}).map(([key, value]) => {
                 if (!value) return '';
@@ -295,27 +427,9 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
             </div>
           </div>
 
-          ${anamrezData.toxicityAssessment ? `
-          <div class="section no-break">
-            <div class="section-title">Toksisite Değerlendirmesi</div>
-            <div style="display:flex; gap:20px; margin-bottom:15px; background:${anamrezData.toxicityAssessment.hasToxicity ? '#fff5f5' : '#f0fff4'}; padding:10px; border-radius:4px;">
-              <div><span class="label">Durum</span><span class="value" style="color:${anamrezData.toxicityAssessment.hasToxicity ? '#c53030' : '#276749'}; font-weight:bold;">${anamrezData.toxicityAssessment.hasToxicity ? 'YÜKSEK TOKSİSİTE' : 'NORMAL'}</span></div>
-              <div><span class="label">Toplam Puan</span><span class="value">${anamrezData.toxicityAssessment.totalScore}</span></div>
-              <div><span class="label">Semptom Sayısı</span><span class="value">${anamrezData.toxicityAssessment.ratedSymptomsCount}</span></div>
-            </div>
-            ${anamrezData.toxicityAssessment.toxicityScores ? `
-              <div class="grid-3">
-                ${Object.entries(anamrezData.toxicityAssessment.toxicityScores).map(([key, value]) => {
-                  const scoreClass = value <= 3 ? 'score-low' : value <= 6 ? 'score-med' : 'score-high';
-                  return `<div class="score-item"><span>${symptomLabels[key] || key}</span><span class="score-val ${scoreClass}">${value}/10</span></div>`;
-                }).join('')}
-              </div>
-            ` : ''}
-          </div>` : ''}
-
           ${(anamrezData.optionalScans?.meridianScan?.enabled || anamrezData.optionalScans?.thermalScan?.enabled || anamrezData.optionalScans?.toxicityScan?.enabled) ? `
           <div class="section no-break">
-            <div class="section-title">Opsiyonel Taramalar</div>
+            <div class="section-title">Opsiyonel Taramalar <span class="date-badge">📅 ${formatDate(anamrezData.createdAt)}</span></div>
             <div style="display:flex; flex-direction:column; gap:5px;">
               ${anamrezData.optionalScans.meridianScan?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Meridyen Tarama</div>' : ''}
               ${anamrezData.optionalScans.thermalScan?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Termal Tarama (IRIS-XP)</div>' : ''}
@@ -324,7 +438,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
           </div>` : ''}
 
           <div class="section">
-            <div class="section-title">Konvansiyonel Tedavi</div>
+            <div class="section-title">Konvansiyonel Tedavi <span class="date-badge">📅 ${formatDate(anamrezData.createdAt)}</span></div>
             <div class="grid">
               <div class="field full-width">
                 <span class="label">Kullandığı İlaçlar</span>
@@ -355,15 +469,17 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
 
   useEffect(() => {
     const fetchAnamrezData = async () => {
-      // Skip fetching if anamrezRecord is already passed
-      if (anamrezRecord) return;
       if (!patient || !isOpen) return;
+
+      // Get patientId from either patient prop or passed anamrezRecord
+      const patientId = patient.id || (anamrezRecord as any)?.patientId;
+      if (!patientId) return;
 
       setLoading(true);
       try {
         const anamrezQuery = query(
           collection(db, 'anamrezRecords'),
-          where('patientId', '==', patient.id)
+          where('patientId', '==', patientId)
         );
         const querySnapshot = await getDocs(anamrezQuery);
 
@@ -378,10 +494,14 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
             // Filter only completed records
             .filter(record => (record as any).status === 'completed')
             // Sort by creation date (newest first)
-            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+            // Limit to last 3 records
+            .slice(0, 3);
 
           setAllAnamrezRecords(allRecords);
-          if (allRecords.length > 0) {
+          
+          // If no anamrezRecord was passed, set the first one as current
+          if (!anamrezRecord && allRecords.length > 0) {
             setAnamrezData(allRecords[0]);
             setSelectedRecordIndex(0);
           }
@@ -444,7 +564,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
     };
 
     fetchAnamrezData();
-  }, [patient, isOpen]);
+  }, [patient, isOpen, anamrezRecord]);
 
   // Reset when modal opens
   useEffect(() => {

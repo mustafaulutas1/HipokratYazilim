@@ -471,8 +471,18 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
               {breakpoints.slice(0, -1).map((bp, idx) => {
               const next = breakpoints[idx + 1];
               const list = getAppointmentsForSegment(bp, next);
-              const hasAny = list.length > 0;
-              const rowHeight = Math.max(56, list.length * 56);
+              
+              // Separate active and cancelled appointments
+              const activeAppointments = list.filter(({ a }) => a.status !== 'cancelled');
+              const cancelledAppointments = list.filter(({ a }) => a.status === 'cancelled');
+              const hasActiveAny = activeAppointments.length > 0;
+              const hasCancelledAny = cancelledAppointments.length > 0;
+              const hasAny = hasActiveAny || hasCancelledAny;
+              
+              // Calculate row height based on max of active or cancelled appointments
+              const activeHeight = Math.max(1, activeAppointments.length) * 56;
+              const cancelledHeight = Math.max(1, cancelledAppointments.length) * 44;
+              const rowHeight = Math.max(56, hasActiveAny ? activeHeight : 56, hasCancelledAny && !hasActiveAny ? cancelledHeight : 0);
 
               // Check if this time slot is in the past
               const isToday = selectedDate.toDateString() === currentTime.toDateString();
@@ -481,45 +491,87 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
 
               return (
                 <div key={`${bp}-${next}`} className={`flex items-stretch gap-4 p-4 rounded-xl transition-all duration-200 ${isPast ? 'bg-white/5 opacity-50' : 'bg-white/5 hover:bg-white/10'}`}>
-                  <div className="w-20 text-center">
+                  <div className="w-20 text-center flex-shrink-0">
                     <div className="text-white font-semibold">{minutesToTime(bp)}</div>
                     <div className="text-white/60 text-xs">{minutesToTime(next)}</div>
                   </div>
-                  <div className={`flex-1 relative border border-white/10 rounded-lg ${hasAny ? 'bg-transparent h-full' : 'bg-white/5'}`} style={{ minHeight: rowHeight }}>
-                    {!hasAny && (
-                      <div className="absolute inset-0 flex items-center justify-center text-white/40 text-sm">Boş</div>
-                    )}
-                    {list.map(({ a, dur }, idx2) => {
-                      // Segment yapısında blok segmenti tamamen doldurur
-                      const endLabel = minutesToTime((a.start ? timeToMinutes(a.start) : timeToMinutes(a.time)) + dur);
-                      return (
-                        <div key={`${a.id}-${idx2}`}
-                          className="absolute inset-x-0 border border-white/20 bg-green-500/20 rounded-md p-3 overflow-hidden"
-                          style={{ top: idx2 * 56 }}
-                        >
-                          <div className="flex items-center justify-between mb-1">
-                            <div className="text-white text-sm font-semibold truncate pr-2">{a.patientName}</div>
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${getStatusColor(a.status)}`}>
-                              {a.status === 'confirmed' ? 'Onaylandı' : a.status === 'pending' ? 'Beklemede' : 'İptal'}
-                            </span>
+                  
+                  {/* Main content area - split vertically if both active and cancelled exist */}
+                  <div className="flex-1 flex gap-2" style={{ minHeight: rowHeight }}>
+                    {/* Active appointments section */}
+                    <div className={`${hasCancelledAny && hasActiveAny ? 'flex-[3]' : 'flex-1'} relative border border-white/10 rounded-lg ${hasActiveAny ? 'bg-transparent' : 'bg-white/5'}`}>
+                      {/* Empty slot message - only show if no active appointments */}
+                      {!hasActiveAny && (
+                        <div className="absolute inset-0 flex items-center justify-center text-white/40 text-sm">Boş</div>
+                      )}
+                      
+                      {/* Active appointments - full size, prominent */}
+                      {activeAppointments.map(({ a, dur }, idx2) => {
+                        const endLabel = minutesToTime((a.start ? timeToMinutes(a.start) : timeToMinutes(a.time)) + dur);
+                        const statusBg = a.status === 'confirmed' ? 'bg-green-500/20 border-green-500/30' : 'bg-yellow-500/20 border-yellow-500/30';
+                        return (
+                          <div key={`active-${a.id}-${idx2}`}
+                            className={`absolute inset-x-0 border ${statusBg} rounded-md p-3 overflow-hidden`}
+                            style={{ top: idx2 * 56 }}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="text-white text-sm font-semibold truncate pr-2">{a.patientName}</div>
+                              <div className="flex items-center gap-1">
+                                {a.status === 'confirmed' && a.patientArrived && (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-teal-500/30 text-teal-300 border-teal-400/40">
+                                    ✓ Geldi
+                                  </span>
+                                )}
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${getStatusColor(a.status)}`}>
+                                  {a.status === 'confirmed' ? 'Onaylandı' : 'Beklemede'}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="text-white/80 text-xs truncate">{a.typeName ?? a.type} • {dur} dk</div>
+                            <div className="text-white/60 text-[11px]">{a.start ?? a.time} - {endLabel}</div>
                           </div>
-                          <div className="text-white/80 text-xs truncate">{a.typeName ?? a.type} • {dur} dk</div>
-                          <div className="text-white/60 text-[11px]">{a.start ?? a.time} - {endLabel}</div>
+                        );
+                      })}
+                    </div>
+                    
+                    {/* Cancelled appointments section - only show if there are cancelled appointments */}
+                    {hasCancelledAny && (
+                      <div className={`${hasActiveAny ? 'flex-1' : 'flex-1'} relative border border-red-500/20 rounded-lg bg-red-500/5 overflow-hidden`}>
+                        {/* Cancelled header */}
+                        <div className="sticky top-0 bg-red-500/20 px-2 py-1 border-b border-red-500/20">
+                          <span className="text-red-300 text-[10px] font-semibold uppercase tracking-wide">İptal ({cancelledAppointments.length})</span>
                         </div>
-                      );
-                    })}
+                        
+                        {/* Cancelled appointments list */}
+                        <div className="p-1 space-y-1">
+                          {cancelledAppointments.map(({ a, dur }, idx2) => {
+                            return (
+                              <div key={`cancelled-${a.id}-${idx2}`}
+                                className="bg-red-500/10 border border-red-500/20 rounded px-2 py-1.5 cursor-pointer hover:bg-red-500/20 transition-colors"
+                                onClick={() => { setViewedAppointment(a); setOpenDetailsModal(true); }}
+                                title={a.cancelReason ? `Sebep: ${a.cancelReason}` : 'Detayları görüntüle'}
+                              >
+                                <div className="text-white/60 text-xs font-medium truncate line-through">{a.patientName}</div>
+                                <div className="text-red-300/60 text-[10px] truncate">{a.cancelReason || a.typeName || a.type}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex flex-col items-center justify-center gap-2 w-12">
-                    {hasAny ? (
+                  
+                  <div className="flex flex-col items-center justify-center gap-2 w-12 flex-shrink-0">
+                    {hasActiveAny ? (
                       <>
                         <button
                           title="İncele"
-                          onClick={() => { setViewedAppointment(list[0].a); setOpenDetailsModal(true); }}
+                          onClick={() => { setViewedAppointment(activeAppointments[0].a); setOpenDetailsModal(true); }}
                           className="p-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-blue-300 hover:text-blue-200 transition-colors duration-150 cursor-pointer"
                         >👁️</button>
                         <button
                           title="Düzenle"
-                          onClick={() => { setEditedAppointment(list[0].a); setOpenAddModal(true); }}
+                          onClick={() => { setEditedAppointment(activeAppointments[0].a); setOpenAddModal(true); }}
                           className="p-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg text-green-300 hover:text-green-200 transition-colors duration-150 cursor-pointer"
                         >✏️</button>
                       </>
@@ -936,8 +988,8 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
         isOpen={openDetailsModal}
         onClose={() => { setOpenDetailsModal(false); setViewedAppointment(null); }}
         appointment={viewedAppointment}
-        onDeleted={() => {
-          // refresh appointments after delete
+        onCancelled={() => {
+          // refresh appointments after cancel
           (async () => {
             if (!doctorProfile?.clinicId) return;
             

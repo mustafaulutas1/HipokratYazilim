@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { deleteDoc, doc, updateDoc, collection, addDoc, query, where, getDocs } from 'firebase/firestore';
+import { doc, updateDoc, collection, addDoc, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { toast } from 'react-toastify';
 import { db } from '../../../firebase/config';
 
@@ -7,23 +7,29 @@ interface AppointmentDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   appointment: any | null;
-  onDeleted?: () => void;
+  onCancelled?: () => void;
   onStatusUpdated?: () => void;
 }
 
-const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpen, onClose, appointment, onDeleted, onStatusUpdated }) => {
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpen, onClose, appointment, onCancelled, onStatusUpdated }) => {
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [isUpdatingArrival, setIsUpdatingArrival] = useState(false);
   const [currentStatus, setCurrentStatus] = useState(appointment?.status || 'pending');
+  const [patientArrived, setPatientArrived] = useState(appointment?.patientArrived || false);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
   
   // Sync local status with appointment prop
   useEffect(() => {
     if (appointment?.status) {
       setCurrentStatus(appointment.status);
     }
-  }, [appointment?.status]);
+    if (appointment?.patientArrived !== undefined) {
+      setPatientArrived(appointment.patientArrived);
+    }
+  }, [appointment?.status, appointment?.patientArrived]);
   
   if (!isOpen || !appointment) return null;
 
@@ -79,21 +85,48 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
     return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
   })() : '--:--';
 
-  const handleDelete = async () => {
+  const handleCancel = async () => {
     if (!appointment.id) return;
+    if (!cancelReason.trim()) return; // Required validation
     
-    setIsDeleting(true);
+    setIsCancelling(true);
     try {
-      await deleteDoc(doc(db, 'appointments', appointment.id));
-      toast.success('Randevu başarıyla silindi!');
-      onDeleted?.();
+      await updateDoc(doc(db, 'appointments', appointment.id), {
+        status: 'cancelled',
+        cancelledAt: new Date().toISOString(),
+        cancelReason: cancelReason.trim()
+      });
+
+      // Delete associated anamnez record when appointment is cancelled
+      try {
+        const anamrezQuery = query(
+          collection(db, 'anamrezRecords'),
+          where('appointmentId', '==', appointment.id)
+        );
+        const anamrezSnapshot = await getDocs(anamrezQuery);
+        
+        for (const anamrezDoc of anamrezSnapshot.docs) {
+          await deleteDoc(doc(db, 'anamrezRecords', anamrezDoc.id));
+        }
+        
+        if (!anamrezSnapshot.empty) {
+          console.log('Anamnez record(s) deleted for cancelled appointment');
+        }
+      } catch (anamrezError) {
+        console.error('Error deleting anamnez record:', anamrezError);
+      }
+
+      setCurrentStatus('cancelled');
+      toast.success('Randevu başarıyla iptal edildi!');
+      onCancelled?.();
       onClose();
     } catch (error) {
-      console.error('Error deleting appointment:', error);
-      toast.error('Randevu silinirken bir hata oluştu!');
+      console.error('Error cancelling appointment:', error);
+      toast.error('Randevu iptal edilirken bir hata oluştu!');
     } finally {
-      setIsDeleting(false);
-      setShowDeleteConfirm(false);
+      setIsCancelling(false);
+      setShowCancelConfirm(false);
+      setCancelReason('');
     }
   };
 
@@ -154,6 +187,49 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
       setCurrentStatus(currentStatus === 'pending' ? 'confirmed' : 'pending');
     } finally {
       setIsUpdatingStatus(false);
+    }
+  };
+
+  const handlePatientArrival = async () => {
+    if (!appointment.id) return;
+
+    setIsUpdatingArrival(true);
+    try {
+      const newArrivalStatus = !patientArrived;
+      await updateDoc(doc(db, 'appointments', appointment.id), {
+        patientArrived: newArrivalStatus,
+        arrivedAt: newArrivalStatus ? new Date().toISOString() : null
+      });
+
+      // If marking as "Gelmedi" (not arrived), delete associated anamnez record
+      if (!newArrivalStatus) {
+        try {
+          const anamrezQuery = query(
+            collection(db, 'anamrezRecords'),
+            where('appointmentId', '==', appointment.id)
+          );
+          const anamrezSnapshot = await getDocs(anamrezQuery);
+          
+          for (const anamrezDoc of anamrezSnapshot.docs) {
+            await deleteDoc(doc(db, 'anamrezRecords', anamrezDoc.id));
+          }
+          
+          if (!anamrezSnapshot.empty) {
+            console.log('Anamnez record(s) deleted - patient did not arrive');
+          }
+        } catch (anamrezError) {
+          console.error('Error deleting anamnez record:', anamrezError);
+        }
+      }
+
+      setPatientArrived(newArrivalStatus);
+      toast.success(newArrivalStatus ? 'Hasta geldi olarak işaretlendi!' : 'Hasta gelmedi olarak işaretlendi, anamnez silindi!');
+      onStatusUpdated?.();
+    } catch (error) {
+      console.error('Error updating patient arrival:', error);
+      toast.error('Hasta durumu güncellenirken bir hata oluştu!');
+    } finally {
+      setIsUpdatingArrival(false);
     }
   };
 
@@ -290,8 +366,36 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
               </div>
             )}
 
+            {/* Cancel Reason - Show if appointment is cancelled */}
+            {currentStatus === 'cancelled' && appointment.cancelReason && (
+              <div className="bg-gradient-to-br from-red-50 to-orange-50 rounded-xl p-4 border border-red-200">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-8 h-8 bg-gradient-to-br from-red-500 to-orange-500 rounded-lg flex items-center justify-center">
+                    <span className="text-white text-sm">🚫</span>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-800">İptal Sebebi</h3>
+                  </div>
+                </div>
+                <div className="bg-white/60 rounded-lg p-3">
+                  <p className="text-red-700 text-sm leading-relaxed">{appointment.cancelReason}</p>
+                  {appointment.cancelledAt && (
+                    <p className="text-red-400 text-xs mt-2">
+                      İptal tarihi: {new Date(appointment.cancelledAt).toLocaleDateString('tr-TR', { 
+                        year: 'numeric', 
+                        month: 'long', 
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Quick Stats */}
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-5 gap-3">
               <div className="text-center p-3 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg border border-gray-200">
                 <div className="text-lg mb-1">🆔</div>
                 <div className="text-xs text-gray-500 font-semibold">ID</div>
@@ -312,6 +416,11 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
                 <div className="text-xs text-gray-500 font-semibold">Tip</div>
                 <div className="text-xs font-bold text-gray-700 truncate">{appointment.typeName || 'Genel'}</div>
               </div>
+              <div className={`text-center p-3 rounded-lg border transition-all duration-300 ${patientArrived ? 'bg-gradient-to-br from-green-50 to-emerald-50 border-green-200' : 'bg-gradient-to-br from-gray-50 to-gray-100 border-gray-200'}`}>
+                <div className="text-lg mb-1">{patientArrived ? '✅' : '🚶'}</div>
+                <div className="text-xs text-gray-500 font-semibold">Hasta</div>
+                <div className={`text-xs font-bold ${patientArrived ? 'text-green-700' : 'text-gray-700'}`}>{patientArrived ? 'Geldi' : 'Bekleniyor'}</div>
+              </div>
             </div>
           </div>
 
@@ -319,13 +428,38 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
           <div className="px-6 py-4 bg-gradient-to-r from-gray-50 to-gray-100 border-t border-gray-200">
             <div className="flex justify-between items-center gap-3">
               <button 
-                onClick={() => setShowDeleteConfirm(true)}
-                className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 active:scale-95 flex items-center gap-2"
+                onClick={() => setShowCancelConfirm(true)}
+                disabled={currentStatus === 'cancelled'}
+                className={`px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 active:scale-95 flex items-center gap-2 ${currentStatus === 'cancelled' ? 'opacity-50 cursor-not-allowed hover:scale-100' : ''}`}
               >
-                <span>🗑️</span>
-                Randevuyu Sil
+                <span>🚫</span>
+                Randevuyu İptal Et
               </button>
               <div className="flex gap-3">
+                {/* Patient Arrived Button - Only show when appointment is confirmed */}
+                {currentStatus === 'confirmed' && (
+                  <button 
+                    onClick={handlePatientArrival}
+                    disabled={isUpdatingArrival}
+                    className={`px-6 py-3 ${
+                      patientArrived 
+                        ? 'bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700' 
+                        : 'bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700'
+                    } text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 active:scale-95 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100`}
+                  >
+                    {isUpdatingArrival ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        <span>Güncelleniyor...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>{patientArrived ? '❌' : '✅'}</span>
+                        <span>{patientArrived ? 'Gelmedi' : 'Hasta Geldi'}</span>
+                      </>
+                    )}
+                  </button>
+                )}
                 <button 
                   onClick={handleStatusToggle}
                   disabled={isUpdatingStatus || currentStatus === 'cancelled'}
@@ -359,20 +493,20 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
         </div>
       </div>
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4" onClick={() => setShowDeleteConfirm(false)}>
+      {/* Cancel Confirmation Modal */}
+      {showCancelConfirm && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4" onClick={() => setShowCancelConfirm(false)}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
           <div className="relative bg-white rounded-3xl shadow-2xl max-w-md w-full transform animate-scaleIn" onClick={(e) => e.stopPropagation()}>
             
             {/* Header */}
-            <div className="px-6 py-5 bg-gradient-to-r from-red-500 to-red-600 rounded-t-3xl">
+            <div className="px-6 py-5 bg-gradient-to-r from-orange-500 to-red-600 rounded-t-3xl">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
-                  <span className="text-white text-2xl">⚠️</span>
+                  <span className="text-white text-2xl">🚫</span>
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-white">Randevuyu Sil</h3>
+                  <h3 className="text-xl font-bold text-white">Randevuyu İptal Et</h3>
                   <p className="text-white/90 text-sm">Onay gerektiriyor</p>
                 </div>
               </div>
@@ -382,16 +516,34 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
             <div className="p-6 space-y-4">
               <div className="text-center">
                 <h4 className="text-lg font-bold text-gray-800 mb-2">Emin misiniz?</h4>
-                <p className="text-gray-600 text-sm mb-4">Bu işlem geri alınamaz. Randevu kalıcı olarak silinecektir.</p>
+                <p className="text-gray-600 text-sm mb-4">Bu randevu iptal edilecek ve takvimde iptal edilmiş olarak görünecektir.</p>
               </div>
               
-              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-                <div className="text-red-800 font-semibold text-sm mb-2">Silinecek Randevu:</div>
-                <div className="bg-red-100 rounded-lg p-3">
-                  <div className="text-red-700 font-medium">{appointment.patientName}</div>
-                  <div className="text-red-600 text-sm">{formatDate(appointment.dateISO)}</div>
-                  <div className="text-red-600 text-sm">{formatTime(startTime)} - {endTime}</div>
+              <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+                <div className="text-orange-800 font-semibold text-sm mb-2">İptal Edilecek Randevu:</div>
+                <div className="bg-orange-100 rounded-lg p-3">
+                  <div className="text-orange-700 font-medium">{appointment.patientName}</div>
+                  <div className="text-orange-600 text-sm">{formatDate(appointment.dateISO)}</div>
+                  <div className="text-orange-600 text-sm">{formatTime(startTime)} - {endTime}</div>
                 </div>
+              </div>
+              
+              {/* Cancel Reason */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  📝 İptal Sebebi <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  placeholder="Randevu iptal sebebini yazın..."
+                  className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent resize-none text-gray-700 ${!cancelReason.trim() ? 'border-red-300 bg-red-50/50' : 'border-gray-300'}`}
+                  rows={3}
+                  required
+                />
+                {!cancelReason.trim() && (
+                  <p className="text-red-500 text-xs mt-1">İptal sebebi zorunludur</p>
+                )}
               </div>
             </div>
 
@@ -399,25 +551,25 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
             <div className="px-6 py-4 bg-gray-50 rounded-b-3xl">
               <div className="flex gap-3">
                 <button 
-                  onClick={() => setShowDeleteConfirm(false)}
+                  onClick={() => setShowCancelConfirm(false)}
                   className="flex-1 px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold rounded-xl transition-all duration-200 hover:scale-105 active:scale-95"
                 >
-                  İptal
+                  Vazgeç
                 </button>
                 <button 
-                  onClick={handleDelete}
-                  disabled={isDeleting}
-                  className="flex-1 px-4 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-xl transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2"
+                  onClick={handleCancel}
+                  disabled={isCancelling || !cancelReason.trim()}
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white font-semibold rounded-xl transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2"
                 >
-                  {isDeleting ? (
+                  {isCancelling ? (
                     <>
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      <span>Siliniyor...</span>
+                      <span>İptal Ediliyor...</span>
                     </>
                   ) : (
                     <>
-                      <span>🗑️</span>
-                      <span>Evet, Sil</span>
+                      <span>🚫</span>
+                      <span>Evet, İptal Et</span>
                     </>
                   )}
                 </button>

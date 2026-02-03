@@ -2003,6 +2003,33 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                 </div>
                               </div>
 
+                              {/* Editable Protocol Details */}
+                              <div className="mt-6 pt-6 border-t border-gray-200">
+                                <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                  📋 Protokol Detayları (Düzenlenebilir)
+                                </h4>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                  <div className="bg-gray-50 rounded-xl p-4">
+                                    <label className="block text-sm text-gray-600 mb-2">Kontrol</label>
+                                    <input
+                                      type="text"
+                                      value={editedProtocol.control || '4 AYDA 1 KONTROL'}
+                                      onChange={(e) => setEditedProtocol({...editedProtocol, control: e.target.value.toUpperCase()})}
+                                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-semibold uppercase"
+                                      placeholder="Örn: 4 AYDA 1 KONTROL"
+                                    />
+                                  </div>
+                                  <div className="bg-gray-50 rounded-xl p-4">
+                                    <label className="block text-sm text-gray-600 mb-2">Tanı Sistemi</label>
+                                    <div className="font-semibold text-gray-900 py-2">{editedProtocol.diagnosisSystem || ''}</div>
+                                  </div>
+                                  <div className="bg-gray-50 rounded-xl p-4">
+                                    <label className="block text-sm text-gray-600 mb-2">Oluşturan</label>
+                                    <div className="font-semibold text-gray-900 py-2">{editedProtocol.createdBy || 'System Admin'}</div>
+                                  </div>
+                                </div>
+                              </div>
+
                               {/* Edit Action Buttons */}
                               <div className="flex items-center justify-between pt-6 border-t border-gray-200">
                                 <button
@@ -2210,7 +2237,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                                 <div className="bg-gray-50 rounded-xl p-4">
                                   <div className="text-sm text-gray-600 mb-1">Kontrol</div>
-                                  <div className="font-semibold text-gray-900">{bestTreatment.control}</div>
+                                  <div className="font-semibold text-gray-900">{bestTreatment.control || '4 AYDA 1 KONTROL'}</div>
                                 </div>
                                 <div className="bg-gray-50 rounded-xl p-4">
                                   <div className="text-sm text-gray-600 mb-1">Tanı Sistemi</div>
