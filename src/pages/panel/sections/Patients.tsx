@@ -38,8 +38,11 @@ interface Patient {
   updatedAt: string;
   treatmentOptions?: TreatmentOptions;
   treatmentStartedAt?: string;
+  treatmentCompletedAt?: string;
   status?: string;
   clinicId?: string;
+  paymentCompleted?: boolean;
+  assignedDoctorName?: string;
 }
 
 interface PatientsProps {
@@ -50,7 +53,9 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [treatmentCompletedPatients, setTreatmentCompletedPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dischargingPatientId, setDischargingPatientId] = useState<string | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
@@ -92,6 +97,16 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
         return dateB - dateA;
       });
 
+      // Filter treatment completed patients (ready for discharge)
+      const completedPatients = patientsData.filter(patient =>
+        patient.status === 'treatment_completed' && patient.paymentCompleted === true
+      ).sort((a, b) => {
+        const dateA = new Date(a.treatmentCompletedAt || a.createdAt || 0).getTime();
+        const dateB = new Date(b.treatmentCompletedAt || b.createdAt || 0).getTime();
+        return dateB - dateA;
+      });
+
+      setTreatmentCompletedPatients(completedPatients);
       setPatients(patientsData);
     } catch (error) {
       console.error('Error fetching patients:', error);
@@ -142,6 +157,36 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
     }
   };
 
+  // Discharge patient - mark as discharged and remove from treatment completed list
+  const handleDischargePatient = async (patient: Patient) => {
+    try {
+      setDischargingPatientId(patient.id);
+      const patientRef = doc(db, 'patients', patient.id);
+      await updateDoc(patientRef, {
+        status: 'discharged',
+        dischargedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+
+      // Remove from treatment completed list
+      setTreatmentCompletedPatients(prev => prev.filter(p => p.id !== patient.id));
+
+      // Update in main patients list
+      setPatients(prevPatients =>
+        prevPatients.map(p =>
+          p.id === patient.id ? { ...p, status: 'discharged' } : p
+        )
+      );
+
+      console.log(`✅ Patient discharged: ${patient.fullName}`);
+    } catch (error) {
+      console.error('Error discharging patient:', error);
+      alert('Hasta çıkışı yapılırken bir hata oluştu. Lütfen tekrar deneyin.');
+    } finally {
+      setDischargingPatientId(null);
+    }
+  };
+
   const filteredPatients = patients.filter(patient => {
     const matchesSearch = patient.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (patient.tcNo && patient.tcNo.includes(searchTerm)) ||
@@ -162,27 +207,20 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
     );
   }
 
-  const userRole = doctorProfile?.role || doctorProfile?.userType || 'doctor';
-  const isCallCenter = userRole === 'call-center';
-
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-white">Hasta Yönetimi</h1>
-          <p className="text-white/70">
-            {isCallCenter ? 'Hasta geçmiş kayıtları ve bilgileri' : 'Hasta listesi ve bilgileri'}
-          </p>
+          <p className="text-white/70">Hasta listesi ve bilgileri</p>
         </div>
-        {!isCallCenter && (
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-200 shadow-lg"
-          >
-            + Yeni Hasta Ekle
-          </button>
-        )}
+        <button
+          onClick={() => setIsAddModalOpen(true)}
+          className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl hover:scale-105 transition-all duration-200 shadow-lg"
+        >
+          + Yeni Hasta Ekle
+        </button>
       </div>
 
       {/* Filters and Search */}
@@ -217,32 +255,127 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
       </div>
 
       {/* Stats */}
-      {!isCallCenter && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          {[
-            { title: 'Toplam Hasta', value: patients.length.toString(), icon: '👥', color: 'from-blue-500 to-cyan-500' },
-            { title: 'Aktif Hasta', value: patients.filter(p => p.status !== 'passive').length.toString(), icon: '✅', color: 'from-green-500 to-emerald-500' },
-            {
-              title: 'Bu Ay Yeni', value: patients.filter(p => {
-                const createdAt = new Date(p.createdAt);
-                const now = new Date();
-                return createdAt.getMonth() === now.getMonth() && createdAt.getFullYear() === now.getFullYear();
-              }).length.toString(), icon: '🆕', color: 'from-yellow-500 to-orange-500'
-            },
-            { title: 'Pasif Hasta', value: patients.filter(p => p.status === 'passive').length.toString(), icon: '⏸️', color: 'from-gray-500 to-gray-600' }
-          ].map((stat, index) => (
-          <div key={index} className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-            <div className="flex items-center gap-4">
-              <div className={`w-12 h-12 bg-gradient-to-br ${stat.color} rounded-xl flex items-center justify-center shadow-lg`}>
-                <span className="text-white text-xl">{stat.icon}</span>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        {[
+          { title: 'Toplam Hasta', value: patients.length.toString(), icon: '👥', color: 'from-blue-500 to-cyan-500' },
+          { title: 'Aktif Hasta', value: patients.filter(p => p.status !== 'passive').length.toString(), icon: '✅', color: 'from-green-500 to-emerald-500' },
+          {
+            title: 'Bu Ay Yeni', value: patients.filter(p => {
+              const createdAt = new Date(p.createdAt);
+              const now = new Date();
+              return createdAt.getMonth() === now.getMonth() && createdAt.getFullYear() === now.getFullYear();
+            }).length.toString(), icon: '🆕', color: 'from-yellow-500 to-orange-500'
+          },
+          { title: 'Pasif Hasta', value: patients.filter(p => p.status === 'passive').length.toString(), icon: '⏸️', color: 'from-gray-500 to-gray-600' }
+        ].map((stat, index) => (
+        <div key={index} className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+          <div className="flex items-center gap-4">
+            <div className={`w-12 h-12 bg-gradient-to-br ${stat.color} rounded-xl flex items-center justify-center shadow-lg`}>
+              <span className="text-white text-xl">{stat.icon}</span>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-white">{stat.value}</div>
+              <div className="text-white/70 text-sm">{stat.title}</div>
+            </div>
+          </div>
+        </div>
+      ))}
+      </div>
+
+      {/* Treatment Completed Patients - Ready for Discharge */}
+      {treatmentCompletedPatients.length > 0 && (
+        <div className="bg-gradient-to-br from-emerald-500/20 to-green-600/20 backdrop-blur-xl border-2 border-emerald-400/50 rounded-2xl overflow-hidden shadow-lg shadow-emerald-500/10">
+          <div className="p-6 border-b border-emerald-400/30">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-gradient-to-br from-emerald-400 to-green-500 rounded-xl flex items-center justify-center shadow-lg animate-pulse">
+                  <span className="text-2xl">🏁</span>
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">Tedavisi Tamamlananlar</h2>
+                  <p className="text-emerald-200/80 text-sm">Çıkış için bekleyen hastalar</p>
+                </div>
               </div>
-              <div>
-                <div className="text-2xl font-bold text-white">{stat.value}</div>
-                <div className="text-white/70 text-sm">{stat.title}</div>
+              <div className="bg-emerald-500/30 px-4 py-2 rounded-full border border-emerald-400/50">
+                <span className="text-emerald-200 font-bold text-lg">{treatmentCompletedPatients.length}</span>
+                <span className="text-emerald-300/70 ml-1 text-sm">hasta</span>
               </div>
             </div>
           </div>
-        ))}
+
+          <div className="p-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {treatmentCompletedPatients.map((patient) => (
+                <div
+                  key={patient.id}
+                  className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4 hover:bg-white/15 transition-all duration-300 group"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-gradient-to-br from-emerald-400 to-green-500 rounded-full flex items-center justify-center shadow-lg">
+                        <span className="text-white font-bold text-lg">
+                          {patient.fullName.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                        </span>
+                      </div>
+                      <div>
+                        <h3 className="text-white font-semibold">{patient.fullName}</h3>
+                        <p className="text-white/60 text-sm">{calculateAge(patient.birthDate)} yaş, {patient.gender}</p>
+                      </div>
+                    </div>
+                    <span className="px-2 py-1 bg-emerald-500/30 border border-emerald-400/50 rounded-full text-emerald-200 text-xs font-medium">
+                      ✓ Tamamlandı
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 mb-4">
+                    <div className="flex items-center gap-2 text-white/70 text-sm">
+                      <span>📋</span>
+                      <span>TC: {patient.tcNo}</span>
+                    </div>
+                    {patient.assignedDoctorName && (
+                      <div className="flex items-center gap-2 text-white/70 text-sm">
+                        <span>👨‍⚕️</span>
+                        <span>{patient.assignedDoctorName}</span>
+                      </div>
+                    )}
+                    {patient.treatmentCompletedAt && (
+                      <div className="flex items-center gap-2 text-white/70 text-sm">
+                        <span>🕐</span>
+                        <span>
+                          {new Date(patient.treatmentCompletedAt).toLocaleTimeString('tr-TR', {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => handleDischargePatient(patient)}
+                    disabled={dischargingPatientId === patient.id}
+                    className={`w-full py-3 rounded-xl font-semibold text-sm transition-all duration-300 flex items-center justify-center gap-2 ${
+                      dischargingPatientId === patient.id
+                        ? 'bg-gray-500/30 text-gray-300 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-emerald-500 to-green-500 text-white hover:from-emerald-600 hover:to-green-600 hover:scale-[1.02] shadow-lg hover:shadow-emerald-500/30'
+                    }`}
+                  >
+                    {dischargingPatientId === patient.id ? (
+                      <>
+                        <span className="animate-spin">⏳</span>
+                        İşleniyor...
+                      </>
+                    ) : (
+                      <>
+                        <span>🚪</span>
+                        Hasta Çıkışı Yap
+                      </>
+                    )}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
@@ -311,40 +444,36 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
                       >
                         👁️
                       </button>
-                      {!isCallCenter && (
-                        <>
-                          <button
-                            onClick={() => {
-                              setSelectedPatientForHistory(patient);
-                              setIsPastHistoryModalOpen(true);
-                            }}
-                            className="p-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-lg text-purple-300 hover:text-purple-200 transition-all duration-200"
-                            title="Geçmiş Kayıt Ekle"
-                          >
-                            📜
-                          </button>
-                          <button
-                            onClick={() => {
-                              setSelectedPatient(patient);
-                              setIsEditModalOpen(true);
-                            }}
-                            className="p-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg text-green-300 hover:text-green-200 transition-all duration-200"
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            onClick={() => togglePatientStatus(patient)}
-                            className={`p-2 rounded-lg transition-all duration-200 ${
-                              patient.status === 'passive'
-                                ? 'bg-gray-500/20 hover:bg-gray-500/30 border border-gray-500/30 text-gray-300 hover:text-gray-200'
-                                : 'bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 text-green-300 hover:text-green-200'
-                            }`}
-                            title={patient.status === 'passive' ? 'Aktif Yap' : 'Pasif Yap'}
-                          >
-                            {patient.status === 'passive' ? '🔴' : '🟢'}
-                          </button>
-                        </>
-                      )}
+                      <button
+                        onClick={() => {
+                          setSelectedPatientForHistory(patient);
+                          setIsPastHistoryModalOpen(true);
+                        }}
+                        className="p-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-lg text-purple-300 hover:text-purple-200 transition-all duration-200"
+                        title="Geçmiş Kayıt Ekle"
+                      >
+                        📜
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSelectedPatient(patient);
+                          setIsEditModalOpen(true);
+                        }}
+                        className="p-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg text-green-300 hover:text-green-200 transition-all duration-200"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        onClick={() => togglePatientStatus(patient)}
+                        className={`p-2 rounded-lg transition-all duration-200 ${
+                          patient.status === 'passive'
+                            ? 'bg-gray-500/20 hover:bg-gray-500/30 border border-gray-500/30 text-gray-300 hover:text-gray-200'
+                            : 'bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 text-green-300 hover:text-green-200'
+                        }`}
+                        title={patient.status === 'passive' ? 'Aktif Yap' : 'Pasif Yap'}
+                      >
+                        {patient.status === 'passive' ? '🔴' : '🟢'}
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -361,28 +490,24 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
       </div>
 
       {/* Add Patient Modal */}
-      {!isCallCenter && (
-        <AddPatientModal
-          isOpen={isAddModalOpen}
-          onClose={() => setIsAddModalOpen(false)}
-          onPatientAdded={fetchPatients}
-          doctorProfile={doctorProfile}
-        />
-      )}
+      <AddPatientModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onPatientAdded={fetchPatients}
+        doctorProfile={doctorProfile}
+      />
 
       {/* Edit Patient Modal */}
-      {!isCallCenter && (
-        <EditPatientModal
-          isOpen={isEditModalOpen}
-          onClose={() => {
-            setIsEditModalOpen(false);
-            setSelectedPatient(null);
-          }}
-          onPatientUpdated={fetchPatients}
-          patient={selectedPatient}
-          doctorProfile={doctorProfile}
-        />
-      )}
+      <EditPatientModal
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setSelectedPatient(null);
+        }}
+        onPatientUpdated={fetchPatients}
+        patient={selectedPatient}
+        doctorProfile={doctorProfile}
+      />
 
       {/* Patient Details Modal */}
       <PatientDetailsModal
@@ -395,23 +520,21 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
       />
 
       {/* Past History Modal - Using AnamrezFormModal in past history mode */}
-      {!isCallCenter && (
-        <AnamrezFormModal
-          isOpen={isPastHistoryModalOpen}
-          onClose={() => {
-            setIsPastHistoryModalOpen(false);
-            setSelectedPatientForHistory(null);
-          }}
-          patient={selectedPatientForHistory}
-          doctorProfile={doctorProfile}
-          onAnamrezCompleted={() => {
-            fetchPatients();
-            setIsPastHistoryModalOpen(false);
-            setSelectedPatientForHistory(null);
-          }}
-          isPastHistory={true}
-        />
-      )}
+      <AnamrezFormModal
+        isOpen={isPastHistoryModalOpen}
+        onClose={() => {
+          setIsPastHistoryModalOpen(false);
+          setSelectedPatientForHistory(null);
+        }}
+        patient={selectedPatientForHistory}
+        doctorProfile={doctorProfile}
+        onAnamrezCompleted={() => {
+          fetchPatients();
+          setIsPastHistoryModalOpen(false);
+          setSelectedPatientForHistory(null);
+        }}
+        isPastHistory={true}
+      />
     </div>
   );
 };

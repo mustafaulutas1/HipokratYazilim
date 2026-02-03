@@ -190,10 +190,9 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
       });
       setPharmacyWaitingPatients(pharmacyWaitingFiltered);
 
-      // Fetch fully completed treatments
+      // Fetch fully completed treatments (NOT discharged - those should disappear)
       const treatmentCompletedFiltered = allClinicPatients.filter(patient =>
-        patient.status === 'discharged' ||
-        (patient.status === 'treatment_completed' && patient.paymentCompleted)
+        patient.status === 'treatment_completed' && patient.paymentCompleted
       ).sort((a, b) => {
         const dateA = new Date(a.createdAt || 0).getTime();
         const dateB = new Date(b.createdAt || 0).getTime();

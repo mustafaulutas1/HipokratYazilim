@@ -46,6 +46,7 @@ interface AnamrezFormModalProps {
   appointmentId?: string;
   isPastHistory?: boolean;
   initialHistoryDate?: string;
+  existingAnamrezData?: any; // For editing existing completed anamnesis records
 }
 
 type SymptomKey =
@@ -242,7 +243,8 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   anamrezRecordId,
   appointmentId,
   isPastHistory = false,
-  initialHistoryDate = ''
+  initialHistoryDate = '',
+  existingAnamrezData
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [historyDate, setHistoryDate] = useState(initialHistoryDate);
@@ -624,8 +626,8 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
       if (previousAnamnez.toxicityAssessment?.toxicityScores) {
         setToxicityRatings(previousAnamnez.toxicityAssessment.toxicityScores);
       }
-    } else if (!usePreviousAnamnez) {
-      // Reset to empty form when toggle is off
+    } else if (!usePreviousAnamnez && !existingAnamrezData) {
+      // Reset to empty form when toggle is off (but not when editing existing data)
       setFormData({
         selectedDiagnosisSystems: [],
         selectedDoctorId: '',
@@ -752,7 +754,49 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
       });
       setToxicityRatings(initialToxicityRatings);
     }
-  }, [usePreviousAnamnez, previousAnamnez]);
+  }, [usePreviousAnamnez, previousAnamnez, existingAnamrezData]);
+
+  // Load existing anamnez data when editing a completed record
+  useEffect(() => {
+    if (isOpen && existingAnamrezData) {
+      // Pre-fill form with existing anamnez data for editing
+      setFormData(prev => ({
+        ...prev,
+        selectedDiagnosisSystems: existingAnamrezData.selectedDiagnosisSystems || [],
+        selectedDoctorId: existingAnamrezData.selectedDoctor?.id || '',
+        complaintDetails: existingAnamrezData.complaintDetails || '',
+        pastMedicalHistory: existingAnamrezData.pastMedicalHistory || '',
+        familyHistory: existingAnamrezData.familyHistory || '',
+        hasSurgery: existingAnamrezData.hasSurgery || '',
+        surgicalHistory: existingAnamrezData.surgicalHistory || '',
+        allergies: existingAnamrezData.allergies || '',
+        vitalSigns: existingAnamrezData.vitalSigns || prev.vitalSigns,
+        systemsReview: existingAnamrezData.systemsReview || prev.systemsReview,
+        physicalExamination: existingAnamrezData.physicalExamination || '',
+        medications: existingAnamrezData.medications || '',
+        socialHistory: existingAnamrezData.socialHistory || '',
+        additionalNotes: existingAnamrezData.additionalNotes || '',
+        symptomRatings: existingAnamrezData.symptomRatings || prev.symptomRatings,
+        diagnosisResponses: existingAnamrezData.diagnosisResponses || {},
+        additionalQuestions: existingAnamrezData.additionalQuestions || prev.additionalQuestions,
+        customQuestions: existingAnamrezData.customQuestions || [],
+        conventionalTreatment: {
+          currentMedications: existingAnamrezData.conventionalTreatment?.currentMedications || '',
+          otherTreatments: existingAnamrezData.conventionalTreatment?.otherTreatments || '',
+          deviceScanFileUrl: existingAnamrezData.conventionalTreatment?.deviceScanFileUrl || ''
+        },
+        optionalScans: existingAnamrezData.optionalScans || prev.optionalScans
+      }));
+
+      // Also set toxicity ratings if available
+      if (existingAnamrezData.toxicityAssessment?.toxicityScores) {
+        setToxicityRatings(existingAnamrezData.toxicityAssessment.toxicityScores);
+      }
+
+      // Disable the "use previous anamnez" toggle when editing
+      setUsePreviousAnamnez(false);
+    }
+  }, [isOpen, existingAnamrezData]);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -1490,12 +1534,15 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   React.useEffect(() => {
     if (isOpen) {
       setCurrentPage(1);
-      // Reset toxicity ratings to avoid carrying over from previous patients/sessions
-      setToxicityRatings(initialToxicityRatings);
+      // Only reset toxicity ratings if not editing existing data
+      if (!existingAnamrezData) {
+        // Reset toxicity ratings to avoid carrying over from previous patients/sessions
+        setToxicityRatings(initialToxicityRatings);
+      }
       // Reset previous anamnez toggle
       setUsePreviousAnamnez(false);
     }
-  }, [isOpen]);
+  }, [isOpen, existingAnamrezData]);
 
   // Check if patient has incomplete registration (from Hızlı Rezervasyon)
   React.useEffect(() => {

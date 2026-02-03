@@ -116,41 +116,8 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
       const ts = await getDocs(tq);
       const allTypes: TypeDoc[] = ts.docs.map(d => ({ id: d.id, name: (d.data() as any).name, durationMinutes: (d.data() as any).durationMinutes || 30, status: (d.data() as any).status }));
       // Filter to show only active appointment types (and legacy types without status)
-      let activeTypes = allTypes.filter(type => (type as any).status === 'active' || !(type as any).status);
-      
-      // Call Center için sadece "İlk Muayene" ve "Kontrol" içeren tipler göster ve 15 dk yap
-      const userRole = doctorProfile?.role || doctorProfile?.userType || 'doctor';
-      const isCallCenter = userRole === 'call-center';
-      if (isCallCenter) {
-        // Daha esnek filtreleme: "İlk Muayene" veya "Kontrol" içeren tipler
-        activeTypes = activeTypes
-          .filter(type => {
-            const originalName = type.name || '';
-            // Türkçe karakterleri normalize et - önce büyük harfleri küçült, sonra normalize et
-            let name = originalName.toLowerCase().trim();
-            
-            // Türkçe karakterleri normalize et (toLowerCase sonrası)
-            const normalizedName = name
-              .replace(/ı/g, 'i')
-              .replace(/i̇/g, 'i') // İ harfi normalize edilmiş hali
-              .replace(/ğ/g, 'g')
-              .replace(/ü/g, 'u')
-              .replace(/ş/g, 's')
-              .replace(/ö/g, 'o')
-              .replace(/ç/g, 'c');
-            
-            // "ilk" ve "muayene" kelimelerini kontrol et - daha esnek
-            // Ayrıca orijinal isimde de kontrol et (güvenlik için)
-            const hasIlk = normalizedName.includes('ilk') || originalName.toLowerCase().includes('ilk');
-            const hasMuayene = normalizedName.includes('muayene') || originalName.toLowerCase().includes('muayene');
-            const hasIlkMuayene = hasIlk && hasMuayene;
-            const hasKontrol = normalizedName.includes('kontrol') || originalName.toLowerCase().includes('kontrol');
-            
-            return hasIlkMuayene || hasKontrol;
-          })
-          .map(type => ({ ...type, durationMinutes: 15 })); // Tüm randevular 15 dk
-      }
-      
+      const activeTypes = allTypes.filter(type => (type as any).status === 'active' || !(type as any).status);
+
       setTypes(activeTypes);
       setError('');
     })();
@@ -405,16 +372,11 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
         const day = String(selectedDate.getDate()).padStart(2, '0');
         const dateISO = `${year}-${month}-${day}`;
         if (editedAppointment?.id) {
-          // Call Center için tüm randevular 15 dk
-          const userRole = doctorProfile?.role || doctorProfile?.userType || 'doctor';
-          const isCallCenter = userRole === 'call-center';
-          const finalDuration = isCallCenter ? 15 : selectedTypeObj.durationMinutes;
-          
           // edit: hasta adı sabit, diğerleri güncellenebilir
           await updateDoc(doc(db, 'appointments', editedAppointment.id), {
             typeId: selectedTypeObj.id,
             typeName: selectedTypeObj.name,
-            durationMinutes: finalDuration,
+            durationMinutes: selectedTypeObj.durationMinutes,
             dateISO,
             start: startTime,
             status: editedAppointment.status || 'confirmed',
@@ -457,13 +419,6 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
             // Regular appointment with registered patient
             appointmentData.patientId = selectedPatient;
             appointmentData.patientName = patients.find(p=>p.id===selectedPatient)?.fullName || 'Hasta';
-          }
-
-          // Call Center için tüm randevular 15 dk
-          const userRole = doctorProfile?.role || doctorProfile?.userType || 'doctor';
-          const isCallCenter = userRole === 'call-center';
-          if (isCallCenter) {
-            appointmentData.durationMinutes = 15;
           }
 
           await addDoc(collection(db, 'appointments'), appointmentData);

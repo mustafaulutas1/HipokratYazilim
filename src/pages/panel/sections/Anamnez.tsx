@@ -22,6 +22,9 @@ interface Patient {
   isAnamnezCompleted: boolean;
   createdAt: string;
   anamrezCompletedAt?: string;
+  assignedDoctorId?: string;
+  assignedDoctorName?: string;
+  status?: string;
 }
 
 interface AnamrezRecord {
@@ -73,6 +76,8 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
   const [isAnamrezModalOpen, setIsAnamrezModalOpen] = useState(false);
   const [isAnamrezViewModalOpen, setIsAnamrezViewModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'pending' | 'completed' | 'pastHistory'>('pending');
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingAnamrezRecord, setEditingAnamrezRecord] = useState<AnamrezRecord | null>(null);
 
   // Fetch anamnez records and patients
   const fetchData = async () => {
@@ -177,6 +182,34 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
     return completedAnamrezRecords.filter(record => record.patientId === patientId);
   };
 
+  // Check if anamnesis is editable (patient not sent to doctor from Assistant Screen)
+  const isAnamrezEditable = (patientId: string): boolean => {
+    const patient = getPatientById(patientId);
+    if (!patient) return false;
+
+    // If patient has been assigned to a doctor and is in active treatment flow, editing is disabled
+    const nonEditableStatuses = ['assigned_to_doctor', 'in_treatment', 'treatment_decided', 'treatment_continue'];
+
+    // If patient has an assigned doctor and status indicates they're in the doctor workflow
+    if (patient.assignedDoctorId && patient.status && nonEditableStatuses.includes(patient.status)) {
+      return false;
+    }
+
+    return true;
+  };
+
+  // Handle edit anamnesis
+  const handleEditAnamrez = (record: AnamrezRecord) => {
+    setEditingAnamrezRecord(record);
+    setSelectedAnamrezRecord(record);
+    const patient = getPatientById(record.patientId);
+    if (patient) {
+      setSelectedPatient(patient);
+    }
+    setIsEditMode(true);
+    setIsAnamrezModalOpen(true);
+  };
+
   // Handle selecting an anamnez record
   const handleSelectAnamrezRecord = (record: AnamrezRecord) => {
     setSelectedAnamrezRecord(record);
@@ -203,6 +236,10 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
       setSelectedAnamrezRecord(null);
       setSelectedPatient(null);
     }
+
+    // Reset edit mode
+    setIsEditMode(false);
+    setEditingAnamrezRecord(null);
 
     // Refresh data from database to ensure consistency
     fetchData();
@@ -535,6 +572,28 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                       Anamnez Doldur
                     </button>
                   )}
+                  {selectedAnamrezRecord.status === 'completed' && !selectedAnamrezRecord.isPastHistory && (
+                    <div className="flex items-center gap-2">
+                      {isAnamrezEditable(selectedAnamrezRecord.patientId) ? (
+                        <button
+                          onClick={() => handleEditAnamrez(selectedAnamrezRecord)}
+                          className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-xl text-blue-300 hover:text-blue-200 transition-all duration-200"
+                        >
+                          ✏️ Düzenle
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-2 px-3 py-2 bg-gray-500/20 border border-gray-500/30 rounded-xl">
+                          <span className="text-gray-400 text-sm">🔒 Doktora gönderildi</span>
+                        </div>
+                      )}
+                      <button
+                        onClick={() => setIsAnamrezViewModalOpen(true)}
+                        className="px-4 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-xl text-green-300 hover:text-green-200 transition-all duration-200"
+                      >
+                        👁️ Görüntüle
+                      </button>
+                    </div>
+                  )}
                   {selectedAnamrezRecord.isPastHistory && (
                     <button
                       onClick={() => setIsAnamrezViewModalOpen(true)}
@@ -670,12 +729,17 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
       {/* Anamnez Form Modal */}
       <AnamrezFormModal
         isOpen={isAnamrezModalOpen}
-        onClose={() => setIsAnamrezModalOpen(false)}
+        onClose={() => {
+          setIsAnamrezModalOpen(false);
+          setIsEditMode(false);
+          setEditingAnamrezRecord(null);
+        }}
         patient={selectedPatient}
         doctorProfile={doctorProfile}
         onAnamrezCompleted={handleAnamrezCompleted}
         anamrezRecordId={selectedAnamrezRecord?.id}
         appointmentId={selectedAnamrezRecord?.appointmentId}
+        existingAnamrezData={isEditMode ? editingAnamrezRecord : undefined}
       />
 
       {/* Anamnez View Modal */}
