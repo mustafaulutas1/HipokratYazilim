@@ -5,6 +5,7 @@ import AddPatientModal from './AddPatientModal';
 import EditPatientModal from '../components/EditPatientModal';
 import PatientDetailsModal from './PatientDetailsModal';
 import AnamrezFormModal from './AnamrezFormModal';
+import DischargeSurveyModal from '../components/DischargeSurveyModal';
 
 interface TreatmentOptions {
   protocol?: string;
@@ -55,7 +56,6 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [treatmentCompletedPatients, setTreatmentCompletedPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dischargingPatientId, setDischargingPatientId] = useState<string | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
@@ -63,6 +63,8 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
   const [selectedPatientForDetails, setSelectedPatientForDetails] = useState<Patient | null>(null);
   const [isPastHistoryModalOpen, setIsPastHistoryModalOpen] = useState(false);
   const [selectedPatientForHistory, setSelectedPatientForHistory] = useState<Patient | null>(null);
+  const [isSurveyModalOpen, setIsSurveyModalOpen] = useState(false);
+  const [selectedPatientForSurvey, setSelectedPatientForSurvey] = useState<Patient | null>(null);
 
   // Fetch patients from Firestore
   const fetchPatients = async () => {
@@ -157,34 +159,30 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
     }
   };
 
-  // Discharge patient - mark as discharged and remove from treatment completed list
-  const handleDischargePatient = async (patient: Patient) => {
-    try {
-      setDischargingPatientId(patient.id);
-      const patientRef = doc(db, 'patients', patient.id);
-      await updateDoc(patientRef, {
-        status: 'discharged',
-        dischargedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
+  // Discharge patient - open survey modal first
+  const handleDischargePatient = (patient: Patient) => {
+    setSelectedPatientForSurvey(patient);
+    setIsSurveyModalOpen(true);
+  };
 
+  // Called after survey is completed or skipped
+  const handleSurveyCompleted = () => {
+    if (selectedPatientForSurvey) {
       // Remove from treatment completed list
-      setTreatmentCompletedPatients(prev => prev.filter(p => p.id !== patient.id));
+      setTreatmentCompletedPatients(prev => prev.filter(p => p.id !== selectedPatientForSurvey.id));
 
       // Update in main patients list
       setPatients(prevPatients =>
         prevPatients.map(p =>
-          p.id === patient.id ? { ...p, status: 'discharged' } : p
+          p.id === selectedPatientForSurvey.id ? { ...p, status: 'discharged' } : p
         )
       );
 
-      console.log(`✅ Patient discharged: ${patient.fullName}`);
-    } catch (error) {
-      console.error('Error discharging patient:', error);
-      alert('Hasta çıkışı yapılırken bir hata oluştu. Lütfen tekrar deneyin.');
-    } finally {
-      setDischargingPatientId(null);
+      console.log(`✅ Patient discharged: ${selectedPatientForSurvey.fullName}`);
     }
+    
+    setIsSurveyModalOpen(false);
+    setSelectedPatientForSurvey(null);
   };
 
   const filteredPatients = patients.filter(patient => {
@@ -353,24 +351,10 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
 
                   <button
                     onClick={() => handleDischargePatient(patient)}
-                    disabled={dischargingPatientId === patient.id}
-                    className={`w-full py-3 rounded-xl font-semibold text-sm transition-all duration-300 flex items-center justify-center gap-2 ${
-                      dischargingPatientId === patient.id
-                        ? 'bg-gray-500/30 text-gray-300 cursor-not-allowed'
-                        : 'bg-gradient-to-r from-emerald-500 to-green-500 text-white hover:from-emerald-600 hover:to-green-600 hover:scale-[1.02] shadow-lg hover:shadow-emerald-500/30'
-                    }`}
+                    className="w-full py-3 rounded-xl font-semibold text-sm transition-all duration-300 flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-green-500 text-white hover:from-emerald-600 hover:to-green-600 hover:scale-[1.02] shadow-lg hover:shadow-emerald-500/30"
                   >
-                    {dischargingPatientId === patient.id ? (
-                      <>
-                        <span className="animate-spin">⏳</span>
-                        İşleniyor...
-                      </>
-                    ) : (
-                      <>
-                        <span>🚪</span>
-                        Hasta Çıkışı Yap
-                      </>
-                    )}
+                    <span>🚪</span>
+                    Hasta Çıkışı Yap
                   </button>
                 </div>
               ))}
@@ -534,6 +518,17 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
           setSelectedPatientForHistory(null);
         }}
         isPastHistory={true}
+      />
+
+      {/* Discharge Survey Modal */}
+      <DischargeSurveyModal
+        isOpen={isSurveyModalOpen}
+        onClose={() => {
+          setIsSurveyModalOpen(false);
+          setSelectedPatientForSurvey(null);
+        }}
+        patient={selectedPatientForSurvey}
+        onSurveyCompleted={handleSurveyCompleted}
       />
     </div>
   );

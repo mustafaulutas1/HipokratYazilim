@@ -88,11 +88,11 @@ interface PharmacyPatient {
     selectedProtocol?: SavedProtocol;
     customizedProtocol?: SavedProtocol;
   };
-  // Debt tracking fields
-  hasDebt?: boolean;
-  debtAmount?: number;
-  debtDate?: string;
-  debtReason?: string;
+  // Pharmacy-specific debt tracking fields (separate from treatment debts)
+  pharmacyHasDebt?: boolean;
+  pharmacyDebtAmount?: number;
+  pharmacyDebtDate?: string;
+  pharmacyDebtReason?: string;
 }
 
 const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorProfile }) => {
@@ -127,9 +127,13 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const [selectedDebts, setSelectedDebts] = useState<string[]>([]);
   const [loadingDebtHistory, setLoadingDebtHistory] = useState(false);
   const [debtsAddedToPayment, setDebtsAddedToPayment] = useState<boolean>(false);
-  const [singleDebtAddedToPayment, setSingleDebtAddedToPayment] = useState<boolean>(false);
   // Sale detail modal state
   const [selectedSaleDetail, setSelectedSaleDetail] = useState<any | null>(null);
+  // Extra medicine picker state
+  const [showExtraMedicinePicker, setShowExtraMedicinePicker] = useState(false);
+  const [extraMedicineSearch, setExtraMedicineSearch] = useState('');
+  // Sale note state
+  const [pharmacyNote, setPharmacyNote] = useState<string>('');
   const [formData, setFormData] = useState<Medication>({
     name: '',
     description: '',
@@ -405,7 +409,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
            sale.pharmacyPaymentMethod === 'havale' ? 'Havale/EFT' :
            sale.pharmacyPaymentMethod === 'cari' ? 'Cari' :
            sale.pharmacyPaymentMethod || '-'),
-      'Borç Durumu': sale.hasDebt && sale.debtAmount ? `${sale.debtAmount.toLocaleString('tr-TR')} TL` : 'Yok'
+      'Borç Durumu': sale.pharmacyHasDebt && sale.pharmacyDebtAmount ? `${sale.pharmacyDebtAmount.toLocaleString('tr-TR')} TL` : 'Yok'
     }));
     const salesSheet = utils.json_to_sheet(salesData);
     utils.book_append_sheet(workbook, salesSheet, 'Satış Detayları');
@@ -464,22 +468,6 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
           ...docSnap.data()
         });
       });
-      
-      // Also check for legacy debt stored directly on patient document
-      // If patient has debt but no records in pharmacy_debts, create a virtual record
-      if (patient.hasDebt && patient.debtAmount && patient.debtAmount > 0 && debts.length === 0) {
-        debts.push({
-          id: `legacy_${patient.id}`,
-          patientId: patient.id,
-          patientTcNo: patient.tcNo,
-          patientName: patient.fullName,
-          amount: patient.debtAmount,
-          reason: patient.debtReason || 'Önceki borç',
-          isPaid: false,
-          createdAt: patient.debtDate || new Date().toISOString(),
-          isLegacy: true // Mark as legacy debt
-        });
-      }
       
       // Sort by date, oldest first
       debts.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
@@ -588,6 +576,47 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     });
   };
 
+  // Add extra medicine from clinic inventory
+  const handleAddExtraMedicine = (medication: SavedMedication) => {
+    // Check if already in pending items
+    const alreadyExists = pendingSoldItems.some(item => item.medicationId === medication.id);
+    if (alreadyExists) {
+      alert('Bu ilaç zaten listede mevcut.');
+      return;
+    }
+
+    const newItem = {
+      name: medication.name,
+      dosage: medication.dosageForm,
+      type: 'extra',
+      medicationId: medication.id,
+      price: medication.price
+    };
+
+    setPendingSoldItems(prev => [...prev, newItem]);
+    setSelectedMedicines(prev => {
+      const newSelection = [...prev, medication.name];
+      // Recalculate total with new item included
+      const total = [...pendingSoldItems, newItem]
+        .filter(item => newSelection.includes(item.name))
+        .reduce((sum, item) => sum + (item.price || 0), 0);
+      setPharmacyPaymentAmount(total.toFixed(2));
+      return newSelection;
+    });
+    setShowExtraMedicinePicker(false);
+    setExtraMedicineSearch('');
+  };
+
+  // Remove extra medicine from pending items
+  const handleRemoveExtraMedicine = (medicineName: string) => {
+    setPendingSoldItems(prev => prev.filter(item => item.name !== medicineName));
+    setSelectedMedicines(prev => {
+      const newSelection = prev.filter(name => name !== medicineName);
+      recalculatePharmacyTotal(newSelection);
+      return newSelection;
+    });
+  };
+
   // Process the actual payment and complete sale
   const handleProcessPharmacyPayment = async () => {
     if (!selectedPatientForSale || !pharmacyPaymentAmount) return;
@@ -614,20 +643,14 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
         for (const debtId of selectedDebts) {
           const debtRecord = patientDebtHistory.find(d => d.id === debtId);
           
-          // Check if this is a legacy debt (stored directly on patient, not in pharmacy_debts)
-          if (debtRecord?.isLegacy) {
-            // Legacy debts will be cleared when we update patient record below
-            console.log('Paying legacy debt:', debtId, debtRecord.amount);
-          } else {
-            // Regular debt in pharmacy_debts collection
-            const debtRef = doc(db, 'pharmacy_debts', debtId);
-            batch.update(debtRef, {
-              isPaid: true,
-              paidAt: new Date().toISOString(),
-              paidAmount: debtRecord?.amount || 0,
-              paymentMethod: pharmacyPaymentMethod
-            });
-          }
+          // Update debt in pharmacy_debts collection
+          const debtRef = doc(db, 'pharmacy_debts', debtId);
+          batch.update(debtRef, {
+            isPaid: true,
+            paidAt: new Date().toISOString(),
+            paidAmount: debtRecord?.amount || 0,
+            paymentMethod: pharmacyPaymentMethod
+          });
         }
       }
       
@@ -673,6 +696,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
         // Multi-payment method support
         pharmacyPaymentMethods: pharmacyPaymentMethods.filter(m => m.amount > 0),
         pharmacyPaymentDate: new Date().toISOString(),
+        // Optional note for this sale
+        pharmacyNote: pharmacyNote.trim() || null,
         // Record what debts were paid in this transaction
         lastDebtPayment: selectedDebts.length > 0 ? {
           paidDebts: selectedDebts,
@@ -681,20 +706,20 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
         } : null
       };
       
-      // Update patient debt status
+      // Update patient pharmacy debt status (separate from treatment debts)
       if (totalRemainingDebt > 0) {
-        updateData.hasDebt = true;
-        updateData.debtAmount = Math.round(totalRemainingDebt * 100) / 100;
-        updateData.debtDate = new Date().toISOString();
+        updateData.pharmacyHasDebt = true;
+        updateData.pharmacyDebtAmount = Math.round(totalRemainingDebt * 100) / 100;
+        updateData.pharmacyDebtDate = new Date().toISOString();
         if (newDebtAmount > 0) {
-          updateData.debtReason = `Eczane borcu: ${newDebtAmount.toFixed(2)} TL`;
+          updateData.pharmacyDebtReason = `Eczane borcu: ${newDebtAmount.toFixed(2)} TL`;
         }
       } else {
-        // All debts are paid off
-        updateData.hasDebt = false;
-        updateData.debtAmount = 0;
-        updateData.debtReason = '';
-        updateData.debtDate = null;
+        // All pharmacy debts are paid off
+        updateData.pharmacyHasDebt = false;
+        updateData.pharmacyDebtAmount = 0;
+        updateData.pharmacyDebtReason = '';
+        updateData.pharmacyDebtDate = null;
       }
       
       batch.update(patientRef, updateData);
@@ -729,7 +754,9 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       setPatientDebtHistory([]);
       setSelectedDebts([]);
       setDebtsAddedToPayment(false);
-      setSingleDebtAddedToPayment(false);
+      setShowExtraMedicinePicker(false);
+      setExtraMedicineSearch('');
+      setPharmacyNote('');
       
       fetchPatients();
       fetchCompletedSales();
@@ -1602,20 +1629,20 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       <div
                         key={patient.id}
                         className={`bg-white/5 border rounded-xl p-6 transition-all duration-200 hover:bg-white/10 ${
-                          patient.hasDebt && patient.debtAmount && patient.debtAmount > 0
+                          patient.pharmacyHasDebt && patient.pharmacyDebtAmount && patient.pharmacyDebtAmount > 0
                             ? 'border-red-400/50 bg-red-500/10'
                             : 'border-white/20'
                         }`}
                       >
-                        {/* Debt Warning Badge */}
-                        {patient.hasDebt && patient.debtAmount && patient.debtAmount > 0 && (
+                        {/* Pharmacy Debt Warning Badge */}
+                        {patient.pharmacyHasDebt && patient.pharmacyDebtAmount && patient.pharmacyDebtAmount > 0 && (
                           <div className="mb-3 p-2 bg-red-500/20 border border-red-400/30 rounded-lg">
                             <div className="flex items-center gap-2">
                               <span className="text-lg">⚠️</span>
                               <div>
-                                <p className="text-red-200 text-xs font-bold">BORÇLU HASTA</p>
+                                <p className="text-red-200 text-xs font-bold">ECZANE BORCU</p>
                                 <p className="text-red-100 text-sm font-medium">
-                                  {patient.debtAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                                  {patient.pharmacyDebtAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
                                 </p>
                               </div>
                             </div>
@@ -1623,7 +1650,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                         )}
                         <div className="flex items-center gap-4 mb-4">
                           <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl text-white ${
-                            patient.hasDebt && patient.debtAmount && patient.debtAmount > 0
+                            patient.pharmacyHasDebt && patient.pharmacyDebtAmount && patient.pharmacyDebtAmount > 0
                               ? 'bg-gradient-to-br from-red-500 to-orange-600'
                               : 'bg-gradient-to-br from-cyan-500 to-blue-600'
                           }`}>
@@ -2274,6 +2301,9 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                     setPharmacyRemainingDebt('');
                     setPatientDebtHistory([]);
                     setSelectedDebts([]);
+                    setShowExtraMedicinePicker(false);
+                    setExtraMedicineSearch('');
+                    setPharmacyNote('');
                   }}
                   className="w-10 h-10 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-white transition-all"
                 >
@@ -2308,27 +2338,50 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       <div className="space-y-2 max-h-[200px] overflow-y-auto">
                         {pendingSoldItems.map((item, index) => {
                           const isSelected = selectedMedicines.includes(item.name);
+                          const isExtra = item.type === 'extra';
                           return (
                             <div 
                               key={index} 
-                              onClick={() => handleMedicineToggle(item.name)}
-                              className={`flex items-center gap-2 rounded-lg px-3 py-2 border cursor-pointer transition-all duration-200 ${
+                              className={`flex items-center gap-2 rounded-lg px-3 py-2 border transition-all duration-200 ${
                                 isSelected 
-                                  ? 'bg-green-50 border-green-300 hover:bg-green-100' 
+                                  ? isExtra 
+                                    ? 'bg-purple-50 border-purple-300 hover:bg-purple-100' 
+                                    : 'bg-green-50 border-green-300 hover:bg-green-100' 
                                   : 'bg-gray-50 border-gray-200 opacity-60 hover:opacity-80'
                               }`}
                             >
-                              <div className={`w-5 h-5 rounded flex items-center justify-center text-xs font-bold ${
-                                isSelected ? 'bg-green-500 text-white' : 'bg-gray-300 text-white'
-                              }`}>
+                              <div 
+                                onClick={() => handleMedicineToggle(item.name)}
+                                className={`w-5 h-5 rounded flex items-center justify-center text-xs font-bold cursor-pointer ${
+                                  isSelected 
+                                    ? isExtra ? 'bg-purple-500 text-white' : 'bg-green-500 text-white' 
+                                    : 'bg-gray-300 text-white'
+                                }`}
+                              >
                                 {isSelected ? '✓' : '✕'}
                               </div>
-                              <span className={`flex-1 text-sm ${isSelected ? 'text-gray-900' : 'text-gray-400 line-through'}`}>
+                              <span 
+                                onClick={() => handleMedicineToggle(item.name)}
+                                className={`flex-1 text-sm cursor-pointer ${isSelected ? 'text-gray-900' : 'text-gray-400 line-through'}`}
+                              >
                                 {item.name}
+                                {isExtra && <span className="ml-1 text-xs text-purple-600">(Ek)</span>}
                               </span>
-                              <span className={`text-sm font-bold ${isSelected ? 'text-green-700' : 'text-gray-400'}`}>
+                              <span className={`text-sm font-bold ${isSelected ? isExtra ? 'text-purple-700' : 'text-green-700' : 'text-gray-400'}`}>
                                 {item.price > 0 ? `${item.price.toFixed(2)} TL` : '-'}
                               </span>
+                              {isExtra && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemoveExtraMedicine(item.name);
+                                  }}
+                                  className="w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded flex items-center justify-center text-xs transition-colors"
+                                  title="Ek ilacı kaldır"
+                                >
+                                  ✕
+                                </button>
+                              )}
                             </div>
                           );
                         })}
@@ -2348,6 +2401,77 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       </div>
                     </div>
                   )}
+
+                  {/* Add Extra Medicine Section */}
+                  <div className="bg-white border border-gray-200 rounded-xl p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h5 className="font-semibold text-gray-800 flex items-center gap-2 text-sm">
+                        <span>➕</span>
+                        Ek İlaç Ekle
+                      </h5>
+                      <button
+                        type="button"
+                        onClick={() => setShowExtraMedicinePicker(!showExtraMedicinePicker)}
+                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 ${
+                          showExtraMedicinePicker
+                            ? 'bg-red-500 text-white hover:bg-red-600'
+                            : 'bg-green-500 text-white hover:bg-green-600'
+                        }`}
+                      >
+                        {showExtraMedicinePicker ? '✕' : '+'}
+                      </button>
+                    </div>
+
+                    {showExtraMedicinePicker && (
+                      <div className="space-y-3">
+                        {/* Search Input */}
+                        <input
+                          type="text"
+                          value={extraMedicineSearch}
+                          onChange={(e) => setExtraMedicineSearch(e.target.value)}
+                          placeholder="İlaç adı ile ara..."
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm"
+                        />
+
+                        {/* Medicines List */}
+                        <div className="max-h-[200px] overflow-y-auto space-y-2">
+                          {savedMedications
+                            .filter(med => 
+                              !pendingSoldItems.some(item => item.medicationId === med.id) &&
+                              (extraMedicineSearch === '' || 
+                               med.name.toLowerCase().includes(extraMedicineSearch.toLowerCase()) ||
+                               med.category.toLowerCase().includes(extraMedicineSearch.toLowerCase()))
+                            )
+                            .map((med) => (
+                              <div
+                                key={med.id}
+                                onClick={() => handleAddExtraMedicine(med)}
+                                className="flex items-center justify-between px-3 py-2 bg-gray-50 hover:bg-green-50 border border-gray-200 hover:border-green-300 rounded-lg cursor-pointer transition-all duration-200"
+                              >
+                                <div className="flex-1">
+                                  <span className="font-medium text-gray-900 text-sm">{med.name}</span>
+                                  <span className="text-xs text-gray-500 ml-2">({med.category})</span>
+                                </div>
+                                <span className="text-green-700 font-bold text-sm">{med.price.toFixed(2)} TL</span>
+                              </div>
+                            ))
+                          }
+                          {savedMedications.filter(med => 
+                            !pendingSoldItems.some(item => item.medicationId === med.id) &&
+                            (extraMedicineSearch === '' || 
+                             med.name.toLowerCase().includes(extraMedicineSearch.toLowerCase()) ||
+                             med.category.toLowerCase().includes(extraMedicineSearch.toLowerCase()))
+                          ).length === 0 && (
+                            <div className="text-center py-4 text-gray-500 text-sm">
+                              {savedMedications.length === 0 
+                                ? 'Henüz ilaç tanımlanmamış. İlaçlar sekmesinden ilaç ekleyin.'
+                                : 'Arama kriterine uygun ilaç bulunamadı.'}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Payment Amount */}
                   <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -2417,6 +2541,26 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       </div>
                     )}
                   </div>
+
+                  {/* Optional Note */}
+                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      📝 Not (Opsiyonel)
+                    </label>
+                    <textarea
+                      value={pharmacyNote}
+                      onChange={(e) => setPharmacyNote(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm resize-none"
+                      placeholder="Bu satış için eklemek istediğiniz notları yazın..."
+                      rows={2}
+                      maxLength={500}
+                    />
+                    {pharmacyNote && (
+                      <p className="text-gray-500 text-xs mt-1 text-right">
+                        {pharmacyNote.length}/500 karakter
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -2451,72 +2595,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                   ) : patientDebtHistory.length === 0 ? (
                     <div className="text-center py-12">
                       <div className="text-5xl mb-3">✅</div>
-                      <h5 className="font-semibold text-gray-700">Geçmiş Borç Yok</h5>
-                      <p className="text-gray-500 text-sm mt-1">Bu hastanın ödenmeyen eski işlemi bulunmuyor.</p>
-                      
-                      {/* Show current debt if exists */}
-                      {selectedPatientForSale.hasDebt && selectedPatientForSale.debtAmount && selectedPatientForSale.debtAmount > 0 && (
-                        <div className="mt-6 bg-red-100 border-2 border-red-300 rounded-xl p-4 text-left">
-                          <h5 className="font-bold text-red-900 flex items-center gap-2 mb-2">
-                            <span>🚨</span> Mevcut Borç Kaydı
-                          </h5>
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                              <span className="text-red-700">Borç Tutarı:</span>
-                              <span className="font-bold text-red-900 text-xl">
-                                {selectedPatientForSale.debtAmount.toFixed(2)} TL
-                              </span>
-                            </div>
-                            <div className="flex justify-between items-center text-sm">
-                              <span className="text-red-600">Tarih:</span>
-                              <span className="text-red-800">
-                                {selectedPatientForSale.debtDate 
-                                  ? new Date(selectedPatientForSale.debtDate).toLocaleDateString('tr-TR')
-                                  : '-'}
-                              </span>
-                            </div>
-                            {selectedPatientForSale.debtReason && (
-                              <p className="text-red-600 text-sm pt-2 border-t border-red-200">
-                                Sebep: {selectedPatientForSale.debtReason}
-                              </p>
-                            )}
-                          </div>
-                          
-                          {/* Quick add to payment */}
-                          <button
-                            onClick={() => {
-                              const currentAmount = parseFloat(pharmacyPaymentAmount) || 0;
-                              const debtAmount = selectedPatientForSale.debtAmount || 0;
-                              if (singleDebtAddedToPayment) {
-                                // Remove from payment
-                                setPharmacyPaymentAmount(Math.max(0, currentAmount - debtAmount).toFixed(2));
-                                setSingleDebtAddedToPayment(false);
-                              } else {
-                                // Add to payment
-                                setPharmacyPaymentAmount((currentAmount + debtAmount).toFixed(2));
-                                setSingleDebtAddedToPayment(true);
-                              }
-                            }}
-                            className={`w-full mt-3 px-4 py-2 ${
-                              singleDebtAddedToPayment
-                                ? 'bg-orange-500 hover:bg-orange-600'
-                                : 'bg-red-600 hover:bg-red-700'
-                            } text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2`}
-                          >
-                            {singleDebtAddedToPayment ? (
-                              <>
-                                <span>↩️</span>
-                                Geri Al ({selectedPatientForSale.debtAmount.toFixed(2)} TL)
-                              </>
-                            ) : (
-                              <>
-                                <span>➕</span>
-                                Ödemeye Ekle ({selectedPatientForSale.debtAmount.toFixed(2)} TL)
-                              </>
-                            )}
-                          </button>
-                        </div>
-                      )}
+                      <h5 className="font-semibold text-gray-700">Eczane Borcu Yok</h5>
+                      <p className="text-gray-500 text-sm mt-1">Bu hastanın ödenmeyen eczane borcu bulunmuyor.</p>
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -2668,7 +2748,6 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       setPatientDebtHistory([]);
                       setSelectedDebts([]);
                       setDebtsAddedToPayment(false);
-                      setSingleDebtAddedToPayment(false);
                     }}
                     className="px-6 py-3 bg-gray-200 hover:bg-gray-300 border border-gray-300 rounded-xl text-gray-700 font-medium transition-all duration-200"
                   >
@@ -2833,6 +2912,17 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                   <p className="text-gray-400 text-center py-4">İlaç bilgisi bulunamadı</p>
                 )}
               </div>
+
+              {/* Sale Note */}
+              {selectedSaleDetail.pharmacyNote && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <h3 className="text-sm font-medium text-blue-700 mb-2 flex items-center gap-2">
+                    <span>📝</span>
+                    Satış Notu
+                  </h3>
+                  <p className="text-gray-700 text-sm whitespace-pre-wrap">{selectedSaleDetail.pharmacyNote}</p>
+                </div>
+              )}
             </div>
 
             {/* Modal Footer */}

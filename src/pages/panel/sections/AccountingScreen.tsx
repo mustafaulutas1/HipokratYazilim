@@ -110,6 +110,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
   const [paymentMethod, setPaymentMethod] = useState<string>('nakit');
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodEntry[]>([{ method: 'nakit', amount: 0 }]);
   const [selectedApplications, setSelectedApplications] = useState<string[]>([]);
+  const [includeMuayene, setIncludeMuayene] = useState<boolean>(true);
   const [refundAmount, setRefundAmount] = useState<string>('');
   const [refundMethod, setRefundMethod] = useState<string>('nakit');
   const [refundMethods, setRefundMethods] = useState<PaymentMethodEntry[]>([{ method: 'nakit', amount: 0 }]);
@@ -312,6 +313,8 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         // Save which applications the patient will actually receive
         approvedApplications: selectedApplications,
         removedApplications: removedApplications,
+        // Muayene (Examination) selection
+        includeMuayene: includeMuayene,
         status: 'treatment_continue', // Send to treatment continue (TreatmentPanel)
         updatedAt: new Date().toISOString(),
         // Discount tracking for reporting
@@ -1230,6 +1233,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                         // Initialize selected applications with all applications
                         const allApplications = patient.treatmentOptions?.selectedMainApplications || [];
                         setSelectedApplications([...allApplications]);
+                        setIncludeMuayene(true);
                         setIsPaymentModalOpen(true);
                       }}
                       className="px-4 py-2 bg-green-500/20 border border-green-400 rounded-xl text-green-200 hover:bg-green-500/30 transition-all duration-200 flex items-center gap-2"
@@ -1419,6 +1423,40 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
             </div>
 
             <div className="p-6 space-y-4">
+              {/* Muayene (Ödeme Kalemi) */}
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 mb-4">
+                <h4 className="font-semibold text-emerald-900 mb-3 flex items-center gap-2">
+                  <span className="text-lg">🩺</span>
+                  Muayene
+                </h4>
+                <div 
+                  onClick={() => setIncludeMuayene(!includeMuayene)}
+                  className={`flex items-center gap-2 rounded-lg px-3 py-2 border cursor-pointer transition-all duration-200 ${
+                    includeMuayene 
+                      ? 'bg-white border-emerald-300 hover:bg-emerald-50' 
+                      : 'bg-gray-100 border-gray-300 opacity-60 hover:opacity-80'
+                  }`}
+                >
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold ${
+                    includeMuayene ? 'bg-emerald-500 text-white' : 'bg-gray-400 text-white'
+                  }`}>
+                    {includeMuayene ? '✓' : '✕'}
+                  </div>
+                  <span className={`font-medium ${
+                    includeMuayene ? 'text-emerald-900' : 'text-gray-500 line-through'
+                  }`}>
+                    Muayene Ücreti
+                  </span>
+                  <span className={`ml-auto text-xs px-2 py-1 rounded-full ${
+                    includeMuayene 
+                      ? 'text-green-600 bg-green-100' 
+                      : 'text-red-600 bg-red-100'
+                  }`}>
+                    {includeMuayene ? 'Dahil' : 'Hariç'}
+                  </span>
+                </div>
+              </div>
+
               {/* Selected Applications Display - Clickable to toggle */}
               {selectedPatient.treatmentOptions?.selectedMainApplications && selectedPatient.treatmentOptions.selectedMainApplications.length > 0 && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
@@ -1891,6 +1929,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   setPaymentMethod('nakit');
                   setPaymentMethods([{ method: 'nakit', amount: 0 }]);
                   setSelectedApplications([]);
+                  setIncludeMuayene(true);
                   setDiscountPercent('');
                   setIsDiscountActive(false);
                   setOriginalAmount('');

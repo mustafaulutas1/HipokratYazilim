@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot, orderBy, limit } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import AnamrezViewModal from './AnamrezViewModal';
 import DoctorNotesModal from './DoctorNotesModal';
 import DoctorMessageModal from '../components/DoctorMessageModal';
 import DoctorSelectionModal from '../components/DoctorSelectionModal';
+import { useAuth } from '../../../context/AuthContext';
 
 type PanelSection = 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
 
@@ -56,7 +57,29 @@ interface AnamrezRecord {
   updatedAt: string;
 }
 
+interface DoctorMessage {
+  id: string;
+  fromUserId: string;
+  fromUserName: string;
+  fromUserRole: string;
+  toUserId: string;
+  toDoctorName: string;
+  message: string;
+  messageType: 'info' | 'urgent' | 'question';
+  patientId?: string;
+  patientName?: string;
+  clinicId: string;
+  isRead: boolean;
+  createdAt: string;
+  timestamp: any;
+  reply?: string;
+  replyAt?: string;
+  repliedBy?: string;
+  repliedByName?: string;
+}
+
 const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectionChange }) => {
+  const { user } = useAuth();
   const [stats, setStats] = useState<PatientStats>({
     totalPatients: 0,
     todayAppointments: 0,
@@ -77,6 +100,10 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
   const [activeListType, setActiveListType] = useState<'anamnez_completed' | 'with_doctor' | 'waiting_accounting' | 'treatment_continue' | 'pharmacy_waiting' | 'treatment_completed' | 'emergency'>('anamnez_completed');
   const [withDoctorPatients, setWithDoctorPatients] = useState<WaitingPatient[]>([]);
   const [treatmentContinuePatients, setTreatmentContinuePatients] = useState<WaitingPatient[]>([]);
+  // Doctor replies state
+  const [doctorReplies, setDoctorReplies] = useState<DoctorMessage[]>([]);
+  const [repliesUnreadCount, setRepliesUnreadCount] = useState(0);
+  const [isRepliesExpanded, setIsRepliesExpanded] = useState(false);
   const [pharmacyWaitingPatients, setPharmacyWaitingPatients] = useState<WaitingPatient[]>([]);
 
   // Process patients data and update all state - used by real-time listener
@@ -297,6 +324,47 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
     };
   }, [doctorProfile?.clinicId, processPatientData]);
 
+  // Listen for doctor replies to messages sent by this assistant
+  useEffect(() => {
+    if (!user?.uid || !doctorProfile?.clinicId) return;
+
+    console.log('🔍 AssistantPanel: Setting up doctor replies listener for user:', user.uid);
+    
+    // Query messages sent by this user that have been replied to
+    const repliesQuery = query(
+      collection(db, 'doctorMessages'),
+      where('clinicId', '==', doctorProfile.clinicId),
+      where('fromUserId', '==', user.uid),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    );
+
+    const unsubscribe = onSnapshot(repliesQuery, (snapshot) => {
+      const fetchedMessages = snapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as DoctorMessage))
+        .filter(msg => msg.reply); // Only show messages that have replies
+
+      console.log('📨 AssistantPanel: Found messages with replies:', fetchedMessages.length);
+      setDoctorReplies(fetchedMessages);
+      
+      // Count unread replies (replies that are newer than the message read time)
+      // For simplicity, we'll consider all new replies as unread until they're viewed
+      const unreadReplies = fetchedMessages.filter(msg => {
+        const replyTime = msg.replyAt ? new Date(msg.replyAt).getTime() : 0;
+        const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+        return replyTime > oneDayAgo;
+      }).length;
+      
+      setRepliesUnreadCount(unreadReplies);
+      console.log('📨 AssistantPanel: New replies (last 24h):', unreadReplies);
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid, doctorProfile?.clinicId]);
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('tr-TR', {
@@ -493,6 +561,94 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
           </div>
         </div>
       </div>
+
+      {/* Doctor Replies Section - Collapsible */}
+      {doctorReplies.length > 0 && (
+        <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">💬</span>
+              <h2 className="text-2xl font-bold text-white">
+                Doktor Yanıtları
+                {repliesUnreadCount > 0 && (
+                  <span className="ml-2 px-2 py-1 bg-green-500 text-white text-sm rounded-full">
+                    {repliesUnreadCount} yeni
+                  </span>
+                )}
+              </h2>
+            </div>
+            <button
+              onClick={() => setIsRepliesExpanded(!isRepliesExpanded)}
+              className="px-4 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-xl text-green-300 hover:text-green-200 transition-all duration-200 flex items-center gap-2"
+            >
+              <span className="text-sm">
+                {isRepliesExpanded ? 'Gizle' : 'Göster'}
+              </span>
+              <span className={`transform transition-transform duration-200 ${isRepliesExpanded ? 'rotate-180' : ''}`}>
+                ▼
+              </span>
+            </button>
+          </div>
+
+          {isRepliesExpanded && (
+            <div className="space-y-4 max-h-96 overflow-y-auto">
+              {doctorReplies.map((msg) => (
+                <div 
+                  key={msg.id}
+                  className="p-4 rounded-xl border transition-all duration-200 bg-gradient-to-r from-green-500/10 to-blue-500/10 border-green-500/30"
+                >
+                  {/* Original message info */}
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-lg">📤</span>
+                      <span className="text-white/70 text-sm">Gönderdiğiniz mesaj:</span>
+                      <span className={`text-xs px-2 py-1 rounded-full border ${
+                        msg.messageType === 'urgent' ? 'bg-red-100 text-red-700 border-red-200' :
+                        msg.messageType === 'question' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                        'bg-green-100 text-green-700 border-green-200'
+                      }`}>
+                        {msg.messageType === 'urgent' ? 'Acil' : msg.messageType === 'question' ? 'Soru' : 'Bilgi'}
+                      </span>
+                    </div>
+                    <span className="text-white/50 text-xs">
+                      {formatDate(msg.createdAt)}
+                    </span>
+                  </div>
+
+                  {msg.patientName && (
+                    <div className="mb-3 p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                      <div className="flex items-center gap-2 text-blue-300">
+                        <span className="text-sm">👤</span>
+                        <span className="text-sm font-medium">Hasta: {msg.patientName}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <p className="text-white/60 text-sm leading-relaxed mb-4 italic">
+                    "{msg.message}"
+                  </p>
+
+                  {/* Doctor's reply */}
+                  <div className="bg-green-500/20 border border-green-500/30 rounded-xl p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-lg">👨‍⚕️</span>
+                      <span className="text-green-300 font-medium">
+                        Dr. {msg.repliedByName || msg.toDoctorName}
+                      </span>
+                      <span className="text-green-400/60 text-xs">
+                        {msg.replyAt ? formatDate(msg.replyAt) : ''}
+                      </span>
+                    </div>
+                    <p className="text-green-100 leading-relaxed">
+                      {msg.reply}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* List Filter Buttons */}
       <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">

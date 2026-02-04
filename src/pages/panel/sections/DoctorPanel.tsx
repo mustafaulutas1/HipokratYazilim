@@ -4,6 +4,7 @@ import { db } from '../../../firebase/config';
 import { useAuth } from '../../../context/AuthContext';
 import AnamrezViewModal from './AnamrezViewModal';
 import TreatmentModal from '../components/TreatmentModal';
+import DoctorReplyModal from '../components/DoctorReplyModal';
 
 interface DoctorPanelProps {
   doctorProfile?: any;
@@ -76,6 +77,10 @@ interface DoctorMessage {
   isRead: boolean;
   createdAt: string;
   timestamp: any;
+  reply?: string;
+  replyAt?: string;
+  repliedBy?: string;
+  repliedByName?: string;
 }
 
 const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
@@ -93,6 +98,8 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
   const [isTreatmentModalOpen, setIsTreatmentModalOpen] = useState(false);
   const [treatmentPatient, setTreatmentPatient] = useState<AssignedPatient | null>(null);
   const [messages, setMessages] = useState<DoctorMessage[]>([]);
+  const [selectedMessage, setSelectedMessage] = useState<DoctorMessage | null>(null);
+  const [isReplyModalOpen, setIsReplyModalOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isMessagesExpanded, setIsMessagesExpanded] = useState(false);
   const [patientsSectionRef, setPatientsSectionRef] = useState<HTMLDivElement | null>(null);
@@ -248,6 +255,15 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
       console.log('✅ Message marked as read:', messageId);
     } catch (error) {
       console.error('❌ Error marking message as read:', error);
+    }
+  };
+
+  const handleOpenReplyModal = (message: DoctorMessage) => {
+    setSelectedMessage(message);
+    setIsReplyModalOpen(true);
+    // Also mark as read when opening
+    if (!message.isRead) {
+      markMessageAsRead(message.id);
     }
   };
 
@@ -511,23 +527,28 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
                 {messages.map((message) => (
                   <div 
                     key={message.id}
-                    className={`p-4 rounded-xl border transition-all duration-200 ${
+                    className={`p-4 rounded-xl border transition-all duration-200 cursor-pointer hover:shadow-lg ${
                       message.isRead 
-                        ? 'bg-white/5 border-white/20' 
-                        : 'bg-blue-500/10 border-blue-500/30 shadow-lg'
+                        ? 'bg-white/5 border-white/20 hover:bg-white/10' 
+                        : 'bg-blue-500/10 border-blue-500/30 shadow-lg hover:bg-blue-500/20'
                     }`}
-                    onClick={() => !message.isRead && markMessageAsRead(message.id)}
+                    onClick={() => handleOpenReplyModal(message)}
                   >
                     <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-lg">👨‍💼</span>
-                        <span className="text-white font-medium">Dr. {message.toDoctorName}</span>
+                        <span className="text-white font-medium">{message.fromUserName}</span>
                         <span className={`text-xs px-2 py-1 rounded-full border ${getMessageTypeColor(message.messageType)}`}>
                           {getMessageTypeLabel(message.messageType)}
                         </span>
                         {!message.isRead && (
                           <span className="text-xs bg-red-500 text-white px-2 py-1 rounded-full">
                             Yeni
+                          </span>
+                        )}
+                        {message.reply && (
+                          <span className="text-xs bg-green-500/20 border border-green-500/30 text-green-300 px-2 py-1 rounded-full">
+                            ✅ Yanıtlandı
                           </span>
                         )}
                       </div>
@@ -548,6 +569,27 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
                     <p className="text-white/80 text-sm leading-relaxed">
                       {message.message}
                     </p>
+
+                    {/* Reply Preview */}
+                    {message.reply && (
+                      <div className="mt-3 p-2 bg-green-500/10 border border-green-500/20 rounded-lg">
+                        <div className="flex items-center gap-2 text-green-300 mb-1">
+                          <span className="text-sm">💬</span>
+                          <span className="text-xs font-medium">Yanıtınız:</span>
+                        </div>
+                        <p className="text-green-200/80 text-xs line-clamp-2">
+                          {message.reply}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Click hint */}
+                    <div className="mt-3 flex items-center justify-end">
+                      <span className="text-xs text-white/40 flex items-center gap-1">
+                        <span>👆</span>
+                        {message.reply ? 'Detay için tıklayın' : 'Yanıtlamak için tıklayın'}
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -736,6 +778,16 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
         onClose={() => setIsTreatmentModalOpen(false)}
         patient={treatmentPatient}
         onStartTreatment={handleStartTreatment}
+      />
+
+      <DoctorReplyModal
+        isOpen={isReplyModalOpen}
+        onClose={() => {
+          setIsReplyModalOpen(false);
+          setSelectedMessage(null);
+        }}
+        message={selectedMessage}
+        doctorProfile={doctorProfile}
       />
     </div>
   );

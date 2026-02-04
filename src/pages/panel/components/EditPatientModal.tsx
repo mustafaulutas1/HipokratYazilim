@@ -22,6 +22,7 @@ interface Patient {
   country?: string;
   residenceCity?: string;
   visitReason: string;
+  referans?: string;
   createdAt: string;
   updatedAt: string;
   clinicId?: string;
@@ -51,7 +52,8 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
     registeredProvince: '',
     country: 'Türkiye',
     residenceCity: '',
-    visitReason: ''
+    visitReason: '',
+    referans: ''
   });
 
   const [loading, setLoading] = useState(false);
@@ -75,7 +77,8 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
         registeredProvince: patient.registeredProvince || '',
         country: patient.country || 'Türkiye',
         residenceCity: patient.residenceCity || '',
-        visitReason: patient.visitReason || ''
+        visitReason: patient.visitReason || '',
+        referans: patient.referans || ''
       });
       setErrors({});
     }
@@ -519,6 +522,30 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
               className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Ziyaret nedeni (opsiyonel)"
             />
+          </div>
+
+          {/* Referans */}
+          <div>
+            <label className="block text-gray-700 text-sm font-medium mb-2">
+              Referans (Bizi Nereden Buldunuz?)
+            </label>
+            <select
+              name="referans"
+              value={formData.referans}
+              onChange={handleInputChange}
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">Seçiniz</option>
+              <option value="Internet Araması">İnternet Araması (Google vb.)</option>
+              <option value="Sosyal Medya">Sosyal Medya (Instagram, Facebook vb.)</option>
+              <option value="Arkadaş/Tanıdık Tavsiyesi">Arkadaş/Tanıdık Tavsiyesi</option>
+              <option value="Aile Tavsiyesi">Aile Tavsiyesi</option>
+              <option value="Doktor Tavsiyesi">Doktor Tavsiyesi</option>
+              <option value="Reklam">Reklam (TV, Radyo, Billboard vb.)</option>
+              <option value="Önceki Hasta">Önceki Hasta</option>
+              <option value="Yakın Çevre">Yakın Çevre</option>
+              <option value="Diğer">Diğer</option>
+            </select>
           </div>
 
           {/* Action Buttons */}
