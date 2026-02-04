@@ -179,8 +179,8 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
         updatedAt: new Date().toISOString(),
       };
 
-      // Add patient and get the document reference
-      const patientDocRef = await addDoc(collection(db, 'patients'), patientData);
+      // Add patient to database
+      await addDoc(collection(db, 'patients'), patientData);
 
       toast.success('Hasta başarıyla oluşturuldu!');
 

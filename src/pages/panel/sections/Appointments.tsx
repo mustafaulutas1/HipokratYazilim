@@ -466,7 +466,6 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
               const cancelledAppointments = list.filter(({ a }) => a.status === 'cancelled');
               const hasActiveAny = activeAppointments.length > 0;
               const hasCancelledAny = cancelledAppointments.length > 0;
-              const hasAny = hasActiveAny || hasCancelledAny;
               
               // Calculate row height based on max of active or cancelled appointments
               const activeHeight = Math.max(1, activeAppointments.length) * 56;
@@ -533,7 +532,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
                         
                         {/* Cancelled appointments list */}
                         <div className="p-1 space-y-1">
-                          {cancelledAppointments.map(({ a, dur }, idx2) => {
+                          {cancelledAppointments.map(({ a }, idx2) => {
                             return (
                               <div key={`cancelled-${a.id}-${idx2}`}
                                 className="bg-red-500/10 border border-red-500/20 rounded px-2 py-1.5 cursor-pointer hover:bg-red-500/20 transition-colors"

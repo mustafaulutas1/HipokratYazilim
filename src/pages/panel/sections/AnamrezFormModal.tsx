@@ -747,7 +747,8 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
           patoloji: {
             enabled: false,
             fileUrl: ''
-          }
+          },
+          hasMediaGallery: false
         }
       });
       setToxicityRatings(initialToxicityRatings);
@@ -1377,12 +1378,19 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
       setFormData({
         selectedDiagnosisSystems: [],
         selectedDoctorId: '',
+        hasContagiousDisease: '',
+        contagiousDiseaseDetails: '',
         complaintDetails: '',
         pastMedicalHistory: '',
         familyHistory: '',
         hasSurgery: '',
         surgicalHistory: '',
         allergies: '',
+        hasCovidVaccine: '',
+        covidVaccineDetails: '',
+        hasBirthHistory: '',
+        birthHistoryDetails: '',
+        numberOfBirths: '',
         vitalSigns: {
           bloodPressure: '',
           pulse: '',
@@ -1476,7 +1484,20 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
           toxicityScan: {
             enabled: false,
             fileUrl: ''
-          }
+          },
+          biyokimya: {
+            enabled: false,
+            fileUrl: ''
+          },
+          radyoloji: {
+            enabled: false,
+            fileUrl: ''
+          },
+          patoloji: {
+            enabled: false,
+            fileUrl: ''
+          },
+          hasMediaGallery: false
         }
       });
     } catch (error) {

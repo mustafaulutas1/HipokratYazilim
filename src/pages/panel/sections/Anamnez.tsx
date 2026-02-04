@@ -76,8 +76,8 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
   const [isAnamrezModalOpen, setIsAnamrezModalOpen] = useState(false);
   const [isAnamrezViewModalOpen, setIsAnamrezViewModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'pending' | 'completed' | 'pastHistory'>('pending');
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [editingAnamrezRecord, setEditingAnamrezRecord] = useState<AnamrezRecord | null>(null);
+  const [, setIsEditMode] = useState(false);
+  const [, setEditingAnamrezRecord] = useState<AnamrezRecord | null>(null);
 
   // Fetch anamnez records and patients
   const fetchData = async () => {
@@ -739,7 +739,6 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
         onAnamrezCompleted={handleAnamrezCompleted}
         anamrezRecordId={selectedAnamrezRecord?.id}
         appointmentId={selectedAnamrezRecord?.appointmentId}
-        existingAnamrezData={isEditMode ? editingAnamrezRecord : undefined}
       />
 
       {/* Anamnez View Modal */}
