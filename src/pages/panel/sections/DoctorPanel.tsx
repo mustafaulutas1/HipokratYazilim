@@ -293,6 +293,31 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
     });
   };
 
+  // Helper function to check if treatment protocol has any medications/drugs
+  const hasMedicationsInProtocol = (treatmentOptions: TreatmentOptions): boolean => {
+    const protocol = treatmentOptions.customizedProtocol || treatmentOptions.selectedProtocol;
+    
+    if (!protocol?.phases) return false;
+    
+    // Check remember and regeneration phases for medications
+    const phases = protocol.phases;
+    const hasPhaseMedications = [
+      phases.remember?.treatment,
+      phases.regeneration1?.treatment,
+      phases.regeneration2?.treatment,
+      phases.regeneration3?.treatment,
+      phases.regeneration4?.treatment
+    ].some(treatment => treatment && treatment !== '-' && treatment.trim() !== '');
+    
+    // Check mainTreatments array
+    const hasMainTreatments = phases.mainTreatments && 
+      Array.isArray(phases.mainTreatments) && 
+      phases.mainTreatments.length > 0 &&
+      phases.mainTreatments.some((mt: any) => mt.treatment && mt.treatment.trim() !== '');
+    
+    return hasPhaseMedications || hasMainTreatments;
+  };
+
   const handleStartTreatment = async (patient: AssignedPatient, treatmentOptions: TreatmentOptions) => {
     try {
       const patientRef = doc(db, 'patients', patient.id);
@@ -304,9 +329,13 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
         method: patient.paymentMethod
       } : null;
 
+      // Check if treatment has medications - only send to pharmacy if there are drugs
+      const shouldGoToPharmacy = hasMedicationsInProtocol(treatmentOptions);
+
       await updateDoc(patientRef, {
         status: 'treatment_decided',
-        pharmacyStatus: 'waiting', // Patient also goes to pharmacy
+        // Only set pharmacyStatus to 'waiting' if there are medications in the protocol
+        ...(shouldGoToPharmacy && { pharmacyStatus: 'waiting' }),
         treatmentStartedAt: new Date().toISOString(),
         treatmentOptions: treatmentOptions,
         // Reset payment status for new treatment
@@ -320,7 +349,12 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
         }),
         updatedAt: new Date().toISOString()
       });
-      console.log(`✅ Treatment decided for patient: ${patient.fullName} - Sent to both Muhasebe and Eczane`);
+      
+      if (shouldGoToPharmacy) {
+        console.log(`✅ Treatment decided for patient: ${patient.fullName} - Sent to both Muhasebe and Eczane`);
+      } else {
+        console.log(`✅ Treatment decided for patient: ${patient.fullName} - Sent to Muhasebe only (no medications in protocol)`);
+      }
     } catch (error) {
       console.error('❌ Error starting treatment:', error);
       alert('Tedaviye başlarken bir hata oluştu. Lütfen tekrar deneyin.');

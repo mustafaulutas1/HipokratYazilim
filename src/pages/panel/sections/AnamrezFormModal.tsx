@@ -46,7 +46,6 @@ interface AnamrezFormModalProps {
   appointmentId?: string;
   isPastHistory?: boolean;
   initialHistoryDate?: string;
-  existingAnamrezData?: any; // For editing existing completed anamnesis records
 }
 
 type SymptomKey =
@@ -243,8 +242,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   anamrezRecordId,
   appointmentId,
   isPastHistory = false,
-  initialHistoryDate = '',
-  existingAnamrezData
+  initialHistoryDate = ''
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [historyDate, setHistoryDate] = useState(initialHistoryDate);
@@ -400,11 +398,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
       monthlyChickenConsumption: '',
       dailyWaterConsumption: '',
       smokingFrequency: '',
-      alcoholFrequency: '',
-      maritalStatus: '',
-      activeSexualLife: '',
-      gebelikGecmisi: '',
-      sonAdetTarihi: ''
+      alcoholFrequency: ''
     },
 
     // Custom questions added by user
@@ -630,8 +624,8 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
       if (previousAnamnez.toxicityAssessment?.toxicityScores) {
         setToxicityRatings(previousAnamnez.toxicityAssessment.toxicityScores);
       }
-    } else if (!usePreviousAnamnez && !existingAnamrezData) {
-      // Reset to empty form when toggle is off (but not when editing existing data)
+    } else if (!usePreviousAnamnez) {
+      // Reset to empty form when toggle is off
       setFormData({
         selectedDiagnosisSystems: [],
         selectedDoctorId: '',
@@ -721,11 +715,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
           monthlyChickenConsumption: '',
           dailyWaterConsumption: '',
           smokingFrequency: '',
-          alcoholFrequency: '',
-          maritalStatus: '',
-          activeSexualLife: '',
-          gebelikGecmisi: '',
-          sonAdetTarihi: ''
+          alcoholFrequency: ''
         },
         customQuestions: [],
         conventionalTreatment: {
@@ -762,78 +752,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
       });
       setToxicityRatings(initialToxicityRatings);
     }
-  }, [usePreviousAnamnez, previousAnamnez, existingAnamrezData]);
-
-  // Load existing anamnez data when editing a completed record
-  useEffect(() => {
-    if (isOpen && existingAnamrezData) {
-      // Pre-fill form with existing anamnez data for editing
-      setFormData(prev => ({
-        ...prev,
-        selectedDiagnosisSystems: existingAnamrezData.selectedDiagnosisSystems || [],
-        selectedDoctorId: existingAnamrezData.selectedDoctor?.id || '',
-        complaintDetails: existingAnamrezData.complaintDetails || '',
-        pastMedicalHistory: existingAnamrezData.pastMedicalHistory || '',
-        familyHistory: existingAnamrezData.familyHistory || '',
-        hasSurgery: existingAnamrezData.hasSurgery || '',
-        surgicalHistory: existingAnamrezData.surgicalHistory || '',
-        allergies: existingAnamrezData.allergies || '',
-        vitalSigns: existingAnamrezData.vitalSigns || prev.vitalSigns,
-        systemsReview: existingAnamrezData.systemsReview || prev.systemsReview,
-        physicalExamination: existingAnamrezData.physicalExamination || '',
-        medications: existingAnamrezData.medications || '',
-        socialHistory: existingAnamrezData.socialHistory || '',
-        additionalNotes: existingAnamrezData.additionalNotes || '',
-        symptomRatings: existingAnamrezData.symptomRatings || prev.symptomRatings,
-        diagnosisResponses: existingAnamrezData.diagnosisResponses || {},
-        additionalQuestions: existingAnamrezData.additionalQuestions || prev.additionalQuestions,
-        customQuestions: existingAnamrezData.customQuestions || [],
-        conventionalTreatment: {
-          currentMedications: existingAnamrezData.conventionalTreatment?.currentMedications || '',
-          otherTreatments: existingAnamrezData.conventionalTreatment?.otherTreatments || '',
-          deviceScanFileUrl: existingAnamrezData.conventionalTreatment?.deviceScanFileUrl || ''
-        },
-        optionalScans: existingAnamrezData.optionalScans || prev.optionalScans
-      }));
-
-      // Also set toxicity ratings if available
-      if (existingAnamrezData.toxicityAssessment?.toxicityScores) {
-        setToxicityRatings(existingAnamrezData.toxicityAssessment.toxicityScores);
-      }
-
-      // Disable the "use previous anamnez" toggle when editing
-      setUsePreviousAnamnez(false);
-    }
-  }, [isOpen, existingAnamrezData]);
-
-  // Load additionalQuestions from patient record (lifestyle questions are now stored on patient)
-  useEffect(() => {
-    if (isOpen && patient && !existingAnamrezData && !usePreviousAnamnez) {
-      // Load additional questions from patient record if available
-      const patientAdditionalQuestions = (patient as any).additionalQuestions;
-      if (patientAdditionalQuestions) {
-        setFormData(prev => ({
-          ...prev,
-          additionalQuestions: {
-            education: patientAdditionalQuestions.education || prev.additionalQuestions.education,
-            profession: patientAdditionalQuestions.profession || prev.additionalQuestions.profession,
-            exerciseFrequency: patientAdditionalQuestions.exerciseFrequency || prev.additionalQuestions.exerciseFrequency,
-            dailySleepHours: patientAdditionalQuestions.dailySleepHours || prev.additionalQuestions.dailySleepHours,
-            monthlyVegetableConsumption: patientAdditionalQuestions.monthlyVegetableConsumption || prev.additionalQuestions.monthlyVegetableConsumption,
-            monthlyRedMeatConsumption: patientAdditionalQuestions.monthlyRedMeatConsumption || prev.additionalQuestions.monthlyRedMeatConsumption,
-            monthlyChickenConsumption: patientAdditionalQuestions.monthlyChickenConsumption || prev.additionalQuestions.monthlyChickenConsumption,
-            dailyWaterConsumption: patientAdditionalQuestions.dailyWaterConsumption || prev.additionalQuestions.dailyWaterConsumption,
-            smokingFrequency: patientAdditionalQuestions.smokingFrequency || prev.additionalQuestions.smokingFrequency,
-            alcoholFrequency: patientAdditionalQuestions.alcoholFrequency || prev.additionalQuestions.alcoholFrequency,
-            maritalStatus: patientAdditionalQuestions.maritalStatus || prev.additionalQuestions.maritalStatus,
-            activeSexualLife: patientAdditionalQuestions.activeSexualLife || prev.additionalQuestions.activeSexualLife,
-            gebelikGecmisi: patientAdditionalQuestions.gebelikGecmisi || prev.additionalQuestions.gebelikGecmisi,
-            sonAdetTarihi: patientAdditionalQuestions.sonAdetTarihi || prev.additionalQuestions.sonAdetTarihi
-          }
-        }));
-      }
-    }
-  }, [isOpen, patient, existingAnamrezData, usePreviousAnamnez]);
+  }, [usePreviousAnamnez, previousAnamnez]);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -1537,11 +1456,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
           monthlyChickenConsumption: '',
           dailyWaterConsumption: '',
           smokingFrequency: '',
-          alcoholFrequency: '',
-          maritalStatus: '',
-          activeSexualLife: '',
-          gebelikGecmisi: '',
-          sonAdetTarihi: ''
+          alcoholFrequency: ''
         },
         customQuestions: [],
         conventionalTreatment: {
@@ -1575,15 +1490,12 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   React.useEffect(() => {
     if (isOpen) {
       setCurrentPage(1);
-      // Only reset toxicity ratings if not editing existing data
-      if (!existingAnamrezData) {
-        // Reset toxicity ratings to avoid carrying over from previous patients/sessions
-        setToxicityRatings(initialToxicityRatings);
-      }
+      // Reset toxicity ratings to avoid carrying over from previous patients/sessions
+      setToxicityRatings(initialToxicityRatings);
       // Reset previous anamnez toggle
       setUsePreviousAnamnez(false);
     }
-  }, [isOpen, existingAnamrezData]);
+  }, [isOpen]);
 
   // Check if patient has incomplete registration (from Hızlı Rezervasyon)
   React.useEffect(() => {
@@ -1741,6 +1653,11 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center font-semibold ${currentPage === 6 ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'
                   }`}>
                   6
+                </div>
+                <div className="w-8 h-1 bg-gray-300 rounded"></div>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-semibold ${currentPage === 7 ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'
+                  }`}>
+                  7
                 </div>
               </div>
             </div>
@@ -2338,6 +2255,264 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
             {currentPage === 4 && (
               <>
+                {/* Additional Questions */}
+                <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-6 border border-orange-200">
+                  <h3 className="text-xl font-bold text-orange-700 mb-6 flex items-center gap-2">
+                    📋 Ek Sorular
+                  </h3>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-gray-700 text-sm font-medium mb-2">
+                        1. Eğitim Durumu
+                      </label>
+                      <select
+                        name="additionalQuestions.education"
+                        value={formData.additionalQuestions.education}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      >
+                        <option value="">Seçiniz</option>
+                        <option value="İlkokul">İlkokul</option>
+                        <option value="Ortaokul">Ortaokul</option>
+                        <option value="Lise">Lise</option>
+                        <option value="Ön Lisans">Ön Lisans</option>
+                        <option value="Lisans">Lisans</option>
+                        <option value="Yüksek Lisans">Yüksek Lisans</option>
+                        <option value="Doktora">Doktora</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-gray-700 text-sm font-medium mb-2">
+                        2. Mesleği
+                      </label>
+                      <input
+                        type="text"
+                        name="additionalQuestions.profession"
+                        value={formData.additionalQuestions.profession}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                        placeholder="Mesleğinizi yazınız"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-gray-700 text-sm font-medium mb-2">
+                        3. Spor Yapma Sıklığı
+                      </label>
+                      <select
+                        name="additionalQuestions.exerciseFrequency"
+                        value={formData.additionalQuestions.exerciseFrequency}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      >
+                        <option value="">Seçiniz</option>
+                        <option value="Hiç">Hiç</option>
+                        <option value="Haftada 1-2 kez">Haftada 1-2 kez</option>
+                        <option value="Haftada 3-4 kez">Haftada 3-4 kez</option>
+                        <option value="Haftada 5-6 kez">Haftada 5-6 kez</option>
+                        <option value="Her gün">Her gün</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-gray-700 text-sm font-medium mb-2">
+                        4. Günlük Uyku Saati
+                      </label>
+                      <select
+                        name="additionalQuestions.dailySleepHours"
+                        value={formData.additionalQuestions.dailySleepHours}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      >
+                        <option value="">Seçiniz</option>
+                        <option value="4 saatten az">4 saatten az</option>
+                        <option value="4-5 saat">4-5 saat</option>
+                        <option value="6-7 saat">6-7 saat</option>
+                        <option value="8-9 saat">8-9 saat</option>
+                        <option value="10 saatten fazla">10 saatten fazla</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-gray-700 text-sm font-medium mb-2">
+                        5. Aylık Sebze Tüketimi
+                      </label>
+                      <select
+                        name="additionalQuestions.monthlyVegetableConsumption"
+                        value={formData.additionalQuestions.monthlyVegetableConsumption}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      >
+                        <option value="">Seçiniz</option>
+                        <option value="Çok az (0-5 kez)">Çok az (0-5 kez)</option>
+                        <option value="Az (6-15 kez)">Az (6-15 kez)</option>
+                        <option value="Orta (16-25 kez)">Orta (16-25 kez)</option>
+                        <option value="Çok (26+ kez)">Çok (26+ kez)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-gray-700 text-sm font-medium mb-2">
+                        6. Aylık Kırmızı Et Tüketimi
+                      </label>
+                      <select
+                        name="additionalQuestions.monthlyRedMeatConsumption"
+                        value={formData.additionalQuestions.monthlyRedMeatConsumption}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      >
+                        <option value="">Seçiniz</option>
+                        <option value="Hiç">Hiç</option>
+                        <option value="Çok az (1-3 kez)">Çok az (1-3 kez)</option>
+                        <option value="Az (4-8 kez)">Az (4-8 kez)</option>
+                        <option value="Orta (9-15 kez)">Orta (9-15 kez)</option>
+                        <option value="Çok (16+ kez)">Çok (16+ kez)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-gray-700 text-sm font-medium mb-2">
+                        7. Aylık Tavuk Eti Tüketimi
+                      </label>
+                      <select
+                        name="additionalQuestions.monthlyChickenConsumption"
+                        value={formData.additionalQuestions.monthlyChickenConsumption}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      >
+                        <option value="">Seçiniz</option>
+                        <option value="Hiç">Hiç</option>
+                        <option value="Çok az (1-3 kez)">Çok az (1-3 kez)</option>
+                        <option value="Az (4-8 kez)">Az (4-8 kez)</option>
+                        <option value="Orta (9-15 kez)">Orta (9-15 kez)</option>
+                        <option value="Çok (16+ kez)">Çok (16+ kez)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-gray-700 text-sm font-medium mb-2">
+                        8. Günlük Su Tüketimi
+                      </label>
+                      <select
+                        name="additionalQuestions.dailyWaterConsumption"
+                        value={formData.additionalQuestions.dailyWaterConsumption}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      >
+                        <option value="">Seçiniz</option>
+                        <option value="1 litreden az">1 litreden az</option>
+                        <option value="1-2 litre">1-2 litre</option>
+                        <option value="2-3 litre">2-3 litre</option>
+                        <option value="3 litreden fazla">3 litreden fazla</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-gray-700 text-sm font-medium mb-2">
+                        9. Sigara İçme Sıklığı
+                      </label>
+                      <select
+                        name="additionalQuestions.smokingFrequency"
+                        value={formData.additionalQuestions.smokingFrequency}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      >
+                        <option value="">Seçiniz</option>
+                        <option value="Hiç">Hiç</option>
+                        <option value="Bıraktım">Bıraktım</option>
+                        <option value="Günde 1-5 adet">Günde 1-5 adet</option>
+                        <option value="Günde 6-15 adet">Günde 6-15 adet</option>
+                        <option value="Günde 16-25 adet">Günde 16-25 adet</option>
+                        <option value="Günde 25+ adet">Günde 25+ adet</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-gray-700 text-sm font-medium mb-2">
+                        10. Alkol Kullanma Sıklığı
+                      </label>
+                      <select
+                        name="additionalQuestions.alcoholFrequency"
+                        value={formData.additionalQuestions.alcoholFrequency}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      >
+                        <option value="">Seçiniz</option>
+                        <option value="Hiç">Hiç</option>
+                        <option value="Ayda 1-2 kez">Ayda 1-2 kez</option>
+                        <option value="Haftada 1-2 kez">Haftada 1-2 kez</option>
+                        <option value="Haftada 3-5 kez">Haftada 3-5 kez</option>
+                        <option value="Her gün">Her gün</option>
+                      </select>
+                    </div>
+
+                    {/* Custom Questions */}
+                    {formData.customQuestions.map((customQ, index) => (
+                      <div key={customQ.id} className="md:col-span-2">
+                        <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                          <div className="flex items-start gap-3">
+                            <div className="flex-1 space-y-3">
+                              <div>
+                                <label className="block text-gray-700 text-sm font-medium mb-2">
+                                  {11 + index}. Soru
+                                </label>
+                                <input
+                                  type="text"
+                                  value={customQ.question}
+                                  onChange={(e) => handleCustomQuestionChange(customQ.id, 'question', e.target.value)}
+                                  className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                                  placeholder="Sorunuzu yazınız"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-gray-700 text-sm font-medium mb-2">
+                                  Cevap
+                                </label>
+                                <input
+                                  type="text"
+                                  value={customQ.answer}
+                                  onChange={(e) => handleCustomQuestionChange(customQ.id, 'answer', e.target.value)}
+                                  className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                                  placeholder="Cevabı yazınız"
+                                />
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveCustomQuestion(customQ.id)}
+                              className="text-red-500 hover:text-red-700 transition-colors mt-8"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Add Custom Question Button */}
+                    <div className="md:col-span-2">
+                      <button
+                        type="button"
+                        onClick={handleAddCustomQuestion}
+                        className="w-full px-4 py-3 border-2 border-dashed border-orange-300 rounded-xl text-orange-600 hover:border-orange-400 hover:text-orange-700 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        </svg>
+                        Yeni Soru Ekle
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {currentPage === 5 && (
+              <>
                 {/* Toxicity Assessment */}
                 <div className="bg-gradient-to-br from-red-50 to-pink-50 rounded-xl p-6 border border-red-200">
                   <h3 className="text-xl font-bold text-red-700 mb-6 flex items-center gap-2">
@@ -2500,7 +2675,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
               </>
             )}
 
-            {currentPage === 5 && (
+            {currentPage === 6 && (
               <>
                 {/* Optional Scans */}
                 <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-200">
@@ -2768,7 +2943,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
               </>
             )}
 
-            {currentPage === 6 && (
+            {currentPage === 7 && (
               <>
                 {/* Conventional Medical Treatment */}
                 <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl p-6 border border-indigo-200">
@@ -2874,6 +3049,16 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                     ← Geri
                   </button>
                 )}
+
+                {currentPage === 7 && (
+                  <button
+                    type="button"
+                    onClick={() => handlePrevPage(6)}
+                    className="px-6 py-3 bg-blue-100 hover:bg-blue-200 border border-blue-300 rounded-xl text-blue-700 font-semibold transition-all duration-200"
+                  >
+                    ← Geri
+                  </button>
+                )}
               </div>
 
               <div className="flex items-center gap-4">
@@ -2928,6 +3113,16 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                 )}
 
                 {currentPage === 6 && (
+                  <button
+                    type="button"
+                    onClick={handleNextPage}
+                    className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-semibold rounded-xl transition-all duration-200 shadow-lg"
+                  >
+                    İleri →
+                  </button>
+                )}
+
+                {currentPage === 7 && (
                   <button
                     type="submit"
                     disabled={loading}

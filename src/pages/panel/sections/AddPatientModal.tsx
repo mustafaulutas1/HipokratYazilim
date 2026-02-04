@@ -34,7 +34,6 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
     country: 'Türkiye',
     residenceCity: '',
     visitReason: '',
-    referans: '',
     indirim_check: false,
     indirim_tipi: 'yuzde' as 'yuzde' | 'tutar',
     indirim_orani: 20,
@@ -202,7 +201,6 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
         country: 'Türkiye',
         residenceCity: '',
         visitReason: '',
-        referans: '',
         indirim_check: false,
         indirim_tipi: 'yuzde' as 'yuzde' | 'tutar',
         indirim_orani: 20,
@@ -536,30 +534,6 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
               className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
               placeholder="Ziyaret nedeni (opsiyonel)"
             />
-          </div>
-
-          {/* Referans */}
-          <div>
-            <label className="block text-gray-700 text-sm font-medium mb-2">
-              Referans (Bizi Nereden Buldunuz?)
-            </label>
-            <select
-              name="referans"
-              value={formData.referans}
-              onChange={handleInputChange}
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-            >
-              <option value="">Seçiniz</option>
-              <option value="Internet Araması">İnternet Araması (Google vb.)</option>
-              <option value="Sosyal Medya">Sosyal Medya (Instagram, Facebook vb.)</option>
-              <option value="Arkadaş/Tanıdık Tavsiyesi">Arkadaş/Tanıdık Tavsiyesi</option>
-              <option value="Aile Tavsiyesi">Aile Tavsiyesi</option>
-              <option value="Doktor Tavsiyesi">Doktor Tavsiyesi</option>
-              <option value="Reklam">Reklam (TV, Radyo, Billboard vb.)</option>
-              <option value="Önceki Hasta">Önceki Hasta</option>
-              <option value="Yakın Çevre">Yakın Çevre</option>
-              <option value="Diğer">Diğer</option>
-            </select>
           </div>
 
           {/* Discount Option */}

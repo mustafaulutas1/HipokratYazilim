@@ -101,76 +101,6 @@ interface AnamrezData {
   createdAt: string;
 }
 
-// Sort order type for numerical sections
-type SortOrder = 'default' | 'high-to-low' | 'low-to-high';
-
-// Sort button component
-const SortButton: React.FC<{
-  sortOrder: SortOrder;
-  onToggle: () => void;
-}> = ({ sortOrder, onToggle }) => {
-  const getIcon = () => {
-    switch (sortOrder) {
-      case 'high-to-low':
-        return '↓';
-      case 'low-to-high':
-        return '↑';
-      default:
-        return '↕';
-    }
-  };
-
-  const getLabel = () => {
-    switch (sortOrder) {
-      case 'high-to-low':
-        return 'Yüksekten Düşüğe';
-      case 'low-to-high':
-        return 'Düşükten Yükseğe';
-      default:
-        return 'Varsayılan';
-    }
-  };
-
-  return (
-    <button
-      onClick={onToggle}
-      className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors border border-gray-300"
-      title="Sıralama değiştir"
-    >
-      <span className="text-base">{getIcon()}</span>
-      <span>Sırala: {getLabel()}</span>
-    </button>
-  );
-};
-
-// Helper function to toggle sort order
-const toggleSortOrder = (current: SortOrder): SortOrder => {
-  switch (current) {
-    case 'default':
-      return 'high-to-low';
-    case 'high-to-low':
-      return 'low-to-high';
-    case 'low-to-high':
-      return 'default';
-  }
-};
-
-// Helper function to sort entries by numerical value
-const sortEntriesByValue = <T extends [string, number]>(
-  entries: T[],
-  sortOrder: SortOrder
-): T[] => {
-  if (sortOrder === 'default') return entries;
-  
-  return [...entries].sort((a, b) => {
-    if (sortOrder === 'high-to-low') {
-      return b[1] - a[1];
-    } else {
-      return a[1] - b[1];
-    }
-  });
-};
-
 const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
   isOpen,
   onClose,
@@ -178,11 +108,6 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
   anamrezRecord
 }) => {
   const [anamrezData, setAnamrezData] = useState<AnamrezData | null>(null);
-  
-  // Sort order states for different sections
-  const [symptomsSortOrder, setSymptomsSortOrder] = useState<SortOrder>('default');
-  const [toxicitySortOrder, setToxicitySortOrder] = useState<SortOrder>('default');
-  const [diagnosisSortOrders, setDiagnosisSortOrders] = useState<Record<string, SortOrder>>({});
   const [allAnamrezRecords, setAllAnamrezRecords] = useState<AnamrezData[]>([]);
   const [selectedRecordIndex, setSelectedRecordIndex] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -645,10 +570,6 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setActiveSection('patient-info');
-      // Reset sort orders when modal opens
-      setSymptomsSortOrder('default');
-      setToxicitySortOrder('default');
-      setDiagnosisSortOrders({});
       if (!anamrezRecord) {
         setAnamrezData(null);
         setAllAnamrezRecords([]);
@@ -661,10 +582,6 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
   const handleRecordChange = (index: number) => {
     setSelectedRecordIndex(index);
     setAnamrezData(allAnamrezRecords[index]);
-    // Reset sort orders when record changes
-    setSymptomsSortOrder('default');
-    setToxicitySortOrder('default');
-    setDiagnosisSortOrders({});
   };
 
   if (!isOpen || !patient) return null;
@@ -935,19 +852,13 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                     {/* Symptoms Section */}
                     {activeSection === 'symptoms' && (
                       <div className="space-y-6">
-                        <div className="flex items-center justify-between flex-wrap gap-2">
-                          <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                            📊 Semptom Değerlendirmesi
-                          </h3>
-                          <SortButton
-                            sortOrder={symptomsSortOrder}
-                            onToggle={() => setSymptomsSortOrder(toggleSortOrder(symptomsSortOrder))}
-                          />
-                        </div>
+                        <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                          📊 Semptom Değerlendirmesi
+                        </h3>
                         
                         <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {anamrezData.symptomRatings && (() => {
+                            {anamrezData.symptomRatings && Object.entries(anamrezData.symptomRatings).map(([key, value]) => {
                               // Convert symptom keys to readable labels
                               const symptomLabels: Record<string, string> = {
                                 'uykuHali': 'Uyku Hali',
@@ -990,10 +901,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                 'mideYanmasi': 'Mide Yanması'
                               };
                               
-                              const entries = Object.entries(anamrezData.symptomRatings) as [string, number][];
-                              const sortedEntries = sortEntriesByValue(entries, symptomsSortOrder);
-                              
-                              return sortedEntries.map(([key, value]) => (
+                              return (
                                 <div key={key} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                                   <span className="text-gray-700 text-sm font-medium">
                                     {symptomLabels[key] || key}
@@ -1008,8 +916,8 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                     {value}/10
                                   </div>
                                 </div>
-                              ));
-                            })()}
+                              );
+                            })}
                           </div>
                         </div>
                       </div>
@@ -1027,45 +935,31 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                             const questionSet = DIAGNOSIS_SPECIFIC_QUESTIONS[diagnosis];
                             if (!questionSet) return null;
 
-                            const currentSortOrder = diagnosisSortOrders[diagnosis] || 'default';
-
-                            // Build question-rating pairs for sorting
-                            const questionRatings: [string, number][] = questionSet.questions.map((question) => {
-                              const rating = anamrezData.diagnosisResponses?.[diagnosis]?.[question] || 0;
-                              return [question, rating];
-                            });
-
-                            const sortedQuestionRatings = sortEntriesByValue(questionRatings, currentSortOrder);
-
                             return (
                               <div key={diagnosis} className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
-                                <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
-                                  <h4 className="font-bold text-gray-800">{questionSet.label}</h4>
-                                  <SortButton
-                                    sortOrder={currentSortOrder}
-                                    onToggle={() => setDiagnosisSortOrders(prev => ({
-                                      ...prev,
-                                      [diagnosis]: toggleSortOrder(prev[diagnosis] || 'default')
-                                    }))}
-                                  />
-                                </div>
+                                <h4 className="font-bold text-gray-800 mb-4">{questionSet.label}</h4>
                                 <div className="grid grid-cols-1 gap-3">
-                                  {sortedQuestionRatings.map(([question, rating]) => (
-                                    <div key={question} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                      <span className="text-gray-700 text-sm">{question}</span>
-                                      <div className={`px-2 py-1 rounded-full text-xs font-bold ${
-                                        rating === 0
-                                          ? 'bg-gray-100 text-gray-600'
-                                          : rating <= 3
-                                          ? 'bg-green-100 text-green-700'
-                                          : rating <= 6
-                                          ? 'bg-yellow-100 text-yellow-700'
-                                          : 'bg-red-100 text-red-700'
-                                      }`}>
-                                        {rating}/10
+                                  {questionSet.questions.map((question) => {
+                                    // Get the rating from saved responses, default to 0 if not found
+                                    const rating = anamrezData.diagnosisResponses?.[diagnosis]?.[question] || 0;
+                                    
+                                    return (
+                                      <div key={question} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                        <span className="text-gray-700 text-sm">{question}</span>
+                                        <div className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                          rating === 0
+                                            ? 'bg-gray-100 text-gray-600'
+                                            : rating <= 3
+                                            ? 'bg-green-100 text-green-700'
+                                            : rating <= 6
+                                            ? 'bg-yellow-100 text-yellow-700'
+                                            : 'bg-red-100 text-red-700'
+                                        }`}>
+                                          {rating}/10
+                                        </div>
                                       </div>
-                                    </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                               </div>
                             );
@@ -1186,16 +1080,10 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
 
                           {/* Individual Toxicity Scores */}
                           {anamrezData.toxicityAssessment?.toxicityScores && Object.keys(anamrezData.toxicityAssessment.toxicityScores).length > 0 && (
-                            <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm mt-4">
-                              <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
-                                <h4 className="font-bold text-gray-800">Toksisite Semptom Puanları</h4>
-                                <SortButton
-                                  sortOrder={toxicitySortOrder}
-                                  onToggle={() => setToxicitySortOrder(toggleSortOrder(toxicitySortOrder))}
-                                />
-                              </div>
+                            <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                              <h4 className="font-bold text-gray-800 mb-4">Toksisite Semptom Puanları</h4>
                               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {(() => {
+                                {Object.entries(anamrezData.toxicityAssessment.toxicityScores).map(([key, value]) => {
                                   // Convert symptom keys to readable labels (same as symptom ratings)
                                   const symptomLabels: Record<string, string> = {
                                     'uykuHali': 'Uyku Hali',
@@ -1238,10 +1126,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                     'mideYanmasi': 'Mide Yanması'
                                   };
                                   
-                                  const entries = Object.entries(anamrezData.toxicityAssessment!.toxicityScores) as [string, number][];
-                                  const sortedEntries = sortEntriesByValue(entries, toxicitySortOrder);
-                                  
-                                  return sortedEntries.map(([key, value]) => (
+                                  return (
                                     <div key={key} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                                       <span className="text-gray-700 text-sm font-medium">
                                         {symptomLabels[key] || key}
@@ -1258,8 +1143,8 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                         {value}/10
                                       </div>
                                     </div>
-                                  ));
-                                })()}
+                                  );
+                                })}
                               </div>
                             </div>
                           )}
