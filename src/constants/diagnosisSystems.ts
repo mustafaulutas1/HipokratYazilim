@@ -6,8 +6,8 @@ export const DIAGNOSIS_SYSTEMS = [
   'Santral Sinir Sistemi',
   'Gastrointestinal Sistem',
   'Kardiyovasküler Sistem',
-  'Pisikolojik Değerlendirme',
-  'Ürogental Sistem Hastalıkları',
+  'Psikolojik Değerlendirme',
+  'Ürogenital Sistem Hastalıkları',
   'Endokrin Sistem'
 ];
 
@@ -36,7 +36,7 @@ export const DIAGNOSIS_SPECIFIC_QUESTIONS: Record<string, { label: string; quest
       'Burun Tıkanıklığı',
       'Gözlerde Sulanma / Kaşıntı',
       'Horlama',
-      'Uykuda Nefes Düzensizliği (Uyku Aknesi)'
+      'Uykuda Nefes Düzensizliği (Uyku Apnesi)'
     ]
   },
   'Kas – İskelet Sistemi': {
@@ -91,7 +91,7 @@ export const DIAGNOSIS_SPECIFIC_QUESTIONS: Record<string, { label: string; quest
       'Yorgunluk',
       'Dispne (Nefes Darlığı)',
       'Ortopne',
-      'Paryoksismal Nokturnal Dispne',
+      'Paroksismal Nokturnal Dispne',
       'Periferik Ödem',
       'Senkop',
       'Presenkop',
@@ -99,8 +99,8 @@ export const DIAGNOSIS_SPECIFIC_QUESTIONS: Record<string, { label: string; quest
       'Intermittent Claudication'
     ]
   },
-  'Pisikolojik Değerlendirme': {
-    label: 'Pisikolojik Değerlendirme',
+  'Psikolojik Değerlendirme': {
+    label: 'Psikolojik Değerlendirme',
     questions: [
       'Depresif Ruh Hali',
       'Anksiyete',
@@ -114,8 +114,8 @@ export const DIAGNOSIS_SPECIFIC_QUESTIONS: Record<string, { label: string; quest
       'Obsesif Kompulsif Davranışlar'
     ]
   },
-  'Ürogental Sistem Hastalıkları': {
-    label: 'Ürogental Sistem Hastalıkları',
+  'Ürogenital Sistem Hastalıkları': {
+    label: 'Ürogenital Sistem Hastalıkları',
     questions: [
       'Dizüri (İdrar Yaparken Yanma)',
       'Pollaküri (Sık İdrar Yapma)',
@@ -264,7 +264,7 @@ export const DIAGNOSIS_ILLNESSES: Record<string, string[]> = {
     'Hipotansiyon',
     'Varis'
   ],
-  'Pisikolojik Değerlendirme': [
+  'Psikolojik Değerlendirme': [
     'Depresyon (Major Depresif Bozukluk)',
     'Yaygın Anksiyete Bozukluğu',
     'Panik Bozukluk',
@@ -278,7 +278,7 @@ export const DIAGNOSIS_ILLNESSES: Record<string, string[]> = {
     'Somatoform Bozukluk',
     'Uyum Bozukluğu'
   ],
-  'Ürogental Sistem Hastalıkları': [
+  'Ürogenital Sistem Hastalıkları': [
     'İdrar Yolu Enfeksiyonu (İYE)',
     'Böbrek Taşı (Nefrolitiyazis)',
     'Kronik Böbrek Yetmezliği',

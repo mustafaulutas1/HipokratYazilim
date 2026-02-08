@@ -125,7 +125,7 @@ const DIAGNOSIS_SPECIFIC_QUESTIONS: Record<string, { label: string; questions: s
       'Burun Tıkanıklığı',
       'Gözlerde Sulanma / Kaşıntı',
       'Horlama',
-      'Uykuda Nefes Düzensizliği (Uyku Aknesi)'
+      'Uykuda Nefes Düzensizliği (Uyku Apnesi)'
     ]
   },
   'Kas – İskelet Sistemi': {
@@ -196,8 +196,8 @@ const DIAGNOSIS_SPECIFIC_QUESTIONS: Record<string, { label: string; questions: s
       'Hiperaktivite'
     ]
   },
-  'Ürogental Sistem Hastalıkları': {
-    label: 'Ürogental Sistem Hastalıkları',
+  'Ürogenital Sistem Hastalıkları': {
+    label: 'Ürogenital Sistem Hastalıkları',
     questions: [
       'Tekrarlayan Böbrek Taşı',
       'Tekrarlayan İdrar Yolu Enfeksiyonu',
@@ -1287,7 +1287,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
             'unutkanlik': 'Unutkanlık',
             'kasinti': 'Kaşıntı',
             'carpinti': 'Çarpıntı',
-            'uykuDuzensizligi': 'Uyku Nefes Düzensizliği (Aknesi)',
+            'uykuDuzensizligi': 'Uyku Nefes Düzensizliği (Apnesi)',
             'gozdeUcusmalar': 'Gözde Uçuşmalar',
             'oksuruk': 'Horlama',
             'yorgunUyanma': 'Yorgun Uyanma',
@@ -2586,7 +2586,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                       'unutkanlik': 'Unutkanlık',
                       'kasinti': 'Kaşıntı',
                       'carpinti': 'Çarpıntı',
-                      'uykuDuzensizligi': 'Uyku Nefes Düzensizliği (Aknesi)',
+                      'uykuDuzensizligi': 'Uyku Nefes Düzensizliği (Apnesi)',
                       'gozdeUcusmalar': 'Gözde Uçuşmalar',
                       'oksuruk': 'Horlama',
                       'yorgunUyanma': 'Yorgun Uyanma',

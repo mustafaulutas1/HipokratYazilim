@@ -507,8 +507,8 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
                        system === 'Santral Sinir Sistemi' ? '🧠' :
                        system === 'Gastrointestinal Sistem' ? '🫄' :
                        system === 'Kardiyovasküler Sistem' ? '❤️' :
-                       system === 'Pisikolojik Değerlendirme' ? '🧘' :
-                       system === 'Ürogental Sistem Hastalıkları' ? '🫧' :
+                       system === 'Psikolojik Değerlendirme' ? '🧘' :
+                       system === 'Ürogenital Sistem Hastalıkları' ? '🫧' :
                        system === 'Endokrin Sistem' ? '⚗️' : '🔬'
                       }
                     </div>

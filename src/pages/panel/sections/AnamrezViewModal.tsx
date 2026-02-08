@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { DIAGNOSIS_SPECIFIC_QUESTIONS } from '../../../constants';
@@ -102,6 +102,94 @@ interface AnamrezData {
   createdAt: string;
 }
 
+interface MediaFile {
+  id: string;
+  url: string;
+  name: string;
+  type: 'image' | 'video';
+  uploadedAt: string;
+  uploadedBy?: string;
+}
+
+const LightboxOverlay: React.FC<{
+  media: MediaFile;
+  currentIndex: number;
+  total: number;
+  hasPrev: boolean;
+  hasNext: boolean;
+  onClose: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+}> = ({ media, currentIndex, total, hasPrev, hasNext, onClose, onPrev, onNext }) => {
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'ArrowLeft') onPrev();
+    else if (e.key === 'ArrowRight') onNext();
+    else if (e.key === 'Escape') onClose();
+  }, [onPrev, onNext, onClose]);
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4"
+      onClick={onClose}
+    >
+      <div className="relative max-w-5xl w-full max-h-[90vh] flex items-center" onClick={(e) => e.stopPropagation()}>
+        {/* Previous button */}
+        <button
+          onClick={onPrev}
+          disabled={!hasPrev}
+          className={`absolute left-2 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full flex items-center justify-center text-xl transition-all ${
+            hasPrev
+              ? 'bg-white/20 hover:bg-white/40 text-white cursor-pointer'
+              : 'bg-white/5 text-white/20 cursor-not-allowed'
+          }`}
+        >
+          ‹
+        </button>
+
+        {/* Image */}
+        <div className="flex-1 flex flex-col items-center">
+          <button
+            onClick={onClose}
+            className="absolute -top-10 right-0 text-white hover:text-gray-300 text-2xl font-bold z-10"
+          >
+            ✕
+          </button>
+          <img
+            src={media.url}
+            alt={media.name}
+            className="w-full h-auto max-h-[85vh] object-contain rounded-lg"
+          />
+          <div className="text-center mt-3">
+            <p className="text-white text-sm">{media.name}</p>
+            <p className="text-gray-400 text-xs">
+              {new Date(media.uploadedAt).toLocaleDateString('tr-TR')} — {currentIndex + 1} / {total}
+            </p>
+            <p className="text-gray-500 text-xs mt-1">← → ok tuşları ile gezinebilirsiniz</p>
+          </div>
+        </div>
+
+        {/* Next button */}
+        <button
+          onClick={onNext}
+          disabled={!hasNext}
+          className={`absolute right-2 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full flex items-center justify-center text-xl transition-all ${
+            hasNext
+              ? 'bg-white/20 hover:bg-white/40 text-white cursor-pointer'
+              : 'bg-white/5 text-white/20 cursor-not-allowed'
+          }`}
+        >
+          ›
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
   isOpen,
   onClose,
@@ -114,6 +202,9 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [doctorProfile, setDoctorProfile] = useState<any>(null);
   const [activeSection, setActiveSection] = useState('patient-info');
+  const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
+  const [loadingMedia, setLoadingMedia] = useState(false);
+  const [selectedMediaForPreview, setSelectedMediaForPreview] = useState<MediaFile | null>(null);
 
   // If an anamrezRecord is passed directly, use it as current but still fetch all for comparison
   useEffect(() => {
@@ -468,8 +559,21 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
             </div>
           </div>
 
+          ${mediaFiles.length > 0 ? `
+          <div class="section">
+            <div class="section-title">Hasta Görüntüleri</div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+              ${mediaFiles.filter(m => m.type === 'image').map(media => `
+                <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+                  <img src="${media.url}" alt="${media.name}" style="width: 100%; height: 180px; object-fit: cover;" />
+                  <div style="padding: 4px 8px; font-size: 9px; color: #718096;">${media.name} - ${new Date(media.uploadedAt).toLocaleDateString('tr-TR')}</div>
+                </div>
+              `).join('')}
+            </div>
+          </div>` : ''}
+
           <div class="footer">
-            Rapor Tarihi: ${new Date().toLocaleDateString('tr-TR')} ${new Date().toLocaleTimeString('tr-TR')} | 
+            Rapor Tarihi: ${new Date().toLocaleDateString('tr-TR')} ${new Date().toLocaleTimeString('tr-TR')} |
             ${anamrezData.completedBy?.name} tarafından oluşturulmuştur.
           </div>
 
@@ -583,6 +687,30 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
     fetchAnamrezData();
   }, [patient, isOpen, anamrezRecord]);
 
+  // Fetch media files from patient record
+  useEffect(() => {
+    const fetchMediaFiles = async () => {
+      if (!patient?.id || !isOpen) return;
+
+      setLoadingMedia(true);
+      try {
+        const patientRef = doc(db, 'patients', patient.id);
+        const patientDoc = await getDoc(patientRef);
+
+        if (patientDoc.exists()) {
+          const data = patientDoc.data();
+          setMediaFiles(data.mediaFiles || []);
+        }
+      } catch (error) {
+        console.error('Error fetching media files:', error);
+      } finally {
+        setLoadingMedia(false);
+      }
+    };
+
+    fetchMediaFiles();
+  }, [patient?.id, isOpen]);
+
   // Reset when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -612,7 +740,8 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
     { id: 'lifestyle', label: 'Yaşam Tarzı', icon: '🏃‍♂️' },
     { id: 'toxicity', label: 'Toksisite Değerlendirmesi', icon: '⚠️' },
     { id: 'optional-scans', label: 'Opsiyonel Taramalar', icon: '📋' },
-    { id: 'treatment', label: 'Konvansiyonel Tedavi', icon: '💊' }
+    { id: 'treatment', label: 'Konvansiyonel Tedavi', icon: '💊' },
+    ...(mediaFiles.length > 0 ? [{ id: 'patient-images', label: 'Hasta Görüntüleri', icon: '🖼️' }] : [])
   ];
 
   const scrollToTop = () => {
@@ -1507,19 +1636,19 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                               const fileUrl = anamrezData.conventionalTreatment.deviceScanFileUrl;
                               const isImage = /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(fileUrl);
                               const isPdf = /\.pdf(\?|$)/i.test(fileUrl);
-                              
+
                               if (isImage) {
                                 return (
                                   <div className="space-y-3">
-                                    <img 
-                                      src={fileUrl} 
-                                      alt="Cihaz Tarama" 
+                                    <img
+                                      src={fileUrl}
+                                      alt="Cihaz Tarama"
                                       className="max-w-full h-auto max-h-64 rounded-lg border border-blue-300 shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
                                       onClick={() => window.open(fileUrl, '_blank')}
                                     />
-                                    <a 
-                                      href={fileUrl} 
-                                      target="_blank" 
+                                    <a
+                                      href={fileUrl}
+                                      target="_blank"
                                       rel="noopener noreferrer"
                                       className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
                                     >
@@ -1537,9 +1666,9 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                       <p className="font-medium text-gray-800">PDF Dosyası</p>
                                       <p className="text-sm text-gray-500">Görüntülemek için tıklayın</p>
                                     </div>
-                                    <a 
-                                      href={fileUrl} 
-                                      target="_blank" 
+                                    <a
+                                      href={fileUrl}
+                                      target="_blank"
                                       rel="noopener noreferrer"
                                       className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
                                     >
@@ -1557,9 +1686,9 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                       <p className="font-medium text-gray-800">Dosya</p>
                                       <p className="text-sm text-gray-500">İndirmek için tıklayın</p>
                                     </div>
-                                    <a 
-                                      href={fileUrl} 
-                                      target="_blank" 
+                                    <a
+                                      href={fileUrl}
+                                      target="_blank"
                                       rel="noopener noreferrer"
                                       className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
                                     >
@@ -1569,6 +1698,84 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                 );
                               }
                             })()}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Patient Images Section */}
+                    {activeSection === 'patient-images' && (
+                      <div className="space-y-6">
+                        <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                          🖼️ Hasta Görüntüleri
+                        </h3>
+
+                        {loadingMedia ? (
+                          <div className="flex items-center justify-center h-32">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                          </div>
+                        ) : mediaFiles.length > 0 ? (
+                          <>
+                            <p className="text-sm text-gray-500">
+                              {mediaFiles.length} görüntü/video mevcut. Karşılaştırma için yan yana görüntüleyebilirsiniz.
+                            </p>
+
+                            {/* Images grid - side by side */}
+                            {mediaFiles.filter(m => m.type === 'image').length > 0 && (
+                              <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                                <h4 className="font-bold text-gray-800 mb-4">Fotoğraflar ({mediaFiles.filter(m => m.type === 'image').length})</h4>
+                                <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+                                  {mediaFiles.filter(m => m.type === 'image').map((media) => (
+                                    <div key={media.id} className="group relative border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                                      <img
+                                        src={media.url}
+                                        alt={media.name}
+                                        className="w-full h-48 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                        onClick={() => setSelectedMediaForPreview(media)}
+                                      />
+                                      <div className="p-2">
+                                        <p className="text-xs text-gray-600 truncate" title={media.name}>{media.name}</p>
+                                        <p className="text-xs text-gray-400">
+                                          {new Date(media.uploadedAt).toLocaleDateString('tr-TR')}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Videos grid - side by side */}
+                            {mediaFiles.filter(m => m.type === 'video').length > 0 && (
+                              <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                                <h4 className="font-bold text-gray-800 mb-4">Videolar ({mediaFiles.filter(m => m.type === 'video').length})</h4>
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                  {mediaFiles.filter(m => m.type === 'video').map((media) => (
+                                    <div key={media.id} className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                                      <video
+                                        src={media.url}
+                                        controls
+                                        className="w-full h-56 object-contain bg-black"
+                                      />
+                                      <div className="p-2">
+                                        <p className="text-xs text-gray-600 truncate" title={media.name}>{media.name}</p>
+                                        <p className="text-xs text-gray-400">
+                                          {new Date(media.uploadedAt).toLocaleDateString('tr-TR')}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="bg-gray-50 rounded-xl p-8 border border-gray-200">
+                            <div className="text-center text-gray-500">
+                              <div className="text-4xl mb-3">🖼️</div>
+                              <p className="font-medium">Hasta görüntüsü bulunamadı</p>
+                              <p className="text-sm mt-1">Bu hasta için henüz fotoğraf veya video yüklenmemiştir.</p>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1587,6 +1794,27 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* Image Preview Lightbox */}
+      {selectedMediaForPreview && (() => {
+        const imageFiles = mediaFiles.filter(m => m.type === 'image');
+        const currentIndex = imageFiles.findIndex(m => m.id === selectedMediaForPreview.id);
+        const hasPrev = currentIndex > 0;
+        const hasNext = currentIndex < imageFiles.length - 1;
+
+        return (
+          <LightboxOverlay
+            media={selectedMediaForPreview}
+            currentIndex={currentIndex}
+            total={imageFiles.length}
+            hasPrev={hasPrev}
+            hasNext={hasNext}
+            onClose={() => setSelectedMediaForPreview(null)}
+            onPrev={() => hasPrev && setSelectedMediaForPreview(imageFiles[currentIndex - 1])}
+            onNext={() => hasNext && setSelectedMediaForPreview(imageFiles[currentIndex + 1])}
+          />
+        );
+      })()}
     </>
   );
 };
