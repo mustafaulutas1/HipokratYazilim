@@ -206,7 +206,7 @@ import {
   ];
   
 // Diagnosis Systems
-export { DIAGNOSIS_SYSTEMS, DIAGNOSIS_SPECIFIC_QUESTIONS } from './diagnosisSystems';
+export { DIAGNOSIS_SYSTEMS, DIAGNOSIS_SPECIFIC_QUESTIONS, DIAGNOSIS_ILLNESSES } from './diagnosisSystems';
 
   export const clients = [
     {

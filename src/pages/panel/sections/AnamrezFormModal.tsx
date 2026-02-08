@@ -3,7 +3,7 @@ import { collection, addDoc, doc, updateDoc, getDocs, query, where } from 'fireb
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { toast } from 'react-toastify';
 import { db, storage } from '../../../firebase/config';
-import { DIAGNOSIS_SYSTEMS, DIAGNOSIS_SPECIFIC_QUESTIONS } from '../../../constants';
+import { DIAGNOSIS_SYSTEMS, DIAGNOSIS_SPECIFIC_QUESTIONS, DIAGNOSIS_ILLNESSES } from '../../../constants';
 import FileUpload from '../../../components/UI/FileUpload';
 
 interface Patient {
@@ -275,6 +275,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   const [formData, setFormData] = useState({
     // Ana Şikayetler - Now array for multiple selections
     selectedDiagnosisSystems: [] as string[],
+    selectedIllnesses: {} as Record<string, string[]>,
 
     // Doktor Seçimi
     selectedDoctorId: '',
@@ -595,6 +596,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
       setFormData(prev => ({
         ...prev,
         selectedDiagnosisSystems: previousAnamnez.selectedDiagnosisSystems || [],
+        selectedIllnesses: previousAnamnez.selectedIllnesses || {},
         selectedDoctorId: previousAnamnez.selectedDoctor?.id || '',
         complaintDetails: previousAnamnez.complaintDetails || '',
         pastMedicalHistory: previousAnamnez.pastMedicalHistory || '',
@@ -628,6 +630,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
       // Reset to empty form when toggle is off
       setFormData({
         selectedDiagnosisSystems: [],
+        selectedIllnesses: {},
         selectedDoctorId: '',
         hasContagiousDisease: '',
         contagiousDiseaseDetails: '',
@@ -813,12 +816,19 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   };
 
   const handleDiagnosisSystemChange = (system: string, checked: boolean) => {
-    setFormData(prev => ({
-      ...prev,
-      selectedDiagnosisSystems: checked
-        ? [...prev.selectedDiagnosisSystems, system]
-        : prev.selectedDiagnosisSystems.filter(s => s !== system)
-    }));
+    setFormData(prev => {
+      const updatedIllnesses = { ...prev.selectedIllnesses };
+      if (!checked) {
+        delete updatedIllnesses[system];
+      }
+      return {
+        ...prev,
+        selectedDiagnosisSystems: checked
+          ? [...prev.selectedDiagnosisSystems, system]
+          : prev.selectedDiagnosisSystems.filter(s => s !== system),
+        selectedIllnesses: updatedIllnesses
+      };
+    });
 
     // Clear error when user makes selection
     if (errors.selectedDiagnosisSystems) {
@@ -827,6 +837,21 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         selectedDiagnosisSystems: ''
       }));
     }
+  };
+
+  const handleIllnessChange = (system: string, illness: string, checked: boolean) => {
+    setFormData(prev => {
+      const currentIllnesses = prev.selectedIllnesses[system] || [];
+      return {
+        ...prev,
+        selectedIllnesses: {
+          ...prev.selectedIllnesses,
+          [system]: checked
+            ? [...currentIllnesses, illness]
+            : currentIllnesses.filter(i => i !== illness)
+        }
+      };
+    });
   };
 
   const handleSymptomRatingChange = (symptomKey: SymptomKey, rating: number) => {
@@ -1231,6 +1256,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
         // Form data
         selectedDiagnosisSystems: formData.selectedDiagnosisSystems,
+        selectedIllnesses: formData.selectedIllnesses,
         complaintDetails: formData.complaintDetails,
         pastMedicalHistory: formData.pastMedicalHistory,
         familyHistory: formData.familyHistory,
@@ -1377,6 +1403,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
       // Reset form
       setFormData({
         selectedDiagnosisSystems: [],
+        selectedIllnesses: {},
         selectedDoctorId: '',
         hasContagiousDisease: '',
         contagiousDiseaseDetails: '',
@@ -1733,6 +1760,52 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
                     {errors.selectedDiagnosisSystems && (
                       <p className="text-red-500 text-sm mt-2">{errors.selectedDiagnosisSystems}</p>
+                    )}
+
+                    {/* Illness selection for each selected diagnosis system */}
+                    {formData.selectedDiagnosisSystems.length > 0 && (
+                      <div className="mt-4 space-y-4">
+                        {formData.selectedDiagnosisSystems.map((system) => {
+                          const illnesses = DIAGNOSIS_ILLNESSES[system];
+                          if (!illnesses || illnesses.length === 0) return null;
+                          return (
+                            <div key={system} className="p-4 bg-white rounded-lg border border-red-200">
+                              <p className="text-sm font-bold text-red-700 mb-3">{system} - Hastalık Seçimi</p>
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                {illnesses.map((illness) => (
+                                  <div key={illness} className="flex items-center">
+                                    <input
+                                      type="checkbox"
+                                      id={`illness-${system}-${illness}`}
+                                      checked={(formData.selectedIllnesses[system] || []).includes(illness)}
+                                      onChange={(e) => handleIllnessChange(system, illness, e.target.checked)}
+                                      className="w-4 h-4 text-red-600 bg-white border-gray-300 rounded focus:ring-red-500 focus:ring-2"
+                                    />
+                                    <label
+                                      htmlFor={`illness-${system}-${illness}`}
+                                      className="ml-2 text-sm text-gray-700 cursor-pointer"
+                                    >
+                                      {illness}
+                                    </label>
+                                  </div>
+                                ))}
+                              </div>
+                              {(formData.selectedIllnesses[system] || []).length > 0 && (
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {formData.selectedIllnesses[system].map((illness) => (
+                                    <span
+                                      key={illness}
+                                      className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium"
+                                    >
+                                      {illness}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
                 </div>

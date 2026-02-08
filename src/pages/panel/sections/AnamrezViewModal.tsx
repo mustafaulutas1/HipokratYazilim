@@ -35,6 +35,7 @@ interface AnamrezData {
   patientId: string;
   patientName: string;
   selectedDiagnosisSystems: string[];
+  selectedIllnesses?: Record<string, string[]>;
   selectedDoctor?: {
     id: string;
     name: string;
@@ -389,6 +390,22 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
             <div class="section-title">🔬 Toksisite Değerlendirmesi - Tarihsel Karşılaştırma</div>
             <p style="font-size: 10px; color: #718096; margin-bottom: 10px;">Her sütun bir anamnez kaydının tarihini gösterir. 5+ semptomda yüksek puan = Toksisite riski.</p>
             ${generateToxicityComparisonTable()}
+          </div>` : ''}
+
+          ${anamrezData.selectedIllnesses && Object.keys(anamrezData.selectedIllnesses).length > 0 ? `
+          <div class="section no-break">
+            <div class="section-title">Seçilen Hastalıklar</div>
+            ${Object.entries(anamrezData.selectedIllnesses).map(([system, illnesses]: [string, string[]]) => {
+              if (!illnesses || illnesses.length === 0) return '';
+              return `
+                <div style="margin-bottom: 10px;">
+                  <div style="font-weight:bold; font-size:11px; color:#4a5568; margin-bottom:5px;">${system}</div>
+                  <div style="display:flex; flex-wrap:wrap; gap:4px;">
+                    ${illnesses.map(illness => `<span style="padding:2px 8px; background:#fff5f5; color:#c53030; border-radius:12px; font-size:10px; border:1px solid #fed7d7;">${illness}</span>`).join('')}
+                  </div>
+                </div>
+              `;
+            }).join('')}
           </div>` : ''}
 
           ${anamrezData.selectedDiagnosisSystems && anamrezData.selectedDiagnosisSystems.length > 0 ? `
@@ -788,6 +805,29 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                               </span>
                             ))}
                           </div>
+
+                          {/* Selected Illnesses per System */}
+                          {anamrezData.selectedIllnesses && Object.keys(anamrezData.selectedIllnesses).length > 0 && (
+                            <div className="mt-4 space-y-3">
+                              {Object.entries(anamrezData.selectedIllnesses).map(([system, illnesses]) => (
+                                illnesses && illnesses.length > 0 && (
+                                  <div key={system} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                    <p className="text-sm font-semibold text-gray-700 mb-2">{system}</p>
+                                    <div className="flex flex-wrap gap-2">
+                                      {illnesses.map((illness, idx) => (
+                                        <span
+                                          key={idx}
+                                          className="px-2 py-1 bg-red-50 text-red-700 rounded-full text-xs font-medium border border-red-200"
+                                        >
+                                          {illness}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )
+                              ))}
+                            </div>
+                          )}
                         </div>
 
                         <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
