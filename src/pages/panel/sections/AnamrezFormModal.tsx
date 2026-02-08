@@ -2285,42 +2285,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <label className="block text-gray-700 text-sm font-medium mb-2">
-                        1. Eğitim Durumu
-                      </label>
-                      <select
-                        name="additionalQuestions.education"
-                        value={formData.additionalQuestions.education}
-                        onChange={handleInputChange}
-                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                      >
-                        <option value="">Seçiniz</option>
-                        <option value="İlkokul">İlkokul</option>
-                        <option value="Ortaokul">Ortaokul</option>
-                        <option value="Lise">Lise</option>
-                        <option value="Ön Lisans">Ön Lisans</option>
-                        <option value="Lisans">Lisans</option>
-                        <option value="Yüksek Lisans">Yüksek Lisans</option>
-                        <option value="Doktora">Doktora</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-gray-700 text-sm font-medium mb-2">
-                        2. Mesleği
-                      </label>
-                      <input
-                        type="text"
-                        name="additionalQuestions.profession"
-                        value={formData.additionalQuestions.profession}
-                        onChange={handleInputChange}
-                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                        placeholder="Mesleğinizi yazınız"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-gray-700 text-sm font-medium mb-2">
-                        3. Spor Yapma Sıklığı
+                        1. Spor Yapma Sıklığı
                       </label>
                       <select
                         name="additionalQuestions.exerciseFrequency"
@@ -2339,7 +2304,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
                     <div>
                       <label className="block text-gray-700 text-sm font-medium mb-2">
-                        4. Günlük Uyku Saati
+                        2. Günlük Uyku Saati
                       </label>
                       <select
                         name="additionalQuestions.dailySleepHours"
@@ -2358,7 +2323,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
                     <div>
                       <label className="block text-gray-700 text-sm font-medium mb-2">
-                        5. Aylık Sebze Tüketimi
+                        3. Aylık Sebze Tüketimi
                       </label>
                       <select
                         name="additionalQuestions.monthlyVegetableConsumption"
@@ -2376,7 +2341,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
                     <div>
                       <label className="block text-gray-700 text-sm font-medium mb-2">
-                        6. Aylık Kırmızı Et Tüketimi
+                        4. Aylık Kırmızı Et Tüketimi
                       </label>
                       <select
                         name="additionalQuestions.monthlyRedMeatConsumption"
@@ -2395,7 +2360,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
                     <div>
                       <label className="block text-gray-700 text-sm font-medium mb-2">
-                        7. Aylık Tavuk Eti Tüketimi
+                        5. Aylık Tavuk Eti Tüketimi
                       </label>
                       <select
                         name="additionalQuestions.monthlyChickenConsumption"
@@ -2414,7 +2379,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
                     <div>
                       <label className="block text-gray-700 text-sm font-medium mb-2">
-                        8. Günlük Su Tüketimi
+                        6. Günlük Su Tüketimi
                       </label>
                       <select
                         name="additionalQuestions.dailyWaterConsumption"
@@ -2432,7 +2397,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
                     <div>
                       <label className="block text-gray-700 text-sm font-medium mb-2">
-                        9. Sigara İçme Sıklığı
+                        7. Sigara İçme Sıklığı
                       </label>
                       <select
                         name="additionalQuestions.smokingFrequency"
@@ -2452,7 +2417,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
                     <div>
                       <label className="block text-gray-700 text-sm font-medium mb-2">
-                        10. Alkol Kullanma Sıklığı
+                        8. Alkol Kullanma Sıklığı
                       </label>
                       <select
                         name="additionalQuestions.alcoholFrequency"

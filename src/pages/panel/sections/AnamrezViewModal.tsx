@@ -153,7 +153,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
     };
 
     const lifestyleLabels: Record<string, string> = {
-      'education': 'Eğitim Durumu', 'profession': 'Mesleği', 'exerciseFrequency': 'Spor Yapma Sıklığı',
+      'exerciseFrequency': 'Spor Yapma Sıklığı',
       'dailySleepHours': 'Günlük Uyku Saati', 'monthlyVegetableConsumption': 'Aylık Sebze Tüketimi',
       'monthlyRedMeatConsumption': 'Aylık Kırmızı Et Tüketimi', 'monthlyChickenConsumption': 'Aylık Tavuk Eti Tüketimi',
       'dailyWaterConsumption': 'Günlük Su Tüketimi', 'smokingFrequency': 'Sigara İçme Sıklığı',
@@ -989,8 +989,6 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                               if (!value) return null;
                               
                               const questionLabels: Record<string, string> = {
-                                'education': 'Eğitim Durumu',
-                                'profession': 'Mesleği',
                                 'exerciseFrequency': 'Spor Yapma Sıklığı',
                                 'dailySleepHours': 'Günlük Uyku Saati',
                                 'monthlyVegetableConsumption': 'Aylık Sebze Tüketimi',

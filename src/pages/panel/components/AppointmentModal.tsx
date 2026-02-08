@@ -49,6 +49,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
   const [error, setError] = useState<string>('');
   const [dayAppointments, setDayAppointments] = useState<any[]>([]);
   const [notes, setNotes] = useState<string>('');
+  const [cancelledAppointments, setCancelledAppointments] = useState<Array<{ cancelReason: string; cancelledAt: string; dateISO: string; typeName: string }>>([]);
 
   // Quick reservation fields (for non-registered patients)
   const [useQuickReservation, setUseQuickReservation] = useState<boolean>(false);
@@ -160,6 +161,33 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
       }
     }
   }, [isOpen, editedAppointment, initialDate, initialTime]);
+
+  // Fetch cancelled appointments for selected patient
+  useEffect(() => {
+    if (!isOpen || !selectedPatient || useQuickReservation) {
+      setCancelledAppointments([]);
+      return;
+    }
+    (async () => {
+      const cancelledQuery = query(
+        collection(db, 'appointments'),
+        where('patientId', '==', selectedPatient),
+        where('status', '==', 'cancelled')
+      );
+      const snap = await getDocs(cancelledQuery);
+      const results = snap.docs.map(d => {
+        const data = d.data() as any;
+        return {
+          cancelReason: data.cancelReason || '',
+          cancelledAt: data.cancelledAt || '',
+          dateISO: data.dateISO || '',
+          typeName: data.typeName || '',
+        };
+      });
+      results.sort((a, b) => (b.cancelledAt || '').localeCompare(a.cancelledAt || ''));
+      setCancelledAppointments(results);
+    })();
+  }, [isOpen, selectedPatient, useQuickReservation]);
 
   // Gün randevularını çek (disable için). Edit modda mevcut id'yi hariç tut.
   useEffect(() => {
@@ -656,6 +684,37 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
                     }}
                   />
                 </div>
+
+                {/* Cancelled Appointments Warning */}
+                {cancelledAppointments.length > 0 && (
+                  <div className="mt-4 bg-red-50 border-2 border-red-300 rounded-2xl p-4 shadow-sm animate-slideDown">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+                        <span className="text-red-600 text-lg">⚠️</span>
+                      </div>
+                      <h4 className="text-sm font-bold text-red-700">
+                        Dikkat: Geçmiş İptal Kayıtları ({cancelledAppointments.length})
+                      </h4>
+                    </div>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {cancelledAppointments.map((ca, idx) => (
+                        <div key={idx} className="bg-white border border-red-200 rounded-xl p-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-semibold text-red-600">
+                              {ca.dateISO ? new Date(ca.dateISO + 'T00:00:00').toLocaleDateString('tr-TR') : '-'}
+                            </span>
+                            <span className="text-xs text-red-500 bg-red-50 px-2 py-0.5 rounded-full">
+                              {ca.typeName || '-'}
+                            </span>
+                          </div>
+                          <p className="text-sm text-red-800 font-medium">
+                            {ca.cancelReason || 'Sebep belirtilmemiş'}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               {/* Available Time Slots - Right Column */}
               <div className="space-y-3">
@@ -748,10 +807,11 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
                     </div>
                   </div>
                 </div>
+
               </div>
             </div>
 
-            
+
             {/* Action Buttons */}
             <div className="flex justify-end gap-4 pt-4 mt-4 border-t border-gray-200/50">
               <button 

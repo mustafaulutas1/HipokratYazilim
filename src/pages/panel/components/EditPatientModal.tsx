@@ -22,6 +22,8 @@ interface Patient {
   country?: string;
   residenceCity?: string;
   visitReason: string;
+  education?: string;
+  profession?: string;
   referans?: string;
   createdAt: string;
   updatedAt: string;
@@ -53,6 +55,8 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
     country: 'Türkiye',
     residenceCity: '',
     visitReason: '',
+    education: '',
+    profession: '',
     referans: ''
   });
 
@@ -78,6 +82,8 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
         country: patient.country || 'Türkiye',
         residenceCity: patient.residenceCity || '',
         visitReason: patient.visitReason || '',
+        education: patient.education || '',
+        profession: patient.profession || '',
         referans: patient.referans || ''
       });
       setErrors({});
@@ -507,6 +513,44 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
             {errors.address && (
               <p className="text-red-500 text-sm mt-1">{errors.address}</p>
             )}
+          </div>
+
+          {/* Education & Profession */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-gray-700 text-sm font-medium mb-2">
+                Eğitim Durumu
+              </label>
+              <select
+                name="education"
+                value={formData.education}
+                onChange={handleInputChange}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Seçiniz (opsiyonel)</option>
+                <option value="İlkokul">İlkokul</option>
+                <option value="Ortaokul">Ortaokul</option>
+                <option value="Lise">Lise</option>
+                <option value="Ön Lisans">Ön Lisans</option>
+                <option value="Lisans">Lisans</option>
+                <option value="Yüksek Lisans">Yüksek Lisans</option>
+                <option value="Doktora">Doktora</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-gray-700 text-sm font-medium mb-2">
+                Mesleği
+              </label>
+              <input
+                type="text"
+                name="profession"
+                value={formData.profession}
+                onChange={handleInputChange}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Mesleğinizi yazınız (opsiyonel)"
+              />
+            </div>
           </div>
 
           {/* Visit Reason */}

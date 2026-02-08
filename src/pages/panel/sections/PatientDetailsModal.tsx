@@ -66,6 +66,13 @@ interface Patient {
     hasMediaGallery?: boolean;
     [key: string]: any;
   };
+  dischargeSurvey?: {
+    ratings: { [key: string]: number };
+    additionalFeedback: string;
+    averageRating: number;
+    completedAt: string;
+  } | null;
+  dischargedAt?: string;
 }
 
 interface MediaFile {
@@ -368,7 +375,8 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
     // Only show media tab if hasMediaGallery is enabled in anamnez
     ...(patient.optionalScans?.hasMediaGallery ? [{ id: 'media', label: 'Fotoğraflar ve Videolar', icon: '📷' }] : []),
     { id: 'address', label: 'Adres', icon: '📍' },
-    { id: 'notes', label: 'Notlar', icon: '📝' }
+    { id: 'notes', label: 'Notlar', icon: '📝' },
+    ...(patient.dischargeSurvey ? [{ id: 'survey', label: 'Memnuniyet Anketi', icon: '📊' }] : [])
   ];
 
   return (
@@ -1168,6 +1176,107 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
                     )}
                   </div>
                 </div>
+              </div>
+            )}
+            {/* Survey Results Tab */}
+            {activeTab === 'survey' && patient.dischargeSurvey && (
+              <div className="space-y-6">
+                {/* Average Rating Card */}
+                <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-200 shadow-sm text-center">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center justify-center gap-2">
+                    📊 Genel Memnuniyet Skoru
+                  </h3>
+                  <div className="flex items-center justify-center gap-4">
+                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-purple-500 to-indigo-500 flex items-center justify-center shadow-lg">
+                      <span className="text-3xl font-bold text-white">
+                        {patient.dischargeSurvey.averageRating.toFixed(1)}
+                      </span>
+                    </div>
+                    <div className="text-left">
+                      <p className="text-2xl">
+                        {patient.dischargeSurvey.averageRating >= 4.5 ? '🤩' :
+                         patient.dischargeSurvey.averageRating >= 3.5 ? '😊' :
+                         patient.dischargeSurvey.averageRating >= 2.5 ? '😐' :
+                         patient.dischargeSurvey.averageRating >= 1.5 ? '😕' : '😞'}
+                      </p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {patient.dischargeSurvey.averageRating >= 4.5 ? 'Mukemmel' :
+                         patient.dischargeSurvey.averageRating >= 3.5 ? 'Iyi' :
+                         patient.dischargeSurvey.averageRating >= 2.5 ? 'Orta' :
+                         patient.dischargeSurvey.averageRating >= 1.5 ? 'Kotu' : 'Cok Kotu'}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">5 uzerinden</p>
+                    </div>
+                  </div>
+                  {patient.dischargeSurvey.completedAt && (
+                    <p className="text-xs text-gray-500 mt-4">
+                      Anket Tarihi: {new Date(patient.dischargeSurvey.completedAt).toLocaleDateString('tr-TR', {
+                        day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                      })}
+                    </p>
+                  )}
+                </div>
+
+                {/* Individual Ratings */}
+                <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                    📋 Soru Detaylari
+                  </h3>
+                  <div className="space-y-4">
+                    {[
+                      { id: 'overall_satisfaction', question: 'Genel tedavi surecinizden ne kadar memnun kaldiniz?', icon: '😊' },
+                      { id: 'staff_friendliness', question: 'Personelimizin ilgi ve alakasini nasil degerlendirirsiniz?', icon: '👨‍⚕️' },
+                      { id: 'treatment_effectiveness', question: 'Uygulanan tedavinin etkisini nasil degerlendirirsiniz?', icon: '💊' },
+                      { id: 'cleanliness', question: 'Klinigin hijyen ve temizligini nasil degerlendirirsiniz?', icon: '✨' },
+                      { id: 'recommendation', question: 'Klinigimizi yakinlariniza tavsiye eder misiniz?', icon: '🌟' }
+                    ].map((q) => {
+                      const rating = patient.dischargeSurvey!.ratings[q.id] || 0;
+                      const ratingLabel = ['', 'Cok Kotu', 'Kotu', 'Orta', 'Iyi', 'Mukemmel'][rating] || '';
+                      const ratingEmoji = ['', '😞', '😕', '😐', '😊', '🤩'][rating] || '';
+                      const barColor = rating >= 4 ? 'bg-green-500' : rating === 3 ? 'bg-yellow-500' : 'bg-red-500';
+
+                      return (
+                        <div key={q.id} className="p-4 bg-gray-50 rounded-lg">
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex items-center gap-2 flex-1">
+                              <span className="text-xl">{q.icon}</span>
+                              <span className="text-sm text-gray-700">{q.question}</span>
+                            </div>
+                            <div className="flex items-center gap-2 ml-4">
+                              <span className="text-lg">{ratingEmoji}</span>
+                              <span className="text-sm font-semibold text-gray-800">{ratingLabel}</span>
+                            </div>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className={`${barColor} h-2 rounded-full transition-all duration-500`}
+                              style={{ width: `${(rating / 5) * 100}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between mt-1">
+                            <span className="text-xs text-gray-400">1</span>
+                            <span className="text-xs font-medium text-gray-600">{rating}/5</span>
+                            <span className="text-xs text-gray-400">5</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Additional Feedback */}
+                {patient.dischargeSurvey.additionalFeedback && (
+                  <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                      💬 Ek Geri Bildirim
+                    </h3>
+                    <div className="bg-gray-50 rounded-lg p-4 border-l-4 border-purple-500">
+                      <p className="text-gray-700 italic whitespace-pre-wrap">
+                        "{patient.dischargeSurvey.additionalFeedback}"
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
