@@ -19,6 +19,7 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
   doctorProfile,
 }) => {
   const [formData, setFormData] = useState({
+    dosyaNo: '',
     fullName: '',
     tcNo: '',
     phone: '',
@@ -92,6 +93,10 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
+    if (!formData.dosyaNo.trim()) {
+      newErrors.dosyaNo = 'Hasta dosya numarası gereklidir';
+    }
+
     if (!formData.fullName.trim()) {
       newErrors.fullName = 'Ad soyad gereklidir';
     }
@@ -163,6 +168,16 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
       // Email format normalization
       const emailToCheck = formData.email.trim().toLowerCase();
 
+      // Dosya No uniqueness check within the clinic
+      const clinicId = doctorProfile?.clinicId || 'default-clinic';
+      const dosyaSnap = await getDocs(query(collection(db, 'patients'), where('dosyaNo', '==', formData.dosyaNo.trim()), where('clinicId', '==', clinicId)));
+      if (!dosyaSnap.empty) {
+        setErrors((prev) => ({ ...prev, dosyaNo: 'Bu dosya numarası ile kayıt zaten mevcut' }));
+        toast.error('Bu dosya numarası ile kayıt zaten mevcut');
+        setLoading(false);
+        return;
+      }
+
       // TC No uniqueness check in patients
       const tcSnap = await getDocs(query(collection(db, 'patients'), where('tcNo', '==', formData.tcNo)));
       if (!tcSnap.empty) {
@@ -188,6 +203,7 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
 
       // Reset form
       setFormData({
+        dosyaNo: '',
         fullName: '',
         tcNo: '',
         phone: '',
@@ -242,6 +258,26 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6 bg-white">
+          {/* Hasta Dosya Numarası - Full Width */}
+          <div>
+            <label className="block text-gray-700 text-sm font-medium mb-2">
+              Hasta Dosya Numarası *
+            </label>
+            <input
+              type="text"
+              name="dosyaNo"
+              value={formData.dosyaNo}
+              onChange={handleInputChange}
+              className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+                errors.dosyaNo ? 'border-red-500' : 'border-gray-300'
+              }`}
+              placeholder="Hasta dosya numarası"
+            />
+            {errors.dosyaNo && (
+              <p className="text-red-500 text-sm mt-1">{errors.dosyaNo}</p>
+            )}
+          </div>
+
           {/* Personal Information */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>

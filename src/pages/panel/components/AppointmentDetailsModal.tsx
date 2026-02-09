@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { doc, updateDoc, collection, addDoc, query, where, getDocs, deleteDoc } from 'firebase/firestore';
+import { doc, updateDoc, setDoc, collection, addDoc, query, where, getDocs, deleteDoc, getDoc } from 'firebase/firestore';
 import { toast } from 'react-toastify';
 import { db } from '../../../firebase/config';
 
@@ -148,33 +148,70 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
         status: newStatus
       });
 
-      // Create pending anamnez record when appointment is confirmed
+      // When appointment is confirmed, route based on type
       if (newStatus === 'confirmed' && appointment.patientId) {
-        try {
-          // Check if anamnez already exists for this appointment
-          const existingAnamrezQuery = query(
-            collection(db, 'anamrezRecords'),
-            where('appointmentId', '==', appointment.id)
-          );
-          const existingSnapshot = await getDocs(existingAnamrezQuery);
+        const typeName = (appointment.typeName || '').toLowerCase();
+        console.log('📋 Appointment typeName:', appointment.typeName, '→ lowercase:', typeName);
 
-          // Only create if doesn't exist
-          if (existingSnapshot.empty) {
-            await addDoc(collection(db, 'anamrezRecords'), {
-              appointmentId: appointment.id,
-              appointmentDate: appointment.dateISO,
-              patientId: appointment.patientId,
-              patientName: appointment.patientName || '',
-              clinicId: appointment.clinicId || '',
-              status: 'pending',
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            });
-            toast.success('Anamnez kaydı oluşturuldu!');
+        if (typeName.includes('tedavi')) {
+          // Tedavi appointments go to Treatment first, then to Accounting after treatment
+          try {
+            const patientRef = doc(db, 'patients', appointment.patientId);
+            const patientDoc = await getDoc(patientRef);
+            console.log('📋 Patient document exists:', patientDoc.exists(), 'ID:', appointment.patientId);
+            
+            if (patientDoc.exists()) {
+              await updateDoc(patientRef, {
+                status: 'treatment_continue',
+                appointmentType: 'tedavi',
+                updatedAt: new Date().toISOString(),
+              });
+              console.log('✅ Patient status updated to treatment_continue');
+              toast.success('Hasta tedavi ekranına yönlendirildi!');
+            } else {
+              // Patient doesn't exist, create with minimal data
+              await setDoc(patientRef, {
+                fullName: appointment.patientName || 'Hasta',
+                phone: appointment.patientPhone || '',
+                clinicId: appointment.clinicId || 'default-clinic',
+                status: 'treatment_continue',
+                appointmentType: 'tedavi',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              });
+              console.log('✅ New patient document created with treatment_continue status');
+              toast.success('Hasta tedavi ekranına yönlendirildi!');
+            }
+          } catch (err) {
+            console.error('Error updating patient for treatment:', err);
+            toast.warning('Randevu onaylandı, ancak hasta tedavi ekranına yönlendirilemedi.');
           }
-        } catch (anamrezError) {
-          console.error('Error creating anamnez:', anamrezError);
-          toast.warning('Randevu onaylandı, ancak anamnez kaydı oluşturulamadı.');
+        } else {
+          // Kontrol / other types go through normal anamnez flow
+          try {
+            const existingAnamrezQuery = query(
+              collection(db, 'anamrezRecords'),
+              where('appointmentId', '==', appointment.id)
+            );
+            const existingSnapshot = await getDocs(existingAnamrezQuery);
+
+            if (existingSnapshot.empty) {
+              await addDoc(collection(db, 'anamrezRecords'), {
+                appointmentId: appointment.id,
+                appointmentDate: appointment.dateISO,
+                patientId: appointment.patientId,
+                patientName: appointment.patientName || '',
+                clinicId: appointment.clinicId || '',
+                status: 'pending',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              });
+              toast.success('Anamnez kaydı oluşturuldu!');
+            }
+          } catch (anamrezError) {
+            console.error('Error creating anamnez:', anamrezError);
+            toast.warning('Randevu onaylandı, ancak anamnez kaydı oluşturulamadı.');
+          }
         }
       }
 

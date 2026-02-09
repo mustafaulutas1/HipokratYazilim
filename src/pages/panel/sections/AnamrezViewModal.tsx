@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
-import { DIAGNOSIS_SPECIFIC_QUESTIONS } from '../../../constants';
+import { DIAGNOSIS_SPECIFIC_QUESTIONS, DIAGNOSIS_SYSTEMS, DIAGNOSIS_ILLNESSES } from '../../../constants';
 
 // Use shared diagnosis structure from constants
 
@@ -28,6 +28,8 @@ interface AnamrezViewModalProps {
   onClose: () => void;
   patient: Patient | null;
   anamrezRecord?: any;
+  editable?: boolean;
+  onDataUpdated?: () => void;
 }
 
 interface AnamrezData {
@@ -194,7 +196,9 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
   isOpen,
   onClose,
   patient,
-  anamrezRecord
+  anamrezRecord,
+  editable = false,
+  onDataUpdated
 }) => {
   const [anamrezData, setAnamrezData] = useState<AnamrezData | null>(null);
   const [allAnamrezRecords, setAllAnamrezRecords] = useState<AnamrezData[]>([]);
@@ -205,6 +209,67 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [loadingMedia, setLoadingMedia] = useState(false);
   const [selectedMediaForPreview, setSelectedMediaForPreview] = useState<MediaFile | null>(null);
+
+  // Edit mode state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedData, setEditedData] = useState<AnamrezData | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const startEditing = () => {
+    if (anamrezData) {
+      setEditedData(JSON.parse(JSON.stringify(anamrezData)));
+      setIsEditing(true);
+    }
+  };
+
+  const cancelEditing = () => {
+    setEditedData(null);
+    setIsEditing(false);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editedData || !editedData.id) return;
+    setSaving(true);
+    try {
+      // Recalculate toxicity assessment from symptom ratings
+      const toxicityKeys = ['halsizlikYorgunluk', 'dengeKaybi', 'unutkanlik', 'kasinti', 'carpinti',
+        'uykuDuzensizligi', 'gozdeUcusmalar', 'oksuruk', 'yorgunUyanma', 'kabizlik'];
+      const toxicityScores: Record<string, number> = {};
+      let totalScore = 0;
+      let ratedSymptomsCount = 0;
+      toxicityKeys.forEach(key => {
+        const val = editedData.symptomRatings?.[key] || 0;
+        toxicityScores[key] = val;
+        if (val > 0) {
+          totalScore += val;
+          ratedSymptomsCount++;
+        }
+      });
+      const hasToxicity = ratedSymptomsCount >= 5 && totalScore >= 30;
+
+      const updatedData = {
+        ...editedData,
+        toxicityAssessment: { totalScore, ratedSymptomsCount, hasToxicity, toxicityScores },
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Remove id before saving to Firestore
+      const { id, ...dataToSave } = updatedData;
+      await updateDoc(doc(db, 'anamrezRecords', editedData.id), dataToSave);
+
+      // Update local state
+      setAnamrezData(updatedData);
+      setAllAnamrezRecords(prev => prev.map(r => r.id === updatedData.id ? updatedData : r));
+      setIsEditing(false);
+      setEditedData(null);
+      onDataUpdated?.();
+    } catch (error) {
+      console.error('Anamnez güncellenirken hata:', error);
+      alert('Kaydetme sırasında bir hata oluştu.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // If an anamrezRecord is passed directly, use it as current but still fetch all for comparison
   useEffect(() => {
@@ -715,6 +780,8 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setActiveSection('patient-info');
+      setIsEditing(false);
+      setEditedData(null);
       if (!anamrezRecord) {
         setAnamrezData(null);
         setAllAnamrezRecords([]);
@@ -764,7 +831,9 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
           <div className="p-3 sm:p-4 md:p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 sticky top-0 z-10">
             <div className="flex items-start sm:items-center justify-between gap-2">
               <div className="flex-1 min-w-0">
-                <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800 truncate">📄 Anamnez Görüntüleme</h2>
+                <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800 truncate">
+                  {isEditing ? '✏️ Anamnez Düzenleme' : '📄 Anamnez Görüntüleme'}
+                </h2>
                 <p className="text-xs sm:text-sm text-gray-600 mt-1 truncate">
                   {patient.fullName} - {patient.tcNo}
                 </p>
@@ -794,8 +863,40 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                 )}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
+                {/* Edit / Save / Cancel Buttons - Only when editable */}
+                {editable && anamrezData && !isEditing && (
+                  <button
+                    onClick={startEditing}
+                    className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors duration-200 font-medium shadow-md hover:shadow-lg text-xs sm:text-sm"
+                    title="Anamnezi Düzenle"
+                  >
+                    ✏️ <span className="hidden sm:inline">Düzenle</span>
+                  </button>
+                )}
+                {isEditing && (
+                  <>
+                    <button
+                      onClick={cancelEditing}
+                      className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors duration-200 font-medium shadow-md text-xs sm:text-sm"
+                    >
+                      <span className="hidden sm:inline">İptal</span>
+                      <span className="sm:hidden">✕</span>
+                    </button>
+                    <button
+                      onClick={handleSaveEdit}
+                      disabled={saving}
+                      className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors duration-200 font-medium shadow-md hover:shadow-lg text-xs sm:text-sm disabled:opacity-50"
+                    >
+                      {saving ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      ) : (
+                        <>💾 <span className="hidden sm:inline">Kaydet</span></>
+                      )}
+                    </button>
+                  </>
+                )}
                 {/* PDF Download Button */}
-                {anamrezData && (
+                {anamrezData && !isEditing && (
                   <button
                     onClick={handlePrint}
                     className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors duration-200 font-medium shadow-md hover:shadow-lg text-xs sm:text-sm"
@@ -921,49 +1022,115 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                         <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-4 sm:mb-6 flex items-center gap-2">
                           🔍 Tanı & Şikayet
                         </h3>
-                        
+
                         <div className="bg-white rounded-lg sm:rounded-xl p-4 sm:p-6 border border-gray-200 shadow-sm">
                           <h4 className="font-bold text-gray-800 mb-4">Seçilen Tanı Sistemleri</h4>
-                          <div className="flex flex-wrap gap-2 mb-6">
-                            {anamrezData.selectedDiagnosisSystems?.map((system, index) => (
-                              <span
-                                key={index}
-                                className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm font-medium"
-                              >
-                                {system}
-                              </span>
-                            ))}
-                          </div>
+                          {isEditing && editedData ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-6">
+                              {DIAGNOSIS_SYSTEMS.map((system) => (
+                                <label key={system} className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={editedData.selectedDiagnosisSystems?.includes(system) || false}
+                                    onChange={(e) => {
+                                      const current = editedData.selectedDiagnosisSystems || [];
+                                      const updated = e.target.checked
+                                        ? [...current, system]
+                                        : current.filter(s => s !== system);
+                                      setEditedData({ ...editedData, selectedDiagnosisSystems: updated });
+                                    }}
+                                    className="w-4 h-4 text-blue-600 rounded"
+                                  />
+                                  <span className="text-sm text-gray-700">{system}</span>
+                                </label>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap gap-2 mb-6">
+                              {anamrezData.selectedDiagnosisSystems?.map((system, index) => (
+                                <span
+                                  key={index}
+                                  className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm font-medium"
+                                >
+                                  {system}
+                                </span>
+                              ))}
+                            </div>
+                          )}
 
                           {/* Selected Illnesses per System */}
-                          {anamrezData.selectedIllnesses && Object.keys(anamrezData.selectedIllnesses).length > 0 && (
+                          {isEditing && editedData ? (
                             <div className="mt-4 space-y-3">
-                              {Object.entries(anamrezData.selectedIllnesses).map(([system, illnesses]) => (
-                                illnesses && illnesses.length > 0 && (
+                              {(editedData.selectedDiagnosisSystems || []).map((system) => {
+                                const availableIllnesses = DIAGNOSIS_ILLNESSES[system] || [];
+                                if (availableIllnesses.length === 0) return null;
+                                const selectedIllnesses = editedData.selectedIllnesses?.[system] || [];
+                                return (
                                   <div key={system} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                                     <p className="text-sm font-semibold text-gray-700 mb-2">{system}</p>
                                     <div className="flex flex-wrap gap-2">
-                                      {illnesses.map((illness, idx) => (
-                                        <span
-                                          key={idx}
-                                          className="px-2 py-1 bg-red-50 text-red-700 rounded-full text-xs font-medium border border-red-200"
-                                        >
-                                          {illness}
-                                        </span>
+                                      {availableIllnesses.map((illness) => (
+                                        <label key={illness} className="flex items-center gap-1 cursor-pointer">
+                                          <input
+                                            type="checkbox"
+                                            checked={selectedIllnesses.includes(illness)}
+                                            onChange={(e) => {
+                                              const currentIllnesses = { ...(editedData.selectedIllnesses || {}) };
+                                              const current = currentIllnesses[system] || [];
+                                              currentIllnesses[system] = e.target.checked
+                                                ? [...current, illness]
+                                                : current.filter(i => i !== illness);
+                                              setEditedData({ ...editedData, selectedIllnesses: currentIllnesses });
+                                            }}
+                                            className="w-3 h-3 text-red-600 rounded"
+                                          />
+                                          <span className="px-2 py-1 text-xs text-gray-700">{illness}</span>
+                                        </label>
                                       ))}
                                     </div>
                                   </div>
-                                )
-                              ))}
+                                );
+                              })}
                             </div>
+                          ) : (
+                            anamrezData.selectedIllnesses && Object.keys(anamrezData.selectedIllnesses).length > 0 && (
+                              <div className="mt-4 space-y-3">
+                                {Object.entries(anamrezData.selectedIllnesses).map(([system, illnesses]) => (
+                                  illnesses && illnesses.length > 0 && (
+                                    <div key={system} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                      <p className="text-sm font-semibold text-gray-700 mb-2">{system}</p>
+                                      <div className="flex flex-wrap gap-2">
+                                        {illnesses.map((illness, idx) => (
+                                          <span
+                                            key={idx}
+                                            className="px-2 py-1 bg-red-50 text-red-700 rounded-full text-xs font-medium border border-red-200"
+                                          >
+                                            {illness}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )
+                                ))}
+                              </div>
+                            )
                           )}
                         </div>
 
                         <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
                           <h4 className="font-bold text-gray-800 mb-4">Ana Şikayet</h4>
-                          <div className="text-gray-700 leading-relaxed whitespace-pre-wrap">
-                            {anamrezData.complaintDetails || 'Belirtilmemiş'}
-                          </div>
+                          {isEditing && editedData ? (
+                            <textarea
+                              value={editedData.complaintDetails || ''}
+                              onChange={(e) => setEditedData({ ...editedData, complaintDetails: e.target.value })}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[120px] resize-y"
+                              placeholder="Şikayet detaylarını yazın..."
+                            />
+                          ) : (
+                            <div className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                              {anamrezData.complaintDetails || 'Belirtilmemiş'}
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -978,41 +1145,105 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                         <div className="grid grid-cols-1 gap-4 sm:gap-6">
                           <div className="bg-white rounded-lg sm:rounded-xl p-4 sm:p-6 border border-gray-200 shadow-sm">
                             <h4 className="font-bold text-gray-800 mb-4">Hastalık Geçmişi</h4>
-                            <div className="text-gray-700 leading-relaxed whitespace-pre-wrap">
-                              {anamrezData.pastMedicalHistory || 'Belirtilmemiş'}
-                            </div>
-                          </div>
-
-                          <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
-                            <h4 className="font-bold text-gray-800 mb-4">Soy Geçmişi</h4>
-                            <div className="text-gray-700 leading-relaxed whitespace-pre-wrap">
-                              {anamrezData.familyHistory || 'Belirtilmemiş'}
-                            </div>
-                          </div>
-
-                          <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
-                            <h4 className="font-bold text-gray-800 mb-4">Ameliyat Geçmişi</h4>
-                            <div className="mb-2">
-                              <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                                anamrezData.hasSurgery === 'var' 
-                                  ? 'bg-orange-100 text-orange-800' 
-                                  : 'bg-green-100 text-green-800'
-                              }`}>
-                                {anamrezData.hasSurgery === 'var' ? 'Var' : 'Yok'}
-                              </span>
-                            </div>
-                            {anamrezData.hasSurgery === 'var' && (
-                              <div className="text-gray-700 leading-relaxed whitespace-pre-wrap mt-3">
-                                {anamrezData.surgicalHistory || 'Detay belirtilmemiş'}
+                            {isEditing && editedData ? (
+                              <textarea
+                                value={editedData.pastMedicalHistory || ''}
+                                onChange={(e) => setEditedData({ ...editedData, pastMedicalHistory: e.target.value })}
+                                className="w-full p-3 border border-gray-300 rounded-lg text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[100px] resize-y"
+                                placeholder="Hastalık geçmişi..."
+                              />
+                            ) : (
+                              <div className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                                {anamrezData.pastMedicalHistory || 'Belirtilmemiş'}
                               </div>
                             )}
                           </div>
 
                           <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                            <h4 className="font-bold text-gray-800 mb-4">Soy Geçmişi</h4>
+                            {isEditing && editedData ? (
+                              <textarea
+                                value={editedData.familyHistory || ''}
+                                onChange={(e) => setEditedData({ ...editedData, familyHistory: e.target.value })}
+                                className="w-full p-3 border border-gray-300 rounded-lg text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[100px] resize-y"
+                                placeholder="Soy geçmişi..."
+                              />
+                            ) : (
+                              <div className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                                {anamrezData.familyHistory || 'Belirtilmemiş'}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                            <h4 className="font-bold text-gray-800 mb-4">Ameliyat Geçmişi</h4>
+                            {isEditing && editedData ? (
+                              <>
+                                <div className="flex items-center gap-3 mb-3">
+                                  <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                      type="radio"
+                                      name="hasSurgery"
+                                      checked={editedData.hasSurgery === 'var'}
+                                      onChange={() => setEditedData({ ...editedData, hasSurgery: 'var' })}
+                                      className="w-4 h-4 text-blue-600"
+                                    />
+                                    <span className="text-sm text-gray-700">Var</span>
+                                  </label>
+                                  <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                      type="radio"
+                                      name="hasSurgery"
+                                      checked={editedData.hasSurgery !== 'var'}
+                                      onChange={() => setEditedData({ ...editedData, hasSurgery: 'yok', surgicalHistory: '' })}
+                                      className="w-4 h-4 text-blue-600"
+                                    />
+                                    <span className="text-sm text-gray-700">Yok</span>
+                                  </label>
+                                </div>
+                                {editedData.hasSurgery === 'var' && (
+                                  <textarea
+                                    value={editedData.surgicalHistory || ''}
+                                    onChange={(e) => setEditedData({ ...editedData, surgicalHistory: e.target.value })}
+                                    className="w-full p-3 border border-gray-300 rounded-lg text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[80px] resize-y"
+                                    placeholder="Ameliyat detayları..."
+                                  />
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <div className="mb-2">
+                                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                                    anamrezData.hasSurgery === 'var'
+                                      ? 'bg-orange-100 text-orange-800'
+                                      : 'bg-green-100 text-green-800'
+                                  }`}>
+                                    {anamrezData.hasSurgery === 'var' ? 'Var' : 'Yok'}
+                                  </span>
+                                </div>
+                                {anamrezData.hasSurgery === 'var' && (
+                                  <div className="text-gray-700 leading-relaxed whitespace-pre-wrap mt-3">
+                                    {anamrezData.surgicalHistory || 'Detay belirtilmemiş'}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+
+                          <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
                             <h4 className="font-bold text-gray-800 mb-4">Alerjiler</h4>
-                            <div className="text-gray-700 leading-relaxed whitespace-pre-wrap">
-                              {anamrezData.allergies || 'Belirtilmemiş'}
-                            </div>
+                            {isEditing && editedData ? (
+                              <textarea
+                                value={editedData.allergies || ''}
+                                onChange={(e) => setEditedData({ ...editedData, allergies: e.target.value })}
+                                className="w-full p-3 border border-gray-300 rounded-lg text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[80px] resize-y"
+                                placeholder="Alerjiler..."
+                              />
+                            ) : (
+                              <div className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                                {anamrezData.allergies || 'Belirtilmemiş'}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1027,66 +1258,63 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                         
                         <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {anamrezData.symptomRatings && Object.entries(anamrezData.symptomRatings).map(([key, value]) => {
-                              // Convert symptom keys to readable labels
+                            {(() => {
                               const symptomLabels: Record<string, string> = {
-                                'uykuHali': 'Uyku Hali',
-                                'gozdeUcusmalar': 'Gözde Uçuşmalar',
-                                'carpinti': 'Çarpıntı',
-                                'siskinlik': 'Şişkinlik',
-                                'adetDuzensizligi': 'Adet Düzensizliği',
-                                'dengeKaybi': 'Denge Kaybı',
-                                'yayginKasAgrisi': 'Yaygın Kas Ağrısı',
-                                'nefesAlmadaGucluk': 'Nefes Almada Güçlük',
-                                'ustume': 'Üşüme',
-                                'terleme': 'Terleme',
-                                'stres': 'Stres',
-                                'agriliAdet': 'Ağrılı Adet',
-                                'uykuDuzensizligi': 'Uyku Düzensizliği',
-                                'oksuruk': 'Öksürük',
-                                'balgam': 'Balgam',
-                                'kasilmaVeKramplar': 'Kasılma Ve Kramplar',
-                                'elAyakUyusmalari': 'El Ayak Uyuşmaları',
-                                'unutkanlik': 'Unutkanlık',
-                                'kasinti': 'Kaşıntı',
-                                'idrarKacirma': 'İdrar Kaçırma',
-                                'idrardaYanma': 'İdrarda Yanma',
-                                'geceIdraraKalkma': 'Gece İdrara Kalkma',
-                                'kesikKesikIdrar': 'Kesik Kesik İdrar',
-                                'kabizlik': 'Kabızlık',
-                                'karindaGaz': 'Karında Gaz',
-                                'belAgrisi': 'Bel Ağrısı',
-                                'ishal': 'İshal',
-                                'boyunAgrisi': 'Boyun Ağrısı',
-                                'yayginOdem': 'Yaygın Ödem',
-                                'basur': 'Basur',
-                                'eklemAgrilari': 'Eklem Ağrıları',
-                                'algiBozuklugu': 'Algı Bozukluğu',
-                                'halsizlikYorgunluk': 'Halsizlik / Yorgunluk',
-                                'yorgunUyanma': 'Yorgun Uyanma',
-                                'basDonmesi': 'Baş Dönmesi',
-                                'basAgrisi': 'Baş Ağrısı',
-                                'mideAgisi': 'Mide Ağısı',
-                                'mideYanmasi': 'Mide Yanması'
+                                'uykuHali': 'Uyku Hali', 'gozdeUcusmalar': 'Gözde Uçuşmalar', 'carpinti': 'Çarpıntı',
+                                'siskinlik': 'Şişkinlik', 'adetDuzensizligi': 'Adet Düzensizliği', 'dengeKaybi': 'Denge Kaybı',
+                                'yayginKasAgrisi': 'Yaygın Kas Ağrısı', 'nefesAlmadaGucluk': 'Nefes Almada Güçlük', 'ustume': 'Üşüme',
+                                'terleme': 'Terleme', 'stres': 'Stres', 'agriliAdet': 'Ağrılı Adet',
+                                'uykuDuzensizligi': 'Uyku Düzensizliği', 'oksuruk': 'Öksürük', 'balgam': 'Balgam',
+                                'kasilmaVeKramplar': 'Kasılma Ve Kramplar', 'elAyakUyusmalari': 'El Ayak Uyuşmaları', 'unutkanlik': 'Unutkanlık',
+                                'kasinti': 'Kaşıntı', 'idrarKacirma': 'İdrar Kaçırma', 'idrardaYanma': 'İdrarda Yanma',
+                                'geceIdraraKalkma': 'Gece İdrara Kalkma', 'kesikKesikIdrar': 'Kesik Kesik İdrar', 'kabizlik': 'Kabızlık',
+                                'karindaGaz': 'Karında Gaz', 'belAgrisi': 'Bel Ağrısı', 'ishal': 'İshal',
+                                'boyunAgrisi': 'Boyun Ağrısı', 'yayginOdem': 'Yaygın Ödem', 'basur': 'Basur',
+                                'eklemAgrilari': 'Eklem Ağrıları', 'algiBozuklugu': 'Algı Bozukluğu',
+                                'halsizlikYorgunluk': 'Halsizlik / Yorgunluk', 'yorgunUyanma': 'Yorgun Uyanma',
+                                'basDonmesi': 'Baş Dönmesi', 'basAgrisi': 'Baş Ağrısı',
+                                'mideAgisi': 'Mide Ağısı', 'mideYanmasi': 'Mide Yanması'
                               };
-                              
-                              return (
-                                <div key={key} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                  <span className="text-gray-700 text-sm font-medium">
+                              const ratings = isEditing && editedData ? editedData.symptomRatings : anamrezData.symptomRatings;
+                              if (!ratings) return null;
+                              return Object.entries(ratings).map(([key, value]) => (
+                                <div key={key} className={`p-3 bg-gray-50 rounded-lg ${isEditing ? '' : 'flex items-center justify-between'}`}>
+                                  <span className="text-gray-700 text-sm font-medium block mb-1">
                                     {symptomLabels[key] || key}
                                   </span>
-                                  <div className={`px-2 py-1 rounded-full text-xs font-bold ${
-                                    value <= 3
-                                      ? 'bg-green-100 text-green-700'
-                                      : value <= 6
-                                      ? 'bg-yellow-100 text-yellow-700'
-                                      : 'bg-red-100 text-red-700'
-                                  }`}>
-                                    {value}/10
-                                  </div>
+                                  {isEditing && editedData ? (
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="range"
+                                        min="0"
+                                        max="10"
+                                        value={value}
+                                        onChange={(e) => {
+                                          const newRatings = { ...editedData.symptomRatings, [key]: Number(e.target.value) };
+                                          setEditedData({ ...editedData, symptomRatings: newRatings });
+                                        }}
+                                        className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                      />
+                                      <span className={`px-2 py-1 rounded-full text-xs font-bold min-w-[40px] text-center ${
+                                        value <= 3 ? 'bg-green-100 text-green-700'
+                                          : value <= 6 ? 'bg-yellow-100 text-yellow-700'
+                                          : 'bg-red-100 text-red-700'
+                                      }`}>
+                                        {value}/10
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <div className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                      value <= 3 ? 'bg-green-100 text-green-700'
+                                        : value <= 6 ? 'bg-yellow-100 text-yellow-700'
+                                        : 'bg-red-100 text-red-700'
+                                    }`}>
+                                      {value}/10
+                                    </div>
+                                  )}
                                 </div>
-                              );
-                            })}
+                              ));
+                            })()}
                           </div>
                         </div>
                       </div>
@@ -1109,23 +1337,46 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                 <h4 className="font-bold text-gray-800 mb-4">{questionSet.label}</h4>
                                 <div className="grid grid-cols-1 gap-3">
                                   {questionSet.questions.map((question) => {
-                                    // Get the rating from saved responses, default to 0 if not found
-                                    const rating = anamrezData.diagnosisResponses?.[diagnosis]?.[question] || 0;
-                                    
+                                    const dataSource = isEditing && editedData ? editedData : anamrezData;
+                                    const rating = dataSource.diagnosisResponses?.[diagnosis]?.[question] || 0;
+
                                     return (
-                                      <div key={question} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                        <span className="text-gray-700 text-sm">{question}</span>
-                                        <div className={`px-2 py-1 rounded-full text-xs font-bold ${
-                                          rating === 0
-                                            ? 'bg-gray-100 text-gray-600'
-                                            : rating <= 3
-                                            ? 'bg-green-100 text-green-700'
-                                            : rating <= 6
-                                            ? 'bg-yellow-100 text-yellow-700'
-                                            : 'bg-red-100 text-red-700'
-                                        }`}>
-                                          {rating}/10
-                                        </div>
+                                      <div key={question} className={`p-3 bg-gray-50 rounded-lg ${isEditing ? '' : 'flex items-center justify-between'}`}>
+                                        <span className="text-gray-700 text-sm block mb-1">{question}</span>
+                                        {isEditing && editedData ? (
+                                          <div className="flex items-center gap-2">
+                                            <input
+                                              type="range"
+                                              min="0"
+                                              max="10"
+                                              value={rating}
+                                              onChange={(e) => {
+                                                const newResponses = { ...(editedData.diagnosisResponses || {}) };
+                                                if (!newResponses[diagnosis]) newResponses[diagnosis] = {};
+                                                newResponses[diagnosis] = { ...newResponses[diagnosis], [question]: Number(e.target.value) };
+                                                setEditedData({ ...editedData, diagnosisResponses: newResponses });
+                                              }}
+                                              className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                            />
+                                            <span className={`px-2 py-1 rounded-full text-xs font-bold min-w-[40px] text-center ${
+                                              rating === 0 ? 'bg-gray-100 text-gray-600'
+                                                : rating <= 3 ? 'bg-green-100 text-green-700'
+                                                : rating <= 6 ? 'bg-yellow-100 text-yellow-700'
+                                                : 'bg-red-100 text-red-700'
+                                            }`}>
+                                              {rating}/10
+                                            </span>
+                                          </div>
+                                        ) : (
+                                          <div className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                            rating === 0 ? 'bg-gray-100 text-gray-600'
+                                              : rating <= 3 ? 'bg-green-100 text-green-700'
+                                              : rating <= 6 ? 'bg-yellow-100 text-yellow-700'
+                                              : 'bg-red-100 text-red-700'
+                                          }`}>
+                                            {rating}/10
+                                          </div>
+                                        )}
                                       </div>
                                     );
                                   })}
@@ -1154,9 +1405,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                         
                         <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {anamrezData.additionalQuestions && Object.entries(anamrezData.additionalQuestions).map(([key, value]) => {
-                              if (!value) return null;
-                              
+                            {(() => {
                               const questionLabels: Record<string, string> = {
                                 'exerciseFrequency': 'Spor Yapma Sıklığı',
                                 'dailySleepHours': 'Günlük Uyku Saati',
@@ -1167,35 +1416,68 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                 'smokingFrequency': 'Sigara İçme Sıklığı',
                                 'alcoholFrequency': 'Alkol Kullanma Sıklığı'
                               };
-                              
-                              return (
-                                <div key={key}>
-                                  <label className="block text-gray-600 text-sm font-medium mb-2">
-                                    {questionLabels[key] || key}
-                                  </label>
-                                  <div className="text-gray-900 font-semibold">{value}</div>
-                                </div>
-                              );
-                            })}
+                              const questions = isEditing && editedData ? editedData.additionalQuestions : anamrezData.additionalQuestions;
+                              if (!questions) return null;
+                              return Object.entries(questions).map(([key, value]) => {
+                                if (!isEditing && !value) return null;
+                                return (
+                                  <div key={key}>
+                                    <label className="block text-gray-600 text-sm font-medium mb-2">
+                                      {questionLabels[key] || key}
+                                    </label>
+                                    {isEditing && editedData ? (
+                                      <input
+                                        type="text"
+                                        value={value || ''}
+                                        onChange={(e) => {
+                                          const newQuestions = { ...editedData.additionalQuestions, [key]: e.target.value };
+                                          setEditedData({ ...editedData, additionalQuestions: newQuestions });
+                                        }}
+                                        className="w-full p-2 border border-gray-300 rounded-lg text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                      />
+                                    ) : (
+                                      <div className="text-gray-900 font-semibold">{value}</div>
+                                    )}
+                                  </div>
+                                );
+                              });
+                            })()}
                           </div>
                         </div>
 
                         {/* Custom Questions */}
-                        {anamrezData.customQuestions && anamrezData.customQuestions.length > 0 && (
-                          <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
-                            <h4 className="font-bold text-gray-800 mb-4">Ek Sorular</h4>
-                            <div className="space-y-4">
-                              {anamrezData.customQuestions.map((customQ, index) => (
-                                <div key={customQ.id} className="border-l-4 border-orange-300 pl-4">
-                                  <div className="font-medium text-gray-800 mb-2">
-                                    {index + 1}. {customQ.question}
+                        {(() => {
+                          const customQs = isEditing && editedData ? editedData.customQuestions : anamrezData.customQuestions;
+                          if (!customQs || customQs.length === 0) return null;
+                          return (
+                            <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                              <h4 className="font-bold text-gray-800 mb-4">Ek Sorular</h4>
+                              <div className="space-y-4">
+                                {customQs.map((customQ, index) => (
+                                  <div key={customQ.id} className="border-l-4 border-orange-300 pl-4">
+                                    <div className="font-medium text-gray-800 mb-2">
+                                      {index + 1}. {customQ.question}
+                                    </div>
+                                    {isEditing && editedData ? (
+                                      <input
+                                        type="text"
+                                        value={customQ.answer || ''}
+                                        onChange={(e) => {
+                                          const newCustomQs = [...editedData.customQuestions];
+                                          newCustomQs[index] = { ...newCustomQs[index], answer: e.target.value };
+                                          setEditedData({ ...editedData, customQuestions: newCustomQs });
+                                        }}
+                                        className="w-full p-2 border border-gray-300 rounded-lg text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                      />
+                                    ) : (
+                                      <div className="text-gray-700">{customQ.answer}</div>
+                                    )}
                                   </div>
-                                  <div className="text-gray-700">{customQ.answer}</div>
-                                </div>
-                              ))}
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          );
+                        })()}
                       </div>
                     )}
 
@@ -1615,16 +1897,40 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
                             <h4 className="font-bold text-gray-800 mb-4">Kullandığı İlaçlar</h4>
-                            <div className="text-gray-700 leading-relaxed whitespace-pre-wrap">
-                              {anamrezData.conventionalTreatment?.currentMedications || 'Belirtilmemiş'}
-                            </div>
+                            {isEditing && editedData ? (
+                              <textarea
+                                value={editedData.conventionalTreatment?.currentMedications || ''}
+                                onChange={(e) => setEditedData({
+                                  ...editedData,
+                                  conventionalTreatment: { ...editedData.conventionalTreatment, currentMedications: e.target.value }
+                                })}
+                                className="w-full p-3 border border-gray-300 rounded-lg text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[100px] resize-y"
+                                placeholder="Kullandığı ilaçlar..."
+                              />
+                            ) : (
+                              <div className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                                {anamrezData.conventionalTreatment?.currentMedications || 'Belirtilmemiş'}
+                              </div>
+                            )}
                           </div>
 
                           <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
                             <h4 className="font-bold text-gray-800 mb-4">Aldığı Diğer Tedaviler</h4>
-                            <div className="text-gray-700 leading-relaxed whitespace-pre-wrap">
-                              {anamrezData.conventionalTreatment?.otherTreatments || 'Belirtilmemiş'}
-                            </div>
+                            {isEditing && editedData ? (
+                              <textarea
+                                value={editedData.conventionalTreatment?.otherTreatments || ''}
+                                onChange={(e) => setEditedData({
+                                  ...editedData,
+                                  conventionalTreatment: { ...editedData.conventionalTreatment, otherTreatments: e.target.value }
+                                })}
+                                className="w-full p-3 border border-gray-300 rounded-lg text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[100px] resize-y"
+                                placeholder="Diğer tedaviler..."
+                              />
+                            ) : (
+                              <div className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                                {anamrezData.conventionalTreatment?.otherTreatments || 'Belirtilmemiş'}
+                              </div>
+                            )}
                           </div>
                         </div>
 

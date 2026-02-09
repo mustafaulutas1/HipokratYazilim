@@ -14,6 +14,8 @@ interface AppointmentModalProps {
   doctorProfile?: any;
   initialDate?: Date;
   initialTime?: string; // Format: "HH:MM"
+  initialPatientId?: string;
+  initialTypeId?: string;
 }
 
 interface PatientDoc { id: string; fullName: string; }
@@ -30,9 +32,12 @@ function minutesToTime(mins: number) {
 }
 // generateTimes kaldırıldı (artık custom saat bileşeni var)
 
-const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, onAdded, doctorId, editedAppointment, doctorProfile, initialDate, initialTime }) => {
+const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, onAdded, doctorId, editedAppointment, doctorProfile, initialDate, initialTime, initialPatientId, initialTypeId }) => {
   const [patients, setPatients] = useState<PatientDoc[]>([]);
-  const [types, setTypes] = useState<TypeDoc[]>([]);
+  const [types] = useState<TypeDoc[]>([
+    { id: 'kontrol', name: 'Kontrol', durationMinutes: 15 },
+    { id: 'tedavi', name: 'Tedavi', durationMinutes: 15 },
+  ]);
   const [patientOpen, setPatientOpen] = useState<boolean>(false);
   const [typeOpen, setTypeOpen] = useState<boolean>(false);
   const [searchPatient, setSearchPatient] = useState('');
@@ -96,7 +101,6 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
       if (!doctorProfile?.clinicId) {
         console.error('❌ AppointmentModal: No clinicId found in doctorProfile');
         setPatients([]);
-        setTypes([]);
         return;
       }
       
@@ -113,13 +117,6 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
       
       console.log('👥 AppointmentModal: Found patients:', patientsList.length);
       
-      const tq = query(collection(db, 'appointment_types'));
-      const ts = await getDocs(tq);
-      const allTypes: TypeDoc[] = ts.docs.map(d => ({ id: d.id, name: (d.data() as any).name, durationMinutes: (d.data() as any).durationMinutes || 30, status: (d.data() as any).status }));
-      // Filter to show only active appointment types (and legacy types without status)
-      const activeTypes = allTypes.filter(type => (type as any).status === 'active' || !(type as any).status);
-
-      setTypes(activeTypes);
       setError('');
     })();
   }, [isOpen, doctorProfile?.clinicId]);
@@ -159,8 +156,14 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
         setStartHour(hh);
         setStartMinute(mm);
       }
+      if (initialPatientId) {
+        setSelectedPatient(initialPatientId);
+      }
+      if (initialTypeId) {
+        setSelectedType(initialTypeId);
+      }
     }
-  }, [isOpen, editedAppointment, initialDate, initialTime]);
+  }, [isOpen, editedAppointment, initialDate, initialTime, initialPatientId, initialTypeId]);
 
   // Fetch cancelled appointments for selected patient
   useEffect(() => {

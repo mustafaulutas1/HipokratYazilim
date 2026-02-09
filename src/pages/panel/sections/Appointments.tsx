@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, updateDoc, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import AppointmentModal from '../components/AppointmentModal';
 import AppointmentTypeManager from '../components/AppointmentTypeManager';
@@ -30,6 +30,14 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
   
   // Calendar için hasta filtreleme
   const [calendarPatientFilter, setCalendarPatientFilter] = useState('');
+
+  // Rutin Tedavi Programları
+  const [activeTab, setActiveTab] = useState<'calendar' | 'routinePrograms'>('calendar');
+  const [routinePrograms, setRoutinePrograms] = useState<any[]>([]);
+  const [programsRefreshKey, setProgramsRefreshKey] = useState(0);
+  const [preselectedPatientId, setPreselectedPatientId] = useState<string | undefined>();
+  const [preselectedTypeId, setPreselectedTypeId] = useState<string | undefined>();
+  const [schedulingProgramId, setSchedulingProgramId] = useState<string | null>(null);
   
   // Utils for time math
   const timeToMinutes = (t: string) => {
@@ -200,6 +208,23 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
     }
   };
 
+  // Fetch routine programs
+  useEffect(() => {
+    if (!doctorProfile?.clinicId) return;
+    const fetchRoutinePrograms = async () => {
+      const q = query(
+        collection(db, 'routine_programs'),
+        where('clinicId', '==', doctorProfile.clinicId),
+        where('status', '==', 'active')
+      );
+      const snap = await getDocs(q);
+      const programs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      programs.sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      setRoutinePrograms(programs);
+    };
+    fetchRoutinePrograms();
+  }, [doctorProfile?.clinicId, programsRefreshKey]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -228,6 +253,108 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
         </div>
       </div>
 
+      {/* Tab Switcher */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setActiveTab('calendar')}
+          className={`px-5 py-2.5 rounded-xl font-semibold transition-all ${
+            activeTab === 'calendar'
+              ? 'bg-white/20 text-white border border-white/30'
+              : 'bg-white/5 text-white/60 border border-white/10 hover:bg-white/10'
+          }`}
+        >
+          Takvim
+        </button>
+        <button
+          onClick={() => setActiveTab('routinePrograms')}
+          className={`px-5 py-2.5 rounded-xl font-semibold transition-all flex items-center gap-2 ${
+            activeTab === 'routinePrograms'
+              ? 'bg-white/20 text-white border border-white/30'
+              : 'bg-white/5 text-white/60 border border-white/10 hover:bg-white/10'
+          }`}
+        >
+          Rutin Tedavi Programları
+          {routinePrograms.length > 0 && (
+            <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
+              {routinePrograms.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Routine Programs Tab */}
+      {activeTab === 'routinePrograms' && (
+        <div className="space-y-4">
+          <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+            <h2 className="text-xl font-bold text-white mb-4">
+              Bekleyen Rutin Tedavi Programları
+            </h2>
+            {routinePrograms.length === 0 ? (
+              <p className="text-white/60 text-center py-8">Bekleyen rutin tedavi programı bulunmuyor.</p>
+            ) : (
+              <div className="space-y-3">
+                {routinePrograms.map((program: any) => (
+                  <div key={program.id} className="bg-white/10 border border-white/20 rounded-xl p-5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-white">{program.patientName}</h3>
+                        <div className="flex flex-wrap gap-3 mt-2">
+                          <span className="text-sm text-white/70 bg-white/10 px-3 py-1 rounded-lg">
+                            Protokol: {program.treatmentProtocolName || '-'}
+                          </span>
+                          <span className="text-sm text-blue-300 bg-blue-500/20 px-3 py-1 rounded-lg">
+                            Sıklık: {program.frequency}
+                          </span>
+                          <span className="text-sm text-green-300 bg-green-500/20 px-3 py-1 rounded-lg">
+                            Planlanan: {program.scheduledSessions} / {program.totalSessions} seans
+                          </span>
+                        </div>
+                        {program.notes && (
+                          <p className="text-sm text-yellow-300 mt-2">Not: {program.notes}</p>
+                        )}
+                        {program.doctorName && (
+                          <p className="text-xs text-white/50 mt-1">Doktor: {program.doctorName}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-4 ml-4">
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-white">
+                            {program.totalSessions - program.scheduledSessions}
+                          </div>
+                          <div className="text-xs text-white/60">Kalan</div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setPreselectedPatientId(program.patientId);
+                            setPreselectedTypeId('tedavi');
+                            setSchedulingProgramId(program.id);
+                            setSelectedSlotDate(undefined);
+                            setSelectedSlotTime(undefined);
+                            setEditedAppointment(null);
+                            setOpenAddModal(true);
+                          }}
+                          disabled={program.scheduledSessions >= program.totalSessions}
+                          className="px-5 py-2.5 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                        >
+                          Randevu Planla
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-3 w-full bg-white/10 rounded-full h-2">
+                      <div
+                        className="bg-green-500 h-2 rounded-full transition-all"
+                        style={{ width: `${(program.scheduledSessions / program.totalSessions) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'calendar' && <>
       {/* Filtreleme */}
       <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
         <h2 className="text-xl font-bold text-white mb-4">Filtreleme</h2>
@@ -821,6 +948,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
         </div>
       </div>
       </div>
+      </>}
 
       {/* Modals */}
       <AppointmentModal
@@ -830,6 +958,9 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
           setEditedAppointment(null);
           setSelectedSlotDate(undefined);
           setSelectedSlotTime(undefined);
+          setPreselectedPatientId(undefined);
+          setPreselectedTypeId(undefined);
+          setSchedulingProgramId(null);
         }}
         onAdded={() => {
           // refresh after add
@@ -846,12 +977,38 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
             const list = allAppointments.filter(apt => apt.dateISO === dateISO);
             list.sort((a,b) => String(a.start||'').localeCompare(String(b.start||'')));
             setAppointments(list);
+
+            // If scheduling from a routine program, increment scheduledSessions
+            if (schedulingProgramId) {
+              try {
+                const programRef = doc(db, 'routine_programs', schedulingProgramId);
+                const programSnap = await getDoc(programRef);
+                if (programSnap.exists()) {
+                  const programData = programSnap.data();
+                  const newScheduled = (programData.scheduledSessions || 0) + 1;
+                  const updates: any = { scheduledSessions: newScheduled };
+                  if (newScheduled >= programData.totalSessions) {
+                    updates.status = 'completed';
+                  }
+                  await updateDoc(programRef, updates);
+                }
+              } catch (err) {
+                console.error('Error updating routine program:', err);
+              }
+              setSchedulingProgramId(null);
+              setProgramsRefreshKey(k => k + 1);
+            }
+
+            setPreselectedPatientId(undefined);
+            setPreselectedTypeId(undefined);
           })();
         }}
         editedAppointment={editedAppointment}
         doctorProfile={doctorProfile}
         initialDate={selectedSlotDate}
         initialTime={selectedSlotTime}
+        initialPatientId={preselectedPatientId}
+        initialTypeId={preselectedTypeId}
       />
       <AppointmentTypeManager
         isOpen={openTypeModal}

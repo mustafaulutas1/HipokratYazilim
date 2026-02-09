@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, doc, updateDoc, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, addDoc, orderBy, limit } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { useAuth } from '../../../context/AuthContext';
 import AnamrezViewModal from './AnamrezViewModal';
@@ -60,6 +60,12 @@ interface TreatmentOptions {
   selectedProtocol?: any; // SavedProtocol type
   customizedProtocol?: any; // SavedProtocol type
   selectedMainApplications?: string[];
+  routineProgram?: {
+    enabled: boolean;
+    frequency: string;
+    totalSessions: number;
+    notes: string;
+  };
 }
 
 interface DoctorMessage {
@@ -83,6 +89,32 @@ interface DoctorMessage {
   repliedByName?: string;
 }
 
+interface AdditionalTreatmentRequest {
+  id: string;
+  type: string;
+  status: 'pending' | 'approved' | 'rejected';
+  fromUserId: string;
+  fromUserName: string;
+  fromUserRole: string;
+  toDoctorId: string;
+  toDoctorName: string;
+  patientId: string;
+  patientName: string;
+  // Application info
+  applicationId?: string;
+  applicationName?: string;
+  applicationPrice?: number;
+  treatmentDescription: string;
+  treatmentReason?: string;
+  clinicId: string;
+  createdAt: string;
+  timestamp: any;
+  responseNote?: string;
+  respondedAt?: string;
+  respondedBy?: string;
+  respondedByName?: string;
+}
+
 const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
   const { user } = useAuth();
   const [assignedPatients, setAssignedPatients] = useState<AssignedPatient[]>([]);
@@ -103,6 +135,13 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isMessagesExpanded, setIsMessagesExpanded] = useState(false);
   const [patientsSectionRef, setPatientsSectionRef] = useState<HTMLDivElement | null>(null);
+  
+  // Additional Treatment Requests state
+  const [treatmentRequests, setTreatmentRequests] = useState<AdditionalTreatmentRequest[]>([]);
+  const [selectedTreatmentRequest, setSelectedTreatmentRequest] = useState<AdditionalTreatmentRequest | null>(null);
+  const [isTreatmentRequestModalOpen, setIsTreatmentRequestModalOpen] = useState(false);
+  const [treatmentRequestsCount, setTreatmentRequestsCount] = useState(0);
+  const [isTreatmentRequestsExpanded, setIsTreatmentRequestsExpanded] = useState(false);
 
   useEffect(() => {
     // Security check: clinicId is required
@@ -223,6 +262,59 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
     return () => unsubscribe();
   }, [user?.uid, doctorProfile?.clinicId]);
 
+  // Listen for additional treatment requests
+  useEffect(() => {
+    if (!user?.uid || !doctorProfile?.clinicId) return;
+
+    console.log('🔍 DoctorPanel: Setting up additional treatment requests listener for doctor:', user.uid);
+    
+    const requestsQuery = query(
+      collection(db, 'additionalTreatmentRequests'),
+      where('clinicId', '==', doctorProfile.clinicId),
+      where('toDoctorId', '==', user.uid),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    );
+
+    const unsubscribe = onSnapshot(requestsQuery, (snapshot) => {
+      const fetchedRequests = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as AdditionalTreatmentRequest));
+
+      console.log('💊 DoctorPanel: Found treatment requests:', fetchedRequests.length);
+      setTreatmentRequests(fetchedRequests);
+      
+      // Count pending requests
+      const pendingCount = fetchedRequests.filter(req => req.status === 'pending').length;
+      setTreatmentRequestsCount(pendingCount);
+      console.log('💊 DoctorPanel: Pending treatment requests:', pendingCount);
+    }, (error) => {
+      console.error('❌ DoctorPanel: Error listening to treatment requests:', error);
+      // If index doesn't exist yet, try simpler query
+      const simpleQuery = query(
+        collection(db, 'additionalTreatmentRequests'),
+        where('clinicId', '==', doctorProfile.clinicId),
+        where('toDoctorId', '==', user.uid)
+      );
+      
+      onSnapshot(simpleQuery, (snapshot) => {
+        const fetchedRequests = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as AdditionalTreatmentRequest)).sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        
+        setTreatmentRequests(fetchedRequests);
+        const pendingCount = fetchedRequests.filter(req => req.status === 'pending').length;
+        setTreatmentRequestsCount(pendingCount);
+      });
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid, doctorProfile?.clinicId]);
+
   // Sayfa yüklendiğinde hastalar bölümüne scroll yap
   useEffect(() => {
     if (!loading && assignedPatients.length > 0 && patientsSectionRef) {
@@ -264,6 +356,78 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
     // Also mark as read when opening
     if (!message.isRead) {
       markMessageAsRead(message.id);
+    }
+  };
+
+  const handleOpenTreatmentRequestModal = (request: AdditionalTreatmentRequest) => {
+    setSelectedTreatmentRequest(request);
+    setIsTreatmentRequestModalOpen(true);
+  };
+
+  const handleRespondToTreatmentRequest = async (requestId: string, status: 'approved' | 'rejected', responseNote: string) => {
+    if (!user || !doctorProfile) return;
+    
+    // Find the request to get patient and treatment info
+    const request = treatmentRequests.find(r => r.id === requestId);
+    if (!request) {
+      console.error('❌ Request not found:', requestId);
+      return;
+    }
+    
+    try {
+      const requestRef = doc(db, 'additionalTreatmentRequests', requestId);
+      await updateDoc(requestRef, {
+        status: status,
+        responseNote: responseNote.trim() || null,
+        respondedAt: new Date().toISOString(),
+        respondedBy: user.uid,
+        respondedByName: doctorProfile?.fullName || doctorProfile?.name || 'Doktor'
+      });
+      
+      // If approved, add the treatment to the patient's treatment list and send to accounting
+      if (status === 'approved' && request.patientId && request.treatmentDescription) {
+        try {
+          const patientRef = doc(db, 'patients', request.patientId);
+          
+          // Get current patient data to append to existing treatments
+          const { getDoc } = await import('firebase/firestore');
+          const patientSnap = await getDoc(patientRef);
+          
+          if (patientSnap.exists()) {
+            const patientData = patientSnap.data();
+            const currentApplications = patientData.treatmentOptions?.selectedMainApplications || [];
+            
+            // Add the new approved treatment if not already in list
+            if (!currentApplications.includes(request.treatmentDescription)) {
+              const updatedApplications = [...currentApplications, request.treatmentDescription];
+              
+              await updateDoc(patientRef, {
+                'treatmentOptions.selectedMainApplications': updatedApplications,
+                // Send patient to accounting for payment of additional treatment
+                status: 'treatment_decided',
+                paymentCompleted: false,
+                // Track that this is for additional treatment
+                additionalTreatmentPending: true,
+                additionalTreatmentName: request.treatmentDescription,
+                additionalTreatmentPrice: request.applicationPrice || 0,
+                updatedAt: new Date().toISOString()
+              });
+              
+              console.log(`✅ Added treatment "${request.treatmentDescription}" to patient ${request.patientName} - sent to accounting`);
+            }
+          }
+        } catch (patientError) {
+          console.error('❌ Error updating patient treatments:', patientError);
+          // Don't fail the whole operation if patient update fails
+        }
+      }
+      
+      console.log(`✅ Treatment request ${status}:`, requestId);
+      setIsTreatmentRequestModalOpen(false);
+      setSelectedTreatmentRequest(null);
+    } catch (error) {
+      console.error('❌ Error responding to treatment request:', error);
+      alert('Talep yanıtlanırken bir hata oluştu. Lütfen tekrar deneyin.');
     }
   };
 
@@ -350,6 +514,24 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
         updatedAt: new Date().toISOString()
       });
       
+      if (treatmentOptions.routineProgram?.enabled) {
+        await addDoc(collection(db, 'routine_programs'), {
+          patientId: patient.id,
+          patientName: patient.fullName,
+          clinicId: patient.clinicId,
+          doctorId: patient.assignedDoctorId || null,
+          doctorName: patient.assignedDoctorName || null,
+          frequency: treatmentOptions.routineProgram.frequency,
+          totalSessions: treatmentOptions.routineProgram.totalSessions,
+          scheduledSessions: 0,
+          status: 'active',
+          treatmentProtocolName: treatmentOptions.protocolName || '',
+          notes: treatmentOptions.routineProgram.notes || '',
+          createdAt: new Date().toISOString(),
+        });
+        console.log(`📋 Routine program created for patient: ${patient.fullName}`);
+      }
+
       if (shouldGoToPharmacy) {
         console.log(`✅ Treatment decided for patient: ${patient.fullName} - Sent to both Muhasebe and Eczane`);
       } else {
@@ -631,6 +813,138 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
           </div>
         )}
 
+        {/* Additional Treatment Requests Section */}
+        {treatmentRequests.length > 0 && (
+          <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <span className="text-3xl">💊</span>
+                <h2 className="text-2xl font-bold text-white">
+                  Ek Tedavi Talepleri
+                  {treatmentRequestsCount > 0 && (
+                    <span className="ml-2 px-2 py-1 bg-purple-500 text-white text-sm rounded-full">
+                      {treatmentRequestsCount} bekleyen
+                    </span>
+                  )}
+                </h2>
+              </div>
+              <button
+                onClick={() => setIsTreatmentRequestsExpanded(!isTreatmentRequestsExpanded)}
+                className="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-xl text-purple-300 hover:text-purple-200 transition-all duration-200 flex items-center gap-2"
+              >
+                <span className="text-sm">
+                  {isTreatmentRequestsExpanded ? 'Gizle' : 'Göster'}
+                </span>
+                <span className={`transform transition-transform duration-200 ${isTreatmentRequestsExpanded ? 'rotate-180' : ''}`}>
+                  ▼
+                </span>
+              </button>
+            </div>
+
+            {isTreatmentRequestsExpanded && (
+              <div className="space-y-4 max-h-96 overflow-y-auto">
+                {treatmentRequests.map((request) => (
+                  <div 
+                    key={request.id}
+                    className={`p-4 rounded-xl border transition-all duration-200 cursor-pointer hover:shadow-lg ${
+                      request.status === 'pending'
+                        ? 'bg-purple-500/10 border-purple-500/30 shadow-lg hover:bg-purple-500/20' 
+                        : request.status === 'approved'
+                        ? 'bg-green-500/10 border-green-500/30 hover:bg-green-500/20'
+                        : 'bg-red-500/10 border-red-500/30 hover:bg-red-500/20'
+                    }`}
+                    onClick={() => handleOpenTreatmentRequestModal(request)}
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-lg">👨‍⚕️</span>
+                        <span className="text-white font-medium">{request.fromUserName}</span>
+                        <span className={`text-xs px-2 py-1 rounded-full border ${
+                          request.status === 'pending' 
+                            ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
+                            : request.status === 'approved'
+                            ? 'bg-green-500/20 text-green-300 border-green-500/30'
+                            : 'bg-red-500/20 text-red-300 border-red-500/30'
+                        }`}>
+                          {request.status === 'pending' ? '⏳ Beklemede' : request.status === 'approved' ? '✅ Onaylandı' : '❌ Reddedildi'}
+                        </span>
+                      </div>
+                      <span className="text-white/50 text-xs">
+                        {new Date(request.createdAt).toLocaleString('tr-TR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </span>
+                    </div>
+
+                    <div className="mb-3 p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                      <div className="flex items-center gap-2 text-blue-300">
+                        <span className="text-sm">👤</span>
+                        <span className="text-sm font-medium">Hasta: {request.patientName}</span>
+                      </div>
+                    </div>
+
+                    <div className="mb-2">
+                      <p className="text-white/60 text-xs font-medium mb-1">Talep Edilen Tedavi:</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-white/80 text-sm leading-relaxed">
+                          {request.treatmentDescription}
+                        </p>
+                        {request.applicationPrice !== undefined && request.applicationPrice > 0 && (
+                          <span className="ml-2 px-2 py-1 bg-purple-500/30 text-purple-200 text-xs font-medium rounded-lg">
+                            {request.applicationPrice.toLocaleString('tr-TR')} TL
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {request.treatmentReason && (
+                      <div className="mb-2">
+                        <p className="text-white/60 text-xs font-medium mb-1">Gerekçe:</p>
+                        <p className="text-white/70 text-xs leading-relaxed">
+                          {request.treatmentReason}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Response Preview */}
+                    {request.responseNote && (
+                      <div className={`mt-3 p-2 rounded-lg border ${
+                        request.status === 'approved'
+                          ? 'bg-green-500/10 border-green-500/20'
+                          : 'bg-red-500/10 border-red-500/20'
+                      }`}>
+                        <div className={`flex items-center gap-2 mb-1 ${
+                          request.status === 'approved' ? 'text-green-300' : 'text-red-300'
+                        }`}>
+                          <span className="text-sm">💬</span>
+                          <span className="text-xs font-medium">Yanıtınız:</span>
+                        </div>
+                        <p className={`text-xs line-clamp-2 ${
+                          request.status === 'approved' ? 'text-green-200/80' : 'text-red-200/80'
+                        }`}>
+                          {request.responseNote}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Click hint */}
+                    <div className="mt-3 flex items-center justify-end">
+                      <span className="text-xs text-white/40 flex items-center gap-1">
+                        <span>👆</span>
+                        {request.status === 'pending' ? 'Yanıtlamak için tıklayın' : 'Detay için tıklayın'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <div 
           ref={setPatientsSectionRef}
           className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6 shadow-sm"
@@ -805,6 +1119,7 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
         isOpen={isAnamrezViewModalOpen}
         onClose={() => setIsAnamrezViewModalOpen(false)}
         patient={selectedPatient}
+        editable={true}
       />
 
       <TreatmentModal
@@ -823,6 +1138,233 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
         message={selectedMessage}
         doctorProfile={doctorProfile}
       />
+
+      {/* Additional Treatment Request Response Modal */}
+      {isTreatmentRequestModalOpen && selectedTreatmentRequest && (
+        <TreatmentRequestResponseModal
+          isOpen={isTreatmentRequestModalOpen}
+          onClose={() => {
+            setIsTreatmentRequestModalOpen(false);
+            setSelectedTreatmentRequest(null);
+          }}
+          request={selectedTreatmentRequest}
+          onRespond={handleRespondToTreatmentRequest}
+        />
+      )}
+    </div>
+  );
+};
+
+// Treatment Request Response Modal Component
+interface TreatmentRequestResponseModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  request: AdditionalTreatmentRequest;
+  onRespond: (requestId: string, status: 'approved' | 'rejected', responseNote: string) => Promise<void>;
+}
+
+const TreatmentRequestResponseModal: React.FC<TreatmentRequestResponseModalProps> = ({
+  isOpen,
+  onClose,
+  request,
+  onRespond
+}) => {
+  const [responseNote, setResponseNote] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const handleRespond = async (status: 'approved' | 'rejected') => {
+    setSending(true);
+    try {
+      await onRespond(request.id, status, responseNote);
+      setResponseNote('');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleString('tr-TR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  if (!isOpen) return null;
+
+  const isPending = request.status === 'pending';
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white border border-gray-200 rounded-2xl w-full max-w-2xl mx-4 overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className={`flex items-center justify-between p-6 border-b border-gray-200 ${
+          request.status === 'approved' 
+            ? 'bg-gradient-to-r from-green-50 to-emerald-50'
+            : request.status === 'rejected'
+            ? 'bg-gradient-to-r from-red-50 to-pink-50'
+            : 'bg-gradient-to-r from-purple-50 to-indigo-50'
+        }`}>
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">💊</span>
+            <div>
+              <h2 className="text-2xl font-bold text-gray-800">Ek Tedavi Talebi</h2>
+              <p className="text-gray-600">
+                {isPending ? 'Talebe yanıt verin' : 'Talep detayları'}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-200 rounded-lg text-gray-500 hover:text-gray-700 transition-all duration-200"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 space-y-6">
+          {/* Request Info */}
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">👨‍⚕️</span>
+                <span className="text-gray-800 font-medium">{request.fromUserName}</span>
+                <span className={`text-xs px-2 py-1 rounded-full border ${
+                  request.status === 'pending' 
+                    ? 'bg-yellow-100 text-yellow-700 border-yellow-200'
+                    : request.status === 'approved'
+                    ? 'bg-green-100 text-green-700 border-green-200'
+                    : 'bg-red-100 text-red-700 border-red-200'
+                }`}>
+                  {request.status === 'pending' ? '⏳ Beklemede' : request.status === 'approved' ? '✅ Onaylandı' : '❌ Reddedildi'}
+                </span>
+              </div>
+              <span className="text-gray-500 text-xs">
+                {formatDate(request.createdAt)}
+              </span>
+            </div>
+            
+            {/* Patient Info */}
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center gap-2 text-blue-700">
+                <span className="text-lg">👤</span>
+                <span className="font-medium">Hasta: {request.patientName}</span>
+              </div>
+            </div>
+
+            {/* Treatment Description */}
+            <div className="mb-4">
+              <p className="text-gray-600 text-sm font-medium mb-2">Talep Edilen Tedavi:</p>
+              <div className="p-3 bg-white border border-gray-200 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <p className="text-gray-800 font-medium">{request.treatmentDescription}</p>
+                  {request.applicationPrice !== undefined && request.applicationPrice > 0 && (
+                    <span className="px-2 py-1 bg-purple-100 text-purple-700 text-sm font-medium rounded-lg">
+                      {request.applicationPrice.toLocaleString('tr-TR')} TL
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Treatment Reason */}
+            {request.treatmentReason && (
+              <div>
+                <p className="text-gray-600 text-sm font-medium mb-2">Gerekçe:</p>
+                <div className="p-3 bg-white border border-gray-200 rounded-lg">
+                  <p className="text-gray-700 text-sm">{request.treatmentReason}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Previous Response (if already responded) */}
+          {!isPending && request.responseNote && (
+            <div className={`p-4 rounded-xl border ${
+              request.status === 'approved'
+                ? 'bg-green-50 border-green-200'
+                : 'bg-red-50 border-red-200'
+            }`}>
+              <div className={`flex items-center gap-2 mb-2 ${
+                request.status === 'approved' ? 'text-green-700' : 'text-red-700'
+              }`}>
+                <span className="text-lg">💬</span>
+                <span className="font-medium">Yanıtınız:</span>
+                <span className="text-xs text-gray-500 ml-auto">
+                  {request.respondedAt && formatDate(request.respondedAt)}
+                </span>
+              </div>
+              <p className={`${request.status === 'approved' ? 'text-green-800' : 'text-red-800'}`}>
+                {request.responseNote}
+              </p>
+            </div>
+          )}
+
+          {/* Response Form (only for pending requests) */}
+          {isPending && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Yanıt Notu (Opsiyonel)
+              </label>
+              <textarea
+                value={responseNote}
+                onChange={(e) => setResponseNote(e.target.value)}
+                placeholder="Onay veya red gerekçenizi yazabilirsiniz..."
+                rows={3}
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 resize-none"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-6 border-t border-gray-200 flex items-center justify-end gap-3 bg-gray-50">
+          <button
+            onClick={onClose}
+            className="px-6 py-2.5 bg-white hover:bg-gray-100 border border-gray-300 rounded-xl text-gray-700 hover:text-gray-900 font-medium transition-all duration-200"
+          >
+            {isPending ? 'İptal' : 'Kapat'}
+          </button>
+          
+          {isPending && (
+            <>
+              <button
+                onClick={() => handleRespond('rejected')}
+                disabled={sending}
+                className="px-6 py-2.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-xl font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+              >
+                {sending ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                ) : (
+                  <>
+                    <span>❌</span>
+                    Reddet
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => handleRespond('approved')}
+                disabled={sending}
+                className="px-6 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-xl font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+              >
+                {sending ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                ) : (
+                  <>
+                    <span>✅</span>
+                    Onayla
+                  </>
+                )}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 };

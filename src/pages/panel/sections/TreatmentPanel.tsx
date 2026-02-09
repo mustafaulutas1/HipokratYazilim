@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, updateDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
+import AdditionalTreatmentRequestModal from '../components/AdditionalTreatmentRequestModal';
 
 interface TreatmentPanelProps {
   doctorProfile?: {
@@ -41,6 +42,7 @@ interface TreatmentPatient {
   treatmentNotAppliedReason?: string;
   treatmentApplied?: boolean;
   treatmentCompletedAt?: string;
+  appointmentType?: string; // 'tedavi' or 'kontrol'
 }
 
 interface TreatmentStats {
@@ -72,77 +74,79 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
   const [selectedEmergencyCause, setSelectedEmergencyCause] = useState<string>('');
   const [customEmergencyCause, setCustomEmergencyCause] = useState<string>('');
   const [emergencyPatient, setEmergencyPatient] = useState<TreatmentPatient | null>(null);
+  
+  // Additional Treatment Request state
+  const [isAdditionalTreatmentModalOpen, setIsAdditionalTreatmentModalOpen] = useState(false);
+  const [additionalTreatmentPatient, setAdditionalTreatmentPatient] = useState<TreatmentPatient | null>(null);
 
   useEffect(() => {
-    const fetchTreatmentData = async () => {
-      if (!doctorProfile?.clinicId) return;
+    if (!doctorProfile?.clinicId) return;
 
-      try {
-        setLoading(true);
-        console.log('🏥 TreatmentPanel: Fetching data for clinicId:', doctorProfile.clinicId);
+    console.log('🏥 TreatmentPanel: Setting up real-time listener for clinicId:', doctorProfile.clinicId);
+    setLoading(true);
 
-        // Fetch all patients for this clinic
-        const allClinicPatientsQuery = query(
-          collection(db, 'patients'),
-          where('clinicId', '==', doctorProfile.clinicId)
-        );
-        
-        const allClinicSnapshot = await getDocs(allClinicPatientsQuery);
-        const allClinicPatients = allClinicSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as TreatmentPatient));
-        
-        console.log('🏥 TreatmentPanel: Total patients in clinic:', allClinicPatients.length);
-        
-        // Filter patients with payment_completed status (ready for treatment)
-        const pendingTreatments = allClinicPatients.filter(patient =>
-          (patient.status === 'payment_completed' && patient.paymentCompleted === true) ||
-          patient.status === 'treatment_continue'
-        ).sort((a, b) => {
-          const dateA = new Date(a.paymentDate || a.updatedAt || a.createdAt).getTime();
-          const dateB = new Date(b.paymentDate || b.updatedAt || b.createdAt).getTime();
-          return dateA - dateB; // Oldest payments first (earliest treatments first)
-        });
+    // Real-time listener for patients
+    const allClinicPatientsQuery = query(
+      collection(db, 'patients'),
+      where('clinicId', '==', doctorProfile.clinicId)
+    );
+    
+    const unsubscribe = onSnapshot(allClinicPatientsQuery, (snapshot) => {
+      const allClinicPatients = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as TreatmentPatient));
+      
+      console.log('🏥 TreatmentPanel: Total patients in clinic:', allClinicPatients.length);
+      console.log('🏥 TreatmentPanel: All patient statuses:', allClinicPatients.map(p => ({ name: p.fullName, status: p.status, appointmentType: p.appointmentType })));
+      
+      // Filter patients with payment_completed status (ready for treatment)
+      const pendingTreatments = allClinicPatients.filter(patient =>
+        (patient.status === 'payment_completed' && patient.paymentCompleted === true) ||
+        patient.status === 'treatment_continue'
+      ).sort((a, b) => {
+        const dateA = new Date(a.paymentDate || a.updatedAt || a.createdAt).getTime();
+        const dateB = new Date(b.paymentDate || b.updatedAt || b.createdAt).getTime();
+        return dateA - dateB; // Oldest payments first (earliest treatments first)
+      });
 
-        console.log('🏥 TreatmentPanel: Pending treatment patients:', pendingTreatments.length);
-        setPendingTreatmentPatients(pendingTreatments);
+      console.log('🏥 TreatmentPanel: Pending treatment patients:', pendingTreatments.length);
+      setPendingTreatmentPatients(pendingTreatments);
 
-        // Filter patients with treatment_completed status
-        const completedTreatments = allClinicPatients.filter(patient =>
-          patient.status === 'treatment_completed'
-        ).sort((a, b) => {
-          const dateA = new Date(b.updatedAt || b.createdAt).getTime();
-          const dateB = new Date(a.updatedAt || a.createdAt).getTime();
-          return dateA - dateB; // Most recent treatments first
-        }).slice(0, 50); // Limit to last 50 treatments
+      // Filter patients with treatment_completed status
+      const completedTreatments = allClinicPatients.filter(patient =>
+        patient.status === 'treatment_completed'
+      ).sort((a, b) => {
+        const dateA = new Date(b.updatedAt || b.createdAt).getTime();
+        const dateB = new Date(a.updatedAt || a.createdAt).getTime();
+        return dateA - dateB; // Most recent treatments first
+      }).slice(0, 50); // Limit to last 50 treatments
 
-        console.log('🏥 TreatmentPanel: Completed treatment patients:', completedTreatments.length);
-        setCompletedTreatmentPatients(completedTreatments);
+      console.log('🏥 TreatmentPanel: Completed treatment patients:', completedTreatments.length);
+      setCompletedTreatmentPatients(completedTreatments);
 
-        // Calculate stats
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-        
-        const todayTreatments = completedTreatments.filter(patient =>
-          patient.updatedAt && new Date(patient.updatedAt) >= todayStart
-        ).length;
+      // Calculate stats
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      
+      const todayTreatments = completedTreatments.filter(patient =>
+        patient.updatedAt && new Date(patient.updatedAt) >= todayStart
+      ).length;
 
-        setStats({
-          totalPendingTreatments: pendingTreatments.length,
-          todayTreatments,
-          completedTreatments: completedTreatments.length,
-          inProgressTreatments: pendingTreatments.length
-        });
+      setStats({
+        totalPendingTreatments: pendingTreatments.length,
+        todayTreatments,
+        completedTreatments: completedTreatments.length,
+        inProgressTreatments: pendingTreatments.length
+      });
 
-      } catch (error) {
-        console.error('❌ TreatmentPanel: Error fetching data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+      setLoading(false);
+    }, (error) => {
+      console.error('❌ TreatmentPanel: Error listening to patients:', error);
+      setLoading(false);
+    });
 
-    fetchTreatmentData();
+    return () => unsubscribe();
   }, [doctorProfile?.clinicId]);
 
   const handleMarkAsEmergency = (patient: TreatmentPatient) => {
@@ -234,14 +238,31 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
           }
         } else {
           // All treatments applied
-          updateData.status = 'treatment_completed';
-          updateData.treatmentCompletedAt = new Date().toISOString();
-          updateData.treatmentApplied = true;
-          updateData.treatmentPartiallyApplied = false;
-          updateData.appliedTreatments = selectedTreatments;
-          updateData.unselectedTreatments = [];
-          if (treatmentNotes.trim()) {
-            updateData.treatmentNotes = treatmentNotes.trim();
+          // Check if this is a Tedavi appointment (patient hasn't paid yet)
+          if (selectedPatient.appointmentType === 'tedavi' && !selectedPatient.paymentCompleted) {
+            // Tedavi appointment: send to Muhasebe for payment
+            updateData.status = 'treatment_decided';
+            updateData.paymentCompleted = false;
+            updateData.treatmentCompletedAt = new Date().toISOString();
+            updateData.treatmentApplied = true;
+            updateData.treatmentPartiallyApplied = false;
+            updateData.appliedTreatments = selectedTreatments;
+            updateData.unselectedTreatments = [];
+            updateData.postTreatmentPayment = true; // Flag to indicate payment is after treatment
+            if (treatmentNotes.trim()) {
+              updateData.treatmentNotes = treatmentNotes.trim();
+            }
+          } else {
+            // Normal flow (kontrol): treatment is complete
+            updateData.status = 'treatment_completed';
+            updateData.treatmentCompletedAt = new Date().toISOString();
+            updateData.treatmentApplied = true;
+            updateData.treatmentPartiallyApplied = false;
+            updateData.appliedTreatments = selectedTreatments;
+            updateData.unselectedTreatments = [];
+            if (treatmentNotes.trim()) {
+              updateData.treatmentNotes = treatmentNotes.trim();
+            }
           }
         }
       } else {
@@ -516,6 +537,16 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
                     >
                       <span className="text-lg">🚨</span>
                       Acil Durum
+                    </button>
+                    <button
+                      onClick={() => {
+                        setAdditionalTreatmentPatient(patient);
+                        setIsAdditionalTreatmentModalOpen(true);
+                      }}
+                      className="px-4 py-2 bg-purple-500/20 border border-purple-400 rounded-xl text-purple-200 hover:bg-purple-500/30 transition-all duration-200 flex items-center gap-2"
+                    >
+                      <span className="text-lg">💊</span>
+                      Ek Tedavi Talep Et
                     </button>
                   </div>
                 )}
@@ -937,6 +968,20 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Additional Treatment Request Modal */}
+      {additionalTreatmentPatient && (
+        <AdditionalTreatmentRequestModal
+          isOpen={isAdditionalTreatmentModalOpen}
+          onClose={() => {
+            setIsAdditionalTreatmentModalOpen(false);
+            setAdditionalTreatmentPatient(null);
+          }}
+          patientId={additionalTreatmentPatient.id}
+          patientName={additionalTreatmentPatient.fullName}
+          doctorProfile={doctorProfile}
+        />
       )}
     </div>
   );

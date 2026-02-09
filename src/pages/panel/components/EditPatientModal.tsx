@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import PhoneInput from '../../../components/UI/PhoneInput';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { TURKIYE_CITIES } from '../../../types/TurkiyeCities';
 
 interface Patient {
   id: string;
+  dosyaNo?: string;
   fullName: string;
   tcNo: string;
   phone: string;
@@ -40,6 +41,7 @@ interface EditPatientModalProps {
 
 const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, onPatientUpdated, patient, doctorProfile }) => {
   const [formData, setFormData] = useState({
+    dosyaNo: '',
     fullName: '',
     tcNo: '',
     phone: '',
@@ -67,6 +69,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
   useEffect(() => {
     if (patient) {
       setFormData({
+        dosyaNo: patient.dosyaNo || '',
         fullName: patient.fullName || '',
         tcNo: patient.tcNo || '',
         phone: patient.phone || '',
@@ -131,6 +134,10 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
+
+    if (!formData.dosyaNo.trim()) {
+      newErrors.dosyaNo = 'Hasta dosya numarası gereklidir';
+    }
 
     if (!formData.fullName.trim()) {
       newErrors.fullName = 'Ad soyad gereklidir';
@@ -206,6 +213,16 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
 
     setLoading(true);
     try {
+      // Dosya No uniqueness check (exclude current patient)
+      const clinicId = doctorProfile?.clinicId || patient.clinicId || 'default-clinic';
+      const dosyaSnap = await getDocs(query(collection(db, 'patients'), where('dosyaNo', '==', formData.dosyaNo.trim()), where('clinicId', '==', clinicId)));
+      const isDuplicate = dosyaSnap.docs.some(d => d.id !== patient.id);
+      if (isDuplicate) {
+        setErrors((prev) => ({ ...prev, dosyaNo: 'Bu dosya numarası ile kayıt zaten mevcut' }));
+        setLoading(false);
+        return;
+      }
+
       const patientData = {
         ...formData,
         updatedAt: new Date().toISOString(),
@@ -244,6 +261,26 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6 bg-white">
+          {/* Hasta Dosya Numarası - Full Width */}
+          <div>
+            <label className="block text-gray-700 text-sm font-medium mb-2">
+              Hasta Dosya Numarası *
+            </label>
+            <input
+              type="text"
+              name="dosyaNo"
+              value={formData.dosyaNo}
+              onChange={handleInputChange}
+              className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                errors.dosyaNo ? 'border-red-500' : 'border-gray-300'
+              }`}
+              placeholder="Hasta dosya numarası"
+            />
+            {errors.dosyaNo && (
+              <p className="text-red-500 text-sm mt-1">{errors.dosyaNo}</p>
+            )}
+          </div>
+
           {/* Personal Information */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>

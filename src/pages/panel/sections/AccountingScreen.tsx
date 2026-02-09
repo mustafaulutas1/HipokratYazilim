@@ -71,6 +71,13 @@ interface PaymentPatient {
   unselectedTreatmentReason?: string;
   requiresRefund?: boolean;
   refundReason?: string;
+  // Additional treatment tracking fields
+  additionalTreatmentPending?: boolean;
+  additionalTreatmentName?: string;
+  additionalTreatmentPrice?: number;
+  // Post-treatment payment tracking (Tedavi appointment flow)
+  postTreatmentPayment?: boolean;
+  appointmentType?: string;
 }
 
 interface PaymentStats {
@@ -315,7 +322,8 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         removedApplications: removedApplications,
         // Muayene (Examination) selection
         includeMuayene: includeMuayene,
-        status: 'treatment_continue', // Send to treatment continue (TreatmentPanel)
+        // If payment is after treatment (Tedavi flow), mark as completed. Otherwise, send to treatment.
+        status: selectedPatient.postTreatmentPayment ? 'treatment_completed' : 'treatment_continue',
         updatedAt: new Date().toISOString(),
         // Discount tracking for reporting
         discountApplied: isDiscountActive && calculatedDiscountAmount > 0,
@@ -323,6 +331,12 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         discountValue: isDiscountActive ? (discountType === 'yuzde' ? calculatedDiscountPercent : calculatedDiscountAmount) : null,
         discountAmount: isDiscountActive ? Math.round(calculatedDiscountAmount * 100) / 100 : null,
         originalPaymentAmount: isDiscountActive && originalAmount ? parseFloat(originalAmount) : null,
+        // Clear additional treatment flags after payment
+        additionalTreatmentPending: false,
+        additionalTreatmentName: null,
+        additionalTreatmentPrice: null,
+        // Clear post-treatment payment flag
+        postTreatmentPayment: false,
       };
       
       // Handle debt tracking - simplified with explicit checkbox
@@ -1128,16 +1142,32 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                     </div>
                   ) : activeListType === 'pending_payment' ? (
                     <div className="space-y-2">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="px-3 py-1 bg-red-500/20 border border-red-400 rounded-full text-red-200 text-xs font-medium">
                           Ödeme Bekliyor
                         </span>
+                        {patient.postTreatmentPayment && (
+                          <span className="px-3 py-1 bg-emerald-500/30 border border-emerald-400 rounded-full text-emerald-200 text-xs font-bold animate-pulse">
+                            🩺 TEDAVİ SONRASI ÖDEME
+                          </span>
+                        )}
+                        {patient.additionalTreatmentPending && (
+                          <span className="px-3 py-1 bg-purple-500/30 border border-purple-400 rounded-full text-purple-200 text-xs font-bold animate-pulse">
+                            💊 EK TEDAVİ
+                          </span>
+                        )}
                         {patient.hasDebt && patient.debtAmount && patient.debtAmount > 0 && (
                           <span className="px-3 py-1 bg-orange-500/30 border border-orange-400 rounded-full text-orange-200 text-xs font-bold animate-pulse">
                             ⚠️ BORÇLU
                           </span>
                         )}
                       </div>
+                      {patient.additionalTreatmentPending && patient.additionalTreatmentName && (
+                        <p className="text-purple-300 text-sm font-medium">
+                          Ek Tedavi: {patient.additionalTreatmentName}
+                          {patient.additionalTreatmentPrice && patient.additionalTreatmentPrice > 0 && ` (${patient.additionalTreatmentPrice.toLocaleString('tr-TR')} TL)`}
+                        </p>
+                      )}
                       {patient.hasDebt && patient.debtAmount && patient.debtAmount > 0 && (
                         <p className="text-orange-300 text-sm font-medium">
                           Borç: {patient.debtAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL

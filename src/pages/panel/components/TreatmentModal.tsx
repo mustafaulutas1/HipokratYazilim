@@ -80,7 +80,12 @@ interface TreatmentOptions {
   selectedProtocol?: SavedProtocol;
   customizedProtocol?: SavedProtocol;
   selectedMainApplications?: string[];
-  // Will be expanded later with specific treatment options
+  routineProgram?: {
+    enabled: boolean;
+    frequency: string;
+    totalSessions: number;
+    notes: string;
+  };
 }
 
 interface AnamrezData {
@@ -124,6 +129,10 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
   const [editedProtocol, setEditedProtocol] = useState<SavedProtocol | null>(null);
   const [selectedMainApplications, setSelectedMainApplications] = useState<string[]>([]);
   const [selectedApplicationsBySystem, setSelectedApplicationsBySystem] = useState<{[key: string]: string[]}>({});
+  const [createRoutineProgram, setCreateRoutineProgram] = useState(false);
+  const [routineTotalSessions, setRoutineTotalSessions] = useState<number>(8);
+  const [routineFrequency, setRoutineFrequency] = useState<string>('Haftalık');
+  const [routineNotes, setRoutineNotes] = useState<string>('');
 
   console.log('🎬 TreatmentModal: Current state', {
     savedProtocolsCount: savedProtocols.length,
@@ -1119,6 +1128,15 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
           isCustomized: false,
           selectedProtocol: selectedProtocol,
           selectedMainApplications: selectedMainApplications
+        };
+      }
+
+      if (createRoutineProgram) {
+        treatmentOptions.routineProgram = {
+          enabled: true,
+          frequency: routineFrequency,
+          totalSessions: routineTotalSessions,
+          notes: routineNotes,
         };
       }
 
@@ -2303,6 +2321,63 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                 </>
               )}
             </div>
+          </div>
+        </div>
+
+        {/* Rutin Tedavi Programı */}
+        <div className="px-6 pb-2">
+          <div className="border border-blue-200 rounded-xl p-4 bg-blue-50/50">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={createRoutineProgram}
+                onChange={(e) => setCreateRoutineProgram(e.target.checked)}
+                className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-sm font-semibold text-gray-700">
+                Rutin Tedavi Programı Oluştur (Çağrı Merkezi için)
+              </span>
+            </label>
+
+            {createRoutineProgram && (
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Sıklık</label>
+                  <select
+                    value={routineFrequency}
+                    onChange={(e) => setRoutineFrequency(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  >
+                    <option value="Günlük">Günlük</option>
+                    <option value="Haftada 2 kez">Haftada 2 kez</option>
+                    <option value="Haftalık">Haftalık</option>
+                    <option value="2 Haftada 1">2 Haftada 1</option>
+                    <option value="Aylık">Aylık</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Toplam Seans Sayısı</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={52}
+                    value={routineTotalSessions}
+                    onChange={(e) => setRoutineTotalSessions(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Çağrı Merkezi Notu</label>
+                  <input
+                    type="text"
+                    value={routineNotes}
+                    onChange={(e) => setRoutineNotes(e.target.value)}
+                    placeholder="Örn: Sabah saatlerini tercih ediyor"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
