@@ -1208,7 +1208,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
               </div>
               <div className="space-y-3">
                 <p className="text-gray-700">
-                  <span className="font-medium text-gray-900">Cinsiyet:</span> {patient.gender === 'male' ? 'Erkek' : 'Kadın'}
+                  <span className="font-medium text-gray-900">Cinsiyet:</span> {patient.gender === 'Erkek' ? 'Erkek' : patient.gender === 'Kadın' ? 'Kadın' : patient.gender === 'male' ? 'Erkek' : patient.gender === 'female' ? 'Kadın' : patient.gender || 'Belirtilmemiş'}
                 </p>
                 <p className="text-gray-700">
                   <span className="font-medium text-gray-900">Geliş Nedeni:</span> {

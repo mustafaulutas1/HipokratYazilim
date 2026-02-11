@@ -1045,7 +1045,7 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
                           }
                         </p>
                         <p className="text-white/70">
-                          <span className="font-medium text-white/90">Cinsiyet:</span> {patient.gender === 'male' ? 'Erkek' : 'Kadın'}
+                          <span className="font-medium text-white/90">Cinsiyet:</span> {patient.gender === 'Erkek' ? 'Erkek' : patient.gender === 'Kadın' ? 'Kadın' : patient.gender === 'male' ? 'Erkek' : patient.gender === 'female' ? 'Kadın' : patient.gender || 'Belirtilmemiş'}
                         </p>
                         <p className="text-white/70">
                           <span className="font-medium text-white/90">Geliş Nedeni:</span> {patient.visitReason}

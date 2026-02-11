@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs, updateDoc, doc, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, updateDoc, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import AdditionalTreatmentRequestModal from '../components/AdditionalTreatmentRequestModal';
 

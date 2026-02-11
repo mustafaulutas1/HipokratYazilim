@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { collection, getDocs, query, where, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { toast } from 'react-toastify';
 import { db } from '../../../firebase/config';
 import { DIAGNOSIS_SPECIFIC_QUESTIONS, DIAGNOSIS_SYSTEMS, DIAGNOSIS_ILLNESSES } from '../../../constants';
 
@@ -52,6 +53,14 @@ interface AnamrezData {
   surgicalHistory: string;
   allergies: string;
   symptomRatings: Record<string, number>;
+  symptomNotes?: Record<string, string>;
+  customSymptomQuestions?: Array<{
+    id: string;
+    label: string;
+    rating: number;
+    note: string;
+    categoryTitle: string;
+  }>;
   diagnosisResponses: Record<string, Record<string, number>>;
   additionalQuestions: {
     education: string;
@@ -214,6 +223,46 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [editedData, setEditedData] = useState<AnamrezData | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Symptom sort state: 'default' | 'desc' | 'asc'
+  const [symptomSortOrder, setSymptomSortOrder] = useState<'default' | 'desc' | 'asc'>('default');
+  const [diagnosisSortOrder, setDiagnosisSortOrder] = useState<'default' | 'desc' | 'asc'>('default');
+  const [toxicitySortOrder, setToxicitySortOrder] = useState<'default' | 'desc' | 'asc'>('default');
+
+  // Comparison mode
+  const [showComparison, setShowComparison] = useState(false);
+  const previousRecord: AnamrezData | null = allAnamrezRecords.length > 1 && selectedRecordIndex < allAnamrezRecords.length - 1
+    ? allAnamrezRecords[selectedRecordIndex + 1]
+    : null;
+
+  // Diğer (Other) illness input states for edit mode
+  const [viewDigerOpen, setViewDigerOpen] = useState<Record<string, boolean>>({});
+  const [viewDigerInput, setViewDigerInput] = useState<Record<string, string>>({});
+  const [viewDigerFocused, setViewDigerFocused] = useState<Record<string, boolean>>({});
+
+  const handleViewDigerAdd = (system: string, value?: string) => {
+    if (!editedData) return;
+    const illness = (value || viewDigerInput[system] || '').trim().toUpperCase();
+    if (!illness) return;
+    const currentIllnesses = editedData.selectedIllnesses?.[system] || [];
+    if (currentIllnesses.includes(illness)) {
+      toast.warning('Bu hastalık zaten eklenmiş.');
+      return;
+    }
+    const updatedIllnesses = { ...(editedData.selectedIllnesses || {}) };
+    updatedIllnesses[system] = [...currentIllnesses, illness];
+    setEditedData({ ...editedData, selectedIllnesses: updatedIllnesses });
+    setViewDigerInput(prev => ({ ...prev, [system]: '' }));
+  };
+
+  const getViewDigerSuggestions = (system: string): string[] => {
+    const input = (viewDigerInput[system] || '').toUpperCase();
+    if (!input || !editedData) return [];
+    const predefinedIllnesses = DIAGNOSIS_ILLNESSES[system] || [];
+    const allIllnesses = predefinedIllnesses.map(i => i.toUpperCase());
+    const currentSelected = (editedData.selectedIllnesses?.[system] || []).map(i => i.toUpperCase());
+    return allIllnesses.filter(i => i.includes(input) && !currentSelected.includes(i));
+  };
 
   const startEditing = () => {
     if (anamrezData) {
@@ -663,31 +712,51 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
 
       setLoading(true);
       try {
-        const anamrezQuery = query(
-          collection(db, 'anamrezRecords'),
-          where('patientId', '==', patientId)
-        );
-        const querySnapshot = await getDocs(anamrezQuery);
+        // Fetch from BOTH collections: anamrezRecords and patientHistoryRecords
+        const [anamrezSnapshot, historySnapshot] = await Promise.all([
+          getDocs(query(collection(db, 'anamrezRecords'), where('patientId', '==', patientId))),
+          getDocs(query(collection(db, 'patientHistoryRecords'), where('patientId', '==', patientId)))
+        ]);
 
-        if (!querySnapshot.empty) {
+        const anamrezDocs = anamrezSnapshot.docs.map(d => {
+          const data = d.data() as AnamrezData;
+          data.id = d.id;
+          (data as any)._source = 'anamrezRecords';
+          return data;
+        });
+
+        const historyDocs = historySnapshot.docs.map(d => {
+          const data = d.data() as AnamrezData;
+          data.id = d.id;
+          (data as any)._source = 'patientHistoryRecords';
+          return data;
+        });
+
+        const combinedRecords = [...anamrezDocs, ...historyDocs];
+
+        if (combinedRecords.length > 0) {
           // Get ALL anamnez records for this patient
-          const allRecords = querySnapshot.docs
-            .map(doc => {
-              const data = doc.data() as AnamrezData;
-              data.id = doc.id;
-              return data;
-            })
-            // Filter only completed records
-            .filter(record => (record as any).status === 'completed')
-            // Sort by creation date (newest first)
-            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-            // Limit to last 3 records
-            .slice(0, 3);
+          const allRecords = combinedRecords
+            // Include completed records and records without a status (legacy/manual entries)
+            .filter(record => !record.hasOwnProperty('status') || (record as any).status === 'completed' || (record as any).status === 'submitted')
+            // Sort by effective date: use historyDate for past records, createdAt for normal ones
+            .sort((a, b) => {
+              const dateA = (a as any).historyDate ? new Date((a as any).historyDate).getTime() : new Date(a.createdAt).getTime();
+              const dateB = (b as any).historyDate ? new Date((b as any).historyDate).getTime() : new Date(b.createdAt).getTime();
+              return dateB - dateA;
+            });
 
           setAllAnamrezRecords(allRecords);
           
-          // If no anamrezRecord was passed, set the first one as current
-          if (!anamrezRecord && allRecords.length > 0) {
+          // If an anamrezRecord was passed, find its index in the sorted list
+          if (anamrezRecord && allRecords.length > 0) {
+            const passedId = anamrezRecord.id || (anamrezRecord as any)?.id;
+            const idx = allRecords.findIndex(r => r.id === passedId);
+            if (idx >= 0) {
+              setSelectedRecordIndex(idx);
+              setAnamrezData(allRecords[idx]);
+            }
+          } else if (allRecords.length > 0) {
             setAnamrezData(allRecords[0]);
             setSelectedRecordIndex(0);
           }
@@ -826,7 +895,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
   return (
     <>
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
-        <div className="bg-white/95 backdrop-blur-xl border border-gray-200 rounded-xl sm:rounded-2xl max-w-7xl w-full h-[95vh] sm:h-[90vh] md:h-[85vh] overflow-hidden shadow-2xl anamnez-view-modal-content">
+        <div className="bg-white/95 backdrop-blur-xl border border-gray-200 rounded-xl sm:rounded-2xl max-w-7xl w-full h-[95vh] sm:h-[90vh] md:h-[85vh] overflow-hidden shadow-2xl flex flex-col anamnez-view-modal-content">
           {/* Header */}
           <div className="p-3 sm:p-4 md:p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 sticky top-0 z-10">
             <div className="flex items-start sm:items-center justify-between gap-2">
@@ -848,7 +917,13 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                     >
                       {allAnamrezRecords.map((record, index) => (
                         <option key={record.id} value={index}>
-                          {new Date(record.createdAt).toLocaleDateString('tr-TR')} - #{index + 1}
+                          {(() => {
+                            const displayDate = (record as any).historyDate
+                              ? new Date((record as any).historyDate).toLocaleDateString('tr-TR')
+                              : new Date(record.createdAt).toLocaleDateString('tr-TR');
+                            return displayDate;
+                          })()} - #{index + 1}
+                          {(record as any).isPastHistory ? ' (Geçmiş Kayıt)' : ''}
                           {(record as any).appointmentDate && ` (Randevu: ${new Date((record as any).appointmentDate).toLocaleDateString('tr-TR')})`}
                         </option>
                       ))}
@@ -909,6 +984,36 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                     <span className="hidden sm:inline">Yazdır / PDF</span>
                   </button>
                 )}
+                {/* DEV ONLY: Delete all anamnez records */}
+                <button
+                  onClick={async () => {
+                    if (!window.confirm('⚠️ TÜM anamnez kayıtlarını silmek istediğinize emin misiniz? Bu işlem geri alınamaz!')) return;
+                    try {
+                      const patientId = patient.id || (anamrezRecord as any)?.patientId;
+                      if (!patientId) return;
+                      const [snap1, snap2] = await Promise.all([
+                        getDocs(query(collection(db, 'anamrezRecords'), where('patientId', '==', patientId))),
+                        getDocs(query(collection(db, 'patientHistoryRecords'), where('patientId', '==', patientId)))
+                      ]);
+                      await Promise.all([
+                        ...snap1.docs.map(d => deleteDoc(doc(db, 'anamrezRecords', d.id))),
+                        ...snap2.docs.map(d => deleteDoc(doc(db, 'patientHistoryRecords', d.id)))
+                      ]);
+                      toast.success(`${snap1.size + snap2.size} anamnez kaydı silindi.`);
+                      setAnamrezData(null);
+                      setAllAnamrezRecords([]);
+                      onDataUpdated?.();
+                      onClose();
+                    } catch (err) {
+                      console.error(err);
+                      toast.error('Silme hatası!');
+                    }
+                  }}
+                  className="flex items-center gap-1 px-2 py-1.5 bg-gray-800 hover:bg-red-700 text-white rounded-lg transition-colors text-[10px] font-medium"
+                  title="DEV: Tüm anamnez kayıtlarını sil"
+                >
+                  🗑️ <span className="hidden sm:inline">Tümünü Sil</span>
+                </button>
                 <button
                   onClick={onClose}
                   className="text-gray-500 hover:text-gray-700 transition-colors text-lg sm:text-xl font-bold px-2"
@@ -924,7 +1029,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
             </div>
           ) : (
-            <div className="flex flex-col md:flex-row" style={{height: 'calc(95vh - 80px)'}}>
+            <div className="flex flex-col md:flex-row flex-1 min-h-0">
               {/* Navigation Sidebar - Horizontal on mobile, vertical on desktop */}
               <div className="w-full md:w-56 lg:w-64 bg-gray-50 border-b md:border-b-0 md:border-r border-gray-200 overflow-x-auto md:overflow-y-auto flex-shrink-0">
                 <div className="p-2 sm:p-3 md:p-4">
@@ -949,7 +1054,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
               </div>
 
               {/* Content Area */}
-              <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6" style={{maxHeight: 'calc(95vh - 160px)'}}>
+              <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 min-h-0">
                 {anamrezData ? (
                   <>
                     {/* Patient Info Section */}
@@ -1065,6 +1170,9 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                 const availableIllnesses = DIAGNOSIS_ILLNESSES[system] || [];
                                 if (availableIllnesses.length === 0) return null;
                                 const selectedIllnesses = editedData.selectedIllnesses?.[system] || [];
+                                const viewSuggestions = getViewDigerSuggestions(system);
+                                // Find custom (non-predefined) illnesses
+                                const customIllnesses = selectedIllnesses.filter(i => !availableIllnesses.includes(i));
                                 return (
                                   <div key={system} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                                     <p className="text-sm font-semibold text-gray-700 mb-2">{system}</p>
@@ -1087,7 +1195,95 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                           <span className="px-2 py-1 text-xs text-gray-700">{illness}</span>
                                         </label>
                                       ))}
+                                      {/* Diğer checkbox */}
+                                      <label className="flex items-center gap-1 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={viewDigerOpen[system] || false}
+                                          onChange={(e) => {
+                                            setViewDigerOpen(prev => ({ ...prev, [system]: e.target.checked }));
+                                            if (!e.target.checked) {
+                                              setViewDigerInput(prev => ({ ...prev, [system]: '' }));
+                                              setViewDigerFocused(prev => ({ ...prev, [system]: false }));
+                                            }
+                                          }}
+                                          className="w-3 h-3 text-red-600 rounded"
+                                        />
+                                        <span className="px-2 py-1 text-xs text-gray-700 font-medium">Diğer</span>
+                                      </label>
                                     </div>
+                                    {/* Diğer input */}
+                                    {viewDigerOpen[system] && (
+                                      <div className="mt-2 relative">
+                                        <div className="flex gap-2">
+                                          <div className="relative flex-1">
+                                            <input
+                                              type="text"
+                                              value={viewDigerInput[system] || ''}
+                                              onChange={(e) => setViewDigerInput(prev => ({ ...prev, [system]: e.target.value.toUpperCase() }))}
+                                              onFocus={() => setViewDigerFocused(prev => ({ ...prev, [system]: true }))}
+                                              onBlur={() => setTimeout(() => setViewDigerFocused(prev => ({ ...prev, [system]: false })), 200)}
+                                              onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                  e.preventDefault();
+                                                  handleViewDigerAdd(system);
+                                                }
+                                              }}
+                                              placeholder="Hastalık adı yazınız..."
+                                              className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-red-500 focus:border-red-500 uppercase"
+                                              style={{ textTransform: 'uppercase' }}
+                                            />
+                                            {viewDigerFocused[system] && viewSuggestions.length > 0 && (
+                                              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                                                {viewSuggestions.map((suggestion) => (
+                                                  <button
+                                                    key={suggestion}
+                                                    type="button"
+                                                    className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-red-50 hover:text-red-700 transition-colors"
+                                                    onMouseDown={(e) => {
+                                                      e.preventDefault();
+                                                      handleViewDigerAdd(system, suggestion);
+                                                    }}
+                                                  >
+                                                    {suggestion}
+                                                  </button>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleViewDigerAdd(system)}
+                                            disabled={!(viewDigerInput[system] || '').trim()}
+                                            className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                                          >
+                                            Ekle
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+                                    {/* Show custom illnesses with remove button */}
+                                    {customIllnesses.length > 0 && (
+                                      <div className="mt-2 flex flex-wrap gap-1">
+                                        {customIllnesses.map((illness) => (
+                                          <span key={illness} className="px-2 py-1 bg-red-50 text-red-700 rounded-full text-xs font-medium inline-flex items-center gap-1 border border-red-200">
+                                            {illness}
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const currentIllnesses = { ...(editedData.selectedIllnesses || {}) };
+                                                currentIllnesses[system] = (currentIllnesses[system] || []).filter(i => i !== illness);
+                                                setEditedData({ ...editedData, selectedIllnesses: currentIllnesses });
+                                              }}
+                                              className="text-red-500 hover:text-red-800 font-bold"
+                                              title="Kaldır"
+                                            >
+                                              ×
+                                            </button>
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               })}
@@ -1252,70 +1448,286 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                     {/* Symptoms Section */}
                     {activeSection === 'symptoms' && (
                       <div className="space-y-6">
-                        <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-                          📊 Semptom Değerlendirmesi
-                        </h3>
+                        <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
+                          <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                            📊 Semptom Değerlendirmesi
+                          </h3>
+                          <div className="flex items-center gap-2">
+                            {/* Comparison toggle */}
+                            {previousRecord && !isEditing && (
+                              <button
+                                onClick={() => setShowComparison(prev => !prev)}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 border ${
+                                  showComparison
+                                    ? 'bg-indigo-50 text-indigo-700 border-indigo-300 shadow-sm'
+                                    : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                                }`}
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M16 3h5v5M8 3H3v5M3 16v5h5M21 16v5h-5M21 3l-7 7M3 21l7-7"/>
+                                </svg>
+                                {showComparison ? 'Karşılaştırma Açık' : 'Karşılaştır'}
+                              </button>
+                            )}
+                            {/* Sort button */}
+                            <button
+                              onClick={() => setSymptomSortOrder(prev => prev === 'default' ? 'desc' : prev === 'desc' ? 'asc' : 'default')}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 border ${
+                                symptomSortOrder === 'default'
+                                  ? 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                                  : symptomSortOrder === 'desc'
+                                  ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                                  : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                              }`}
+                              title={symptomSortOrder === 'default' ? 'Varsayılan sıralama' : symptomSortOrder === 'desc' ? 'Çoktan aza' : 'Azdan çoka'}
+                            >
+                              {symptomSortOrder === 'default' ? (
+                                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M3 12h12M3 18h6"/></svg> Varsayılan</>
+                              ) : symptomSortOrder === 'desc' ? (
+                                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg> Çoktan Aza</>
+                              ) : (
+                                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg> Azdan Çoka</>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Comparison legend */}
+                        {showComparison && previousRecord && (
+                          <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 flex flex-wrap items-center gap-4 text-xs">
+                            <span className="font-medium text-indigo-800">🔄 Karşılaştırma:</span>
+                            <span className="text-gray-600">
+                              {new Date(anamrezData!.createdAt).toLocaleDateString('tr-TR')} vs {new Date(previousRecord.createdAt).toLocaleDateString('tr-TR')}
+                            </span>
+                            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-emerald-500"></span> İyileşme</span>
+                            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-red-500"></span> Kötüleşme</span>
+                            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-gray-400"></span> Değişim yok</span>
+                          </div>
+                        )}
                         
                         <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {(() => {
+                          {(() => {
+                              // New categorized labels
+                              const symptomCategories = [
+                                { title: '1. Baş – Nörolojik Sistem', icon: '🧠', keys: ['basAgrisi', 'basDonmesi', 'gozdeUcusmalar', 'bilincDegisikligi', 'uykuDuzeniDuzensizligi'] },
+                                { title: '2. Psikolojik Durum', icon: '🧘', keys: ['stres', 'kaygi', 'aniOfkelenme', 'duyguDurumDegisiklikleri'] },
+                                { title: '3. Kardiyovasküler Sistem', icon: '❤️', keys: ['carpinti', 'gogusAgrisi', 'tansiyonDegisikligi'] },
+                                { title: '4. Solunum Sistemi', icon: '🫁', keys: ['nefesDarligi', 'oksuruk', 'balgam', 'hirilti'] },
+                                { title: '5. Gastrointestinal Sistem – Mide', icon: '🍽️', keys: ['mideYanmasi', 'mideBulantisi', 'kusma', 'siskinlikGaz', 'istahDurumu'] },
+                                { title: '5. Gastrointestinal Sistem – Bağırsak', icon: '🔄', keys: ['kabizlik', 'ishal', 'mukusluYagliDiskilama', 'karinAgrisi', 'hemoroid'] },
+                                { title: '6. Üriner Sistem – Erkek', icon: '🚹', keys: ['sikIdraraCikmaErkek', 'idrarYaparkenYanma', 'idrardaKopuklenme', 'kesikIdrarYapma', 'idrariTamBosaltamama', 'idrarSonrasiDamlama'] },
+                                { title: '6. Üriner Sistem – Kadın', icon: '🚺', keys: ['adetDuzeniDuzensizligi', 'sonAdetTarihi', 'vajinalAkinti', 'vajinalKuruluk', 'cinselIsteksizlik', 'sikIYE', 'atesBasmasi', 'terleme'] },
+                                { title: '7. Kas – Eklem Sistemi', icon: '💪', keys: ['kasAgrilari', 'eklemAgrilari', 'hareketKisitliligi', 'belBoyunSirtAgrisi', 'kasilmaKramp', 'uyusma'] },
+                                { title: '8. Genel Durum', icon: '🏥', keys: ['halsizlik', 'yorgunluk', 'yorgunUyanma', 'ates', 'kiloDegisikligi', 'kasintikizariklikDokuntu'] },
+                              ];
                               const symptomLabels: Record<string, string> = {
-                                'uykuHali': 'Uyku Hali', 'gozdeUcusmalar': 'Gözde Uçuşmalar', 'carpinti': 'Çarpıntı',
-                                'siskinlik': 'Şişkinlik', 'adetDuzensizligi': 'Adet Düzensizliği', 'dengeKaybi': 'Denge Kaybı',
-                                'yayginKasAgrisi': 'Yaygın Kas Ağrısı', 'nefesAlmadaGucluk': 'Nefes Almada Güçlük', 'ustume': 'Üşüme',
-                                'terleme': 'Terleme', 'stres': 'Stres', 'agriliAdet': 'Ağrılı Adet',
-                                'uykuDuzensizligi': 'Uyku Düzensizliği', 'oksuruk': 'Öksürük', 'balgam': 'Balgam',
+                                'basAgrisi': 'Baş ağrısı', 'basDonmesi': 'Baş dönmesi', 'gozdeUcusmalar': 'Gözlerde uçuşmalar / siyah nokta görülmesi',
+                                'bilincDegisikligi': 'Bilinç değişikliği', 'uykuDuzeniDuzensizligi': 'Uyku düzeni / düzensizliği',
+                                'stres': 'Stres', 'kaygi': 'Kaygı', 'aniOfkelenme': 'Ani öfkelenme', 'duyguDurumDegisiklikleri': 'Duygu durum değişiklikleri',
+                                'carpinti': 'Çarpıntı', 'gogusAgrisi': 'Göğüs ağrısı', 'tansiyonDegisikligi': 'Tansiyon yüksekliği / düşüklüğü',
+                                'nefesDarligi': 'Nefes darlığı', 'oksuruk': 'Öksürük', 'balgam': 'Balgam', 'hirilti': 'Hırıltı',
+                                'mideYanmasi': 'Mide yanması', 'mideBulantisi': 'Mide bulantısı', 'kusma': 'Kusma', 'siskinlikGaz': 'Şişkinlik / gaz', 'istahDurumu': 'İştah durumu',
+                                'kabizlik': 'Kabızlık', 'ishal': 'İshal', 'mukusluYagliDiskilama': 'Mukuslu / yağlı dışkılama', 'karinAgrisi': 'Karın ağrısı', 'hemoroid': 'Hemoroid',
+                                'sikIdraraCikmaErkek': 'Sık idrara çıkma', 'idrarYaparkenYanma': 'İdrar yaparken yanma', 'idrardaKopuklenme': 'İdrarda köpüklenme',
+                                'kesikIdrarYapma': 'Kesik idrar yapma', 'idrariTamBosaltamama': 'İdrarı tam boşaltamama', 'idrarSonrasiDamlama': 'İdrar sonrası damlama',
+                                'adetDuzeniDuzensizligi': 'Adet düzeni / düzensizliği', 'sonAdetTarihi': 'Son adet tarihi (SAT)', 'vajinalAkinti': 'Vajinal akıntı',
+                                'vajinalKuruluk': 'Vajinal kuruluk', 'cinselIsteksizlik': 'Cinsel isteksizlik', 'sikIYE': 'Sık İYE', 'atesBasmasi': 'Ateş basması', 'terleme': 'Terleme',
+                                'kasAgrilari': 'Kas ağrıları', 'eklemAgrilari': 'Eklem ağrıları', 'hareketKisitliligi': 'Hareket kısıtlılığı',
+                                'belBoyunSirtAgrisi': 'Bel / boyun / sırt ağrısı', 'kasilmaKramp': 'Kasılma, kramp', 'uyusma': 'Uyuşma',
+                                'halsizlik': 'Halsizlik', 'yorgunluk': 'Yorgunluk', 'yorgunUyanma': 'Yorgun uyanma', 'ates': 'Ateş',
+                                'kiloDegisikligi': 'Kilo değişikliği', 'kasintikizariklikDokuntu': 'Vücutta kaşıntı, kızarıklık, döküntü',
+                                // Legacy labels
+                                'uykuHali': 'Uyku Hali', 'siskinlik': 'Şişkinlik', 'adetDuzensizligi': 'Adet Düzensizliği',
+                                'dengeKaybi': 'Denge Kaybı', 'yayginKasAgrisi': 'Yaygın Kas Ağrısı', 'nefesAlmadaGucluk': 'Nefes Almada Güçlük',
+                                'ustume': 'Üşüme', 'agriliAdet': 'Ağrılı Adet', 'uykuDuzensizligi': 'Uyku Düzensizliği',
                                 'kasilmaVeKramplar': 'Kasılma Ve Kramplar', 'elAyakUyusmalari': 'El Ayak Uyuşmaları', 'unutkanlik': 'Unutkanlık',
                                 'kasinti': 'Kaşıntı', 'idrarKacirma': 'İdrar Kaçırma', 'idrardaYanma': 'İdrarda Yanma',
-                                'geceIdraraKalkma': 'Gece İdrara Kalkma', 'kesikKesikIdrar': 'Kesik Kesik İdrar', 'kabizlik': 'Kabızlık',
-                                'karindaGaz': 'Karında Gaz', 'belAgrisi': 'Bel Ağrısı', 'ishal': 'İshal',
-                                'boyunAgrisi': 'Boyun Ağrısı', 'yayginOdem': 'Yaygın Ödem', 'basur': 'Basur',
-                                'eklemAgrilari': 'Eklem Ağrıları', 'algiBozuklugu': 'Algı Bozukluğu',
-                                'halsizlikYorgunluk': 'Halsizlik / Yorgunluk', 'yorgunUyanma': 'Yorgun Uyanma',
-                                'basDonmesi': 'Baş Dönmesi', 'basAgrisi': 'Baş Ağrısı',
-                                'mideAgisi': 'Mide Ağısı', 'mideYanmasi': 'Mide Yanması'
+                                'geceIdraraKalkma': 'Gece İdrara Kalkma', 'kesikKesikIdrar': 'Kesik Kesik İdrar',
+                                'karindaGaz': 'Karında Gaz', 'belAgrisi': 'Bel Ağrısı', 'boyunAgrisi': 'Boyun Ağrısı',
+                                'yayginOdem': 'Yaygın Ödem', 'basur': 'Basur', 'algiBozuklugu': 'Algı Bozukluğu',
+                                'halsizlikYorgunluk': 'Halsizlik / Yorgunluk', 'mideAgisi': 'Mide Ağısı'
                               };
                               const ratings = isEditing && editedData ? editedData.symptomRatings : anamrezData.symptomRatings;
+                              const notes = anamrezData.symptomNotes || {};
+                              const customSQ = anamrezData.customSymptomQuestions || [];
                               if (!ratings) return null;
-                              return Object.entries(ratings).map(([key, value]) => (
-                                <div key={key} className={`p-3 bg-gray-50 rounded-lg ${isEditing ? '' : 'flex items-center justify-between'}`}>
-                                  <span className="text-gray-700 text-sm font-medium block mb-1">
-                                    {symptomLabels[key] || key}
-                                  </span>
-                                  {isEditing && editedData ? (
-                                    <div className="flex items-center gap-2">
-                                      <input
-                                        type="range"
-                                        min="0"
-                                        max="10"
-                                        value={value}
-                                        onChange={(e) => {
-                                          const newRatings = { ...editedData.symptomRatings, [key]: Number(e.target.value) };
-                                          setEditedData({ ...editedData, symptomRatings: newRatings });
-                                        }}
-                                        className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                                      />
-                                      <span className={`px-2 py-1 rounded-full text-xs font-bold min-w-[40px] text-center ${
-                                        value <= 3 ? 'bg-green-100 text-green-700'
-                                          : value <= 6 ? 'bg-yellow-100 text-yellow-700'
-                                          : 'bg-red-100 text-red-700'
-                                      }`}>
-                                        {value}/10
-                                      </span>
-                                    </div>
-                                  ) : (
-                                    <div className={`px-2 py-1 rounded-full text-xs font-bold ${
-                                      value <= 3 ? 'bg-green-100 text-green-700'
-                                        : value <= 6 ? 'bg-yellow-100 text-yellow-700'
-                                        : 'bg-red-100 text-red-700'
-                                    }`}>
-                                      {value}/10
+
+                              // Collect all known keys from categories
+                              const knownKeys = new Set(symptomCategories.flatMap(c => c.keys));
+                              // Find legacy/unknown keys that exist in ratings but not in categories
+                              const legacyKeys = Object.keys(ratings).filter(k => !knownKeys.has(k) && (ratings[k] as number) > 0);
+
+                              // Sort helper function
+                              const sortKeys = (keys: string[]) => {
+                                if (symptomSortOrder === 'default') return keys;
+                                return [...keys].sort((a, b) => {
+                                  const va = (ratings[a] as number) ?? 0;
+                                  const vb = (ratings[b] as number) ?? 0;
+                                  return symptomSortOrder === 'desc' ? vb - va : va - vb;
+                                });
+                              };
+
+                              return (
+                                <div className="space-y-6">
+                                  {symptomCategories.map((cat) => {
+                                    const catRatings = sortKeys(cat.keys.filter(k => ratings[k] !== undefined));
+                                    if (catRatings.length === 0) return null;
+                                    const catCustom = customSQ.filter((q: any) => q.categoryTitle === cat.title);
+
+                                    return (
+                                      <div key={cat.title}>
+                                        <h4 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
+                                          {cat.icon} {cat.title}
+                                        </h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+                                          {catRatings.map((key) => {
+                                            const value = ratings[key] as number;
+                                            const prevValue = showComparison && previousRecord?.symptomRatings?.[key];
+                                            const hasPrev = showComparison && prevValue !== undefined && prevValue !== null;
+                                            const delta = hasPrev ? value - (prevValue as number) : 0;
+                                            return (
+                                              <div key={key} className={`p-3 rounded-lg transition-all duration-200 ${
+                                                showComparison && hasPrev && delta !== 0
+                                                  ? delta < 0
+                                                    ? 'bg-emerald-50 border border-emerald-200'
+                                                    : 'bg-red-50 border border-red-200'
+                                                  : 'bg-gray-50'
+                                              }`}>
+                                                <span className="text-gray-700 text-sm font-medium block mb-1">
+                                                  {symptomLabels[key] || key}
+                                                </span>
+                                                {isEditing && editedData ? (
+                                                  <div className="flex items-center gap-2">
+                                                    <input type="range" min="0" max="10" value={value}
+                                                      onChange={(e) => {
+                                                        const newRatings = { ...editedData.symptomRatings, [key]: Number(e.target.value) };
+                                                        setEditedData({ ...editedData, symptomRatings: newRatings });
+                                                      }}
+                                                      className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                                    />
+                                                    <span className={`px-2 py-1 rounded-full text-xs font-bold min-w-[40px] text-center ${
+                                                      value <= 3 ? 'bg-green-100 text-green-700' : value <= 6 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'
+                                                    }`}>{value}/10</span>
+                                                  </div>
+                                                ) : (
+                                                  <div className="flex items-center justify-between gap-2">
+                                                    <div className="flex items-center gap-2">
+                                                      <div className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                                        value <= 3 ? 'bg-green-100 text-green-700' : value <= 6 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'
+                                                      }`}>{value}/10</div>
+                                                      {/* Comparison indicator */}
+                                                      {showComparison && hasPrev && (
+                                                        <div className="flex items-center gap-1">
+                                                          <span className="text-gray-400 text-xs">önceki: {prevValue as number}/10</span>
+                                                          {delta !== 0 && (
+                                                            <span className={`flex items-center gap-0.5 text-xs font-bold px-1.5 py-0.5 rounded-full ${
+                                                              delta < 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                                                            }`}>
+                                                              {delta < 0 ? (
+                                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                                                              ) : (
+                                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                                                              )}
+                                                              {delta > 0 ? `+${delta}` : delta}
+                                                            </span>
+                                                          )}
+                                                          {delta === 0 && (
+                                                            <span className="text-xs text-gray-400 font-medium">=</span>
+                                                          )}
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                    {/* Mini bar comparison */}
+                                                    {showComparison && hasPrev && (
+                                                      <div className="flex flex-col gap-0.5 w-16">
+                                                        <div className="flex items-center gap-1">
+                                                          <div className="text-[9px] text-gray-500 w-5">Şu</div>
+                                                          <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                                            <div className={`h-full rounded-full ${
+                                                              value <= 3 ? 'bg-emerald-500' : value <= 6 ? 'bg-yellow-500' : 'bg-red-500'
+                                                            }`} style={{width: `${value * 10}%`}} />
+                                                          </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-1">
+                                                          <div className="text-[9px] text-gray-400 w-5">Ön</div>
+                                                          <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                                            <div className="h-full rounded-full bg-gray-400" style={{width: `${(prevValue as number) * 10}%`}} />
+                                                          </div>
+                                                        </div>
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                )}
+                                                {notes[key] && (
+                                                  <div className="mt-2 text-xs text-blue-700 bg-blue-50 rounded px-2 py-1 border border-blue-100">
+                                                    📝 {notes[key]}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            );
+                                          })}
+                                          {/* Custom questions for this category */}
+                                          {catCustom.map((cq: any) => (
+                                            <div key={cq.id} className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                              <span className="text-gray-700 text-sm font-medium block mb-1">{cq.label || 'Özel soru'}</span>
+                                              <div className={`px-2 py-1 rounded-full text-xs font-bold inline-block ${
+                                                cq.rating <= 3 ? 'bg-green-100 text-green-700' : cq.rating <= 6 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'
+                                              }`}>{cq.rating}/10</div>
+                                              {cq.note && (
+                                                <div className="mt-2 text-xs text-blue-700 bg-white rounded px-2 py-1 border border-blue-100">
+                                                  📝 {cq.note}
+                                                </div>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+
+                                  {/* Legacy keys that don't fit categories */}
+                                  {legacyKeys.length > 0 && (
+                                    <div>
+                                      <h4 className="font-bold text-gray-800 mb-3">Diğer Semptomlar</h4>
+                                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                        {sortKeys(legacyKeys).map((key) => {
+                                          const value = ratings[key] as number;
+                                          const prevValue = showComparison && previousRecord?.symptomRatings?.[key];
+                                          const hasPrev = showComparison && prevValue !== undefined && prevValue !== null;
+                                          const delta = hasPrev ? value - (prevValue as number) : 0;
+                                          return (
+                                            <div key={key} className={`p-3 rounded-lg flex items-center justify-between ${
+                                              showComparison && hasPrev && delta !== 0
+                                                ? delta < 0 ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'
+                                                : 'bg-gray-50'
+                                            }`}>
+                                              <span className="text-gray-700 text-sm font-medium">{symptomLabels[key] || key}</span>
+                                              <div className="flex items-center gap-2">
+                                                <div className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                                  value <= 3 ? 'bg-green-100 text-green-700' : value <= 6 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'
+                                                }`}>{value}/10</div>
+                                                {showComparison && hasPrev && delta !== 0 && (
+                                                  <span className={`flex items-center gap-0.5 text-xs font-bold px-1.5 py-0.5 rounded-full ${
+                                                    delta < 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                                                  }`}>
+                                                    {delta < 0 ? (
+                                                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                                                    ) : (
+                                                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                                                    )}
+                                                    {delta > 0 ? `+${delta}` : delta}
+                                                  </span>
+                                                )}
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
                                     </div>
                                   )}
                                 </div>
-                              ));
-                            })()}
-                          </div>
+                              );
+                          })()}
                         </div>
                       </div>
                     )}
@@ -1323,9 +1735,61 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                     {/* Diagnosis Responses Section */}
                     {activeSection === 'diagnosis-responses' && (
                       <div className="space-y-6">
-                        <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-                          🩺 Sistem Soruları
-                        </h3>
+                        <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
+                          <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                            🩺 Sistem Soruları
+                          </h3>
+                          <div className="flex items-center gap-2">
+                            {/* Comparison toggle */}
+                            {previousRecord && !isEditing && (
+                              <button
+                                onClick={() => setShowComparison(prev => !prev)}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 border ${
+                                  showComparison
+                                    ? 'bg-indigo-50 text-indigo-700 border-indigo-300 shadow-sm'
+                                    : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                                }`}
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M16 3h5v5M8 3H3v5M3 16v5h5M21 16v5h-5M21 3l-7 7M3 21l7-7"/>
+                                </svg>
+                                {showComparison ? 'Karşılaştırma Açık' : 'Karşılaştır'}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setDiagnosisSortOrder(prev => prev === 'default' ? 'desc' : prev === 'desc' ? 'asc' : 'default')}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 border ${
+                                diagnosisSortOrder === 'default'
+                                  ? 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                                  : diagnosisSortOrder === 'desc'
+                                  ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                                  : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                              }`}
+                              title={diagnosisSortOrder === 'default' ? 'Varsayılan sıralama' : diagnosisSortOrder === 'desc' ? 'Çoktan aza' : 'Azdan çoka'}
+                            >
+                              {diagnosisSortOrder === 'default' ? (
+                                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M3 12h12M3 18h6"/></svg> Varsayılan</>
+                              ) : diagnosisSortOrder === 'desc' ? (
+                                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg> Çoktan Aza</>
+                              ) : (
+                                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg> Azdan Çoka</>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Comparison legend */}
+                        {showComparison && previousRecord && activeSection === 'diagnosis-responses' && (
+                          <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 flex flex-wrap items-center gap-4 text-xs">
+                            <span className="font-medium text-indigo-800">🔄 Karşılaştırma:</span>
+                            <span className="text-gray-600">
+                              {new Date(anamrezData!.createdAt).toLocaleDateString('tr-TR')} vs {new Date(previousRecord.createdAt).toLocaleDateString('tr-TR')}
+                            </span>
+                            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-emerald-500"></span> İyileşme</span>
+                            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-red-500"></span> Kötüleşme</span>
+                            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-gray-400"></span> Değişim yok</span>
+                          </div>
+                        )}
                         
                         {anamrezData.selectedDiagnosisSystems && anamrezData.selectedDiagnosisSystems.length > 0 ? (
                           anamrezData.selectedDiagnosisSystems.map((diagnosis) => {
@@ -1336,12 +1800,27 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                               <div key={diagnosis} className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
                                 <h4 className="font-bold text-gray-800 mb-4">{questionSet.label}</h4>
                                 <div className="grid grid-cols-1 gap-3">
-                                  {questionSet.questions.map((question) => {
+                                  {(() => {
                                     const dataSource = isEditing && editedData ? editedData : anamrezData;
+                                    const sortedQuestions = diagnosisSortOrder === 'default'
+                                      ? questionSet.questions
+                                      : [...questionSet.questions].sort((a, b) => {
+                                          const ra = dataSource.diagnosisResponses?.[diagnosis]?.[a] || 0;
+                                          const rb = dataSource.diagnosisResponses?.[diagnosis]?.[b] || 0;
+                                          return diagnosisSortOrder === 'desc' ? rb - ra : ra - rb;
+                                        });
+                                    return sortedQuestions.map((question) => {
                                     const rating = dataSource.diagnosisResponses?.[diagnosis]?.[question] || 0;
+                                    const prevRating = showComparison ? (previousRecord?.diagnosisResponses?.[diagnosis]?.[question] ?? null) : null;
+                                    const hasPrevDiag = showComparison && prevRating !== null;
+                                    const diagDelta = hasPrevDiag ? rating - (prevRating as number) : 0;
 
                                     return (
-                                      <div key={question} className={`p-3 bg-gray-50 rounded-lg ${isEditing ? '' : 'flex items-center justify-between'}`}>
+                                      <div key={question} className={`p-3 rounded-lg transition-all duration-200 ${
+                                        showComparison && hasPrevDiag && diagDelta !== 0
+                                          ? diagDelta < 0 ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'
+                                          : 'bg-gray-50'
+                                      } ${isEditing ? '' : 'flex items-center justify-between'}`}>
                                         <span className="text-gray-700 text-sm block mb-1">{question}</span>
                                         {isEditing && editedData ? (
                                           <div className="flex items-center gap-2">
@@ -1368,18 +1847,42 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                             </span>
                                           </div>
                                         ) : (
-                                          <div className={`px-2 py-1 rounded-full text-xs font-bold ${
-                                            rating === 0 ? 'bg-gray-100 text-gray-600'
-                                              : rating <= 3 ? 'bg-green-100 text-green-700'
-                                              : rating <= 6 ? 'bg-yellow-100 text-yellow-700'
-                                              : 'bg-red-100 text-red-700'
-                                          }`}>
-                                            {rating}/10
+                                          <div className="flex items-center gap-2">
+                                            <div className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                              rating === 0 ? 'bg-gray-100 text-gray-600'
+                                                : rating <= 3 ? 'bg-green-100 text-green-700'
+                                                : rating <= 6 ? 'bg-yellow-100 text-yellow-700'
+                                                : 'bg-red-100 text-red-700'
+                                            }`}>
+                                              {rating}/10
+                                            </div>
+                                            {/* Comparison indicator */}
+                                            {showComparison && hasPrevDiag && (
+                                              <div className="flex items-center gap-1">
+                                                <span className="text-gray-400 text-xs">önceki: {prevRating as number}/10</span>
+                                                {diagDelta !== 0 && (
+                                                  <span className={`flex items-center gap-0.5 text-xs font-bold px-1.5 py-0.5 rounded-full ${
+                                                    diagDelta < 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                                                  }`}>
+                                                    {diagDelta < 0 ? (
+                                                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                                                    ) : (
+                                                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                                                    )}
+                                                    {diagDelta > 0 ? `+${diagDelta}` : diagDelta}
+                                                  </span>
+                                                )}
+                                                {diagDelta === 0 && (
+                                                  <span className="text-xs text-gray-400 font-medium">=</span>
+                                                )}
+                                              </div>
+                                            )}
                                           </div>
                                         )}
                                       </div>
                                     );
-                                  })}
+                                  });
+                                  })()}
                                 </div>
                               </div>
                             );
@@ -1484,9 +1987,61 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                     {/* Toxicity Assessment Section */}
                     {activeSection === 'toxicity' && (
                       <div className="space-y-6">
-                        <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-                          ⚠️ Toksisite Değerlendirmesi
-                        </h3>
+                        <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
+                          <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                            ⚠️ Toksisite Değerlendirmesi
+                          </h3>
+                          <div className="flex items-center gap-2">
+                            {/* Comparison toggle */}
+                            {previousRecord && !isEditing && (
+                              <button
+                                onClick={() => setShowComparison(prev => !prev)}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 border ${
+                                  showComparison
+                                    ? 'bg-indigo-50 text-indigo-700 border-indigo-300 shadow-sm'
+                                    : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                                }`}
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M16 3h5v5M8 3H3v5M3 16v5h5M21 16v5h-5M21 3l-7 7M3 21l7-7"/>
+                                </svg>
+                                {showComparison ? 'Karşılaştırma Açık' : 'Karşılaştır'}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setToxicitySortOrder(prev => prev === 'default' ? 'desc' : prev === 'desc' ? 'asc' : 'default')}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 border ${
+                                toxicitySortOrder === 'default'
+                                  ? 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                                  : toxicitySortOrder === 'desc'
+                                  ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                                  : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                              }`}
+                              title={toxicitySortOrder === 'default' ? 'Varsayılan sıralama' : toxicitySortOrder === 'desc' ? 'Çoktan aza' : 'Azdan çoka'}
+                            >
+                              {toxicitySortOrder === 'default' ? (
+                                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M3 12h12M3 18h6"/></svg> Varsayılan</>
+                              ) : toxicitySortOrder === 'desc' ? (
+                                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg> Çoktan Aza</>
+                              ) : (
+                                <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg> Azdan Çoka</>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Comparison legend */}
+                        {showComparison && previousRecord && activeSection === 'toxicity' && (
+                          <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 flex flex-wrap items-center gap-4 text-xs">
+                            <span className="font-medium text-indigo-800">🔄 Karşılaştırma:</span>
+                            <span className="text-gray-600">
+                              {new Date(anamrezData!.createdAt).toLocaleDateString('tr-TR')} vs {new Date(previousRecord.createdAt).toLocaleDateString('tr-TR')}
+                            </span>
+                            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-emerald-500"></span> İyileşme</span>
+                            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-red-500"></span> Kötüleşme</span>
+                            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-gray-400"></span> Değişim yok</span>
+                          </div>
+                        )}
                         
                         <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
@@ -1532,7 +2087,15 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                             <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
                               <h4 className="font-bold text-gray-800 mb-4">Toksisite Semptom Puanları</h4>
                               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {Object.entries(anamrezData.toxicityAssessment.toxicityScores).map(([key, value]) => {
+                                {(() => {
+                                  const entries = Object.entries(anamrezData.toxicityAssessment.toxicityScores);
+                                  const sortedEntries = toxicitySortOrder === 'default'
+                                    ? entries
+                                    : [...entries].sort((a, b) => toxicitySortOrder === 'desc' ? b[1] - a[1] : a[1] - b[1]);
+                                  return sortedEntries.map(([key, value]) => {
+                                  const prevToxValue = showComparison ? (previousRecord?.toxicityAssessment?.toxicityScores?.[key] ?? null) : null;
+                                  const hasPrevTox = showComparison && prevToxValue !== null;
+                                  const toxDelta = hasPrevTox ? value - (prevToxValue as number) : 0;
                                   // Convert symptom keys to readable labels (same as symptom ratings)
                                   const symptomLabels: Record<string, string> = {
                                     'uykuHali': 'Uyku Hali',
@@ -1576,24 +2139,52 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                   };
                                   
                                   return (
-                                    <div key={key} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                    <div key={key} className={`flex items-center justify-between p-3 rounded-lg transition-all duration-200 ${
+                                      showComparison && hasPrevTox && toxDelta !== 0
+                                        ? toxDelta < 0 ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'
+                                        : 'bg-gray-50'
+                                    }`}>
                                       <span className="text-gray-700 text-sm font-medium">
                                         {symptomLabels[key] || key}
                                       </span>
-                                      <div className={`px-2 py-1 rounded-full text-xs font-bold ${
-                                        value === 0
-                                          ? 'bg-gray-100 text-gray-600'
-                                          : value <= 3
-                                          ? 'bg-green-100 text-green-700'
-                                          : value <= 6
-                                          ? 'bg-yellow-100 text-yellow-700'
-                                          : 'bg-red-100 text-red-700'
-                                      }`}>
-                                        {value}/10
+                                      <div className="flex items-center gap-2">
+                                        <div className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                          value === 0
+                                            ? 'bg-gray-100 text-gray-600'
+                                            : value <= 3
+                                            ? 'bg-green-100 text-green-700'
+                                            : value <= 6
+                                            ? 'bg-yellow-100 text-yellow-700'
+                                            : 'bg-red-100 text-red-700'
+                                        }`}>
+                                          {value}/10
+                                        </div>
+                                        {/* Comparison indicator */}
+                                        {showComparison && hasPrevTox && (
+                                          <div className="flex items-center gap-1">
+                                            <span className="text-gray-400 text-xs">önceki: {prevToxValue as number}/10</span>
+                                            {toxDelta !== 0 && (
+                                              <span className={`flex items-center gap-0.5 text-xs font-bold px-1.5 py-0.5 rounded-full ${
+                                                toxDelta < 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                                              }`}>
+                                                {toxDelta < 0 ? (
+                                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                                                ) : (
+                                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                                                )}
+                                                {toxDelta > 0 ? `+${toxDelta}` : toxDelta}
+                                              </span>
+                                            )}
+                                            {toxDelta === 0 && (
+                                              <span className="text-xs text-gray-400 font-medium">=</span>
+                                            )}
+                                          </div>
+                                        )}
                                       </div>
                                     </div>
                                   );
-                                })}
+                                });
+                                })()}
                               </div>
                             </div>
                           )}

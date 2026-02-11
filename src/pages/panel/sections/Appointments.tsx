@@ -394,10 +394,10 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
               onChange={(e) => setFilterStatus(e.target.value as any)}
               className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-green-500"
             >
-              <option value="all">Tümü</option>
-              <option value="confirmed">Onaylanan</option>
-              <option value="pending">Beklemede</option>
-              <option value="cancelled">İptal</option>
+              <option value="all" className="bg-gray-800 text-white">Tümü</option>
+              <option value="confirmed" className="bg-gray-800 text-white">Onaylanan</option>
+              <option value="pending" className="bg-gray-800 text-white">Beklemede</option>
+              <option value="cancelled" className="bg-gray-800 text-white">İptal</option>
             </select>
           </div>
         </div>

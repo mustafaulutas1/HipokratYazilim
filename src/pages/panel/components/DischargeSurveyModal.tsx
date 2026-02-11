@@ -80,9 +80,12 @@ const DischargeSurveyModal: React.FC<DischargeSurveyModalProps> = ({
     
     // Auto-advance to next question after a short delay
     setTimeout(() => {
-      if (currentStep < surveyQuestions.length - 1) {
-        setCurrentStep(prev => prev + 1);
-      }
+      setCurrentStep(prev => {
+        if (prev < surveyQuestions.length - 1) {
+          return prev + 1;
+        }
+        return prev;
+      });
     }, 300);
   };
 
@@ -165,7 +168,8 @@ const DischargeSurveyModal: React.FC<DischargeSurveyModalProps> = ({
   };
 
   const allQuestionsAnswered = surveyQuestions.every(q => ratings[q.id]);
-  const currentQuestion = surveyQuestions[currentStep];
+  const safeStep = Math.min(currentStep, surveyQuestions.length - 1);
+  const currentQuestion = surveyQuestions[safeStep];
   const answeredCount = Object.keys(ratings).length;
 
   // Success completion view

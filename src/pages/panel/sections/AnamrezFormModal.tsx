@@ -49,54 +49,157 @@ interface AnamrezFormModalProps {
 }
 
 type SymptomKey =
-  | 'uykuHali' | 'gozdeUcusmalar' | 'carpinti' | 'siskinlik' | 'adetDuzensizligi'
-  | 'dengeKaybi' | 'yayginKasAgrisi' | 'nefesAlmadaGucluk' | 'ustume' | 'terleme'
-  | 'stres' | 'agriliAdet' | 'uykuDuzensizligi' | 'oksuruk' | 'balgam'
-  | 'kasilmaVeKramplar' | 'elAyakUyusmalari' | 'unutkanlik' | 'kasinti' | 'idrarKacirma'
-  | 'idrardaYanma' | 'geceIdraraKalkma' | 'kesikKesikIdrar' | 'kabizlik' | 'karindaGaz'
-  | 'belAgrisi' | 'ishal' | 'boyunAgrisi' | 'yayginOdem' | 'basur' | 'eklemAgrilari'
-  | 'algiBozuklugu' | 'halsizlikYorgunluk' | 'yorgunUyanma' | 'basDonmesi' | 'basAgrisi'
-  | 'mideAgisi' | 'mideYanmasi';
+  | 'basAgrisi' | 'basDonmesi' | 'gozdeUcusmalar' | 'bilincDegisikligi' | 'uykuDuzeniDuzensizligi'
+  | 'stres' | 'kaygi' | 'aniOfkelenme' | 'duyguDurumDegisiklikleri'
+  | 'carpinti' | 'gogusAgrisi' | 'tansiyonDegisikligi'
+  | 'nefesDarligi' | 'oksuruk' | 'balgam' | 'hirilti'
+  | 'mideYanmasi' | 'mideBulantisi' | 'kusma' | 'siskinlikGaz' | 'istahDurumu'
+  | 'kabizlik' | 'ishal' | 'mukusluYagliDiskilama' | 'karinAgrisi' | 'hemoroid'
+  | 'sikIdraraCikmaErkek' | 'idrarYaparkenYanma' | 'idrardaKopuklenme' | 'kesikIdrarYapma' | 'idrariTamBosaltamama' | 'idrarSonrasiDamlama'
+  | 'adetDuzeniDuzensizligi' | 'sonAdetTarihi' | 'vajinalAkinti' | 'vajinalKuruluk' | 'cinselIsteksizlik' | 'sikIYE' | 'atesBasmasi' | 'terleme'
+  | 'kasAgrilari' | 'eklemAgrilari' | 'hareketKisitliligi' | 'belBoyunSirtAgrisi' | 'kasilmaKramp' | 'uyusma'
+  | 'halsizlik' | 'yorgunluk' | 'yorgunUyanma' | 'ates' | 'kiloDegisikligi' | 'kasintikizariklikDokuntu'
+  // Legacy keys for backward compatibility
+  | 'uykuHali' | 'siskinlik' | 'adetDuzensizligi' | 'dengeKaybi' | 'yayginKasAgrisi'
+  | 'nefesAlmadaGucluk' | 'ustume' | 'agriliAdet' | 'uykuDuzensizligi'
+  | 'kasilmaVeKramplar' | 'elAyakUyusmalari' | 'unutkanlik' | 'kasinti'
+  | 'idrarKacirma' | 'idrardaYanma' | 'geceIdraraKalkma' | 'kesikKesikIdrar'
+  | 'karindaGaz' | 'belAgrisi' | 'boyunAgrisi' | 'yayginOdem' | 'basur'
+  | 'algiBozuklugu' | 'halsizlikYorgunluk' | 'mideAgisi';
 
-const SYMPTOM_QUESTIONS: { key: SymptomKey; label: string; note?: string }[] = [
-  { key: 'uykuHali', label: 'Uyku Hali' },
-  { key: 'gozdeUcusmalar', label: 'Gözde Uçuşmalar' },
-  { key: 'carpinti', label: 'Çarpıntı' },
-  { key: 'siskinlik', label: 'Şişkinlik' },
-  { key: 'adetDuzensizligi', label: 'Adet Düzensizliği', note: '' },
-  { key: 'dengeKaybi', label: 'Denge Kaybı' },
-  { key: 'yayginKasAgrisi', label: 'Yaygın Kas Ağrısı' },
-  { key: 'nefesAlmadaGucluk', label: 'Nefes Almada Güçlük' },
-  { key: 'ustume', label: 'Üşüme' },
-  { key: 'terleme', label: 'Terleme' },
-  { key: 'stres', label: 'Stres', note: '' },
-  { key: 'agriliAdet', label: 'Ağrılı Adet', note: '' },
-  { key: 'uykuDuzensizligi', label: 'Uyku Düzensizliği' },
-  { key: 'oksuruk', label: 'Öksürük' },
-  { key: 'balgam', label: 'Balgam' },
-  { key: 'kasilmaVeKramplar', label: 'Kasılma Ve Kramplar' },
-  { key: 'elAyakUyusmalari', label: 'El Ayak Uyuşmaları' },
-  { key: 'unutkanlik', label: 'Unutkanlık' },
-  { key: 'kasinti', label: 'Kaşıntı' },
-  { key: 'idrarKacirma', label: 'İdrar Kaçırma' },
-  { key: 'idrardaYanma', label: 'İdrarda Yanma' },
-  { key: 'geceIdraraKalkma', label: 'Gece İdrara Kalkma' },
-  { key: 'kesikKesikIdrar', label: 'Kesik Kesik İdrar' },
-  { key: 'kabizlik', label: 'Kabızlık' },
-  { key: 'karindaGaz', label: 'Karında Gaz' },
-  { key: 'belAgrisi', label: 'Bel Ağrısı' },
-  { key: 'ishal', label: 'İshal (Diare)' },
-  { key: 'boyunAgrisi', label: 'Boyun Ağrısı' },
-  { key: 'yayginOdem', label: 'Yaygın Ödem' },
-  { key: 'basur', label: 'Basur' },
-  { key: 'eklemAgrilari', label: 'Eklem Ağrıları' },
-  { key: 'algiBozuklugu', label: 'Algı Bozukluğu' },
-  { key: 'halsizlikYorgunluk', label: 'Halsizlik / Yorgunluk' },
-  { key: 'yorgunUyanma', label: 'Yorgun Uyanma' },
-  { key: 'basDonmesi', label: 'Baş Dönmesi' },
-  { key: 'basAgrisi', label: 'Baş Ağrısı' },
-  { key: 'mideAgisi', label: 'Mide Ağısı' },
-  { key: 'mideYanmasi', label: 'Mide Yanması' }
+interface SymptomCategory {
+  title: string;
+  icon: string;
+  color: string;
+  questions: { key: SymptomKey; label: string }[];
+  genderFilter?: 'Erkek' | 'Kadın';
+}
+
+const SYMPTOM_CATEGORIES: SymptomCategory[] = [
+  {
+    title: '1. Baş – Nörolojik Sistem',
+    icon: '🧠',
+    color: 'blue',
+    questions: [
+      { key: 'basAgrisi', label: 'Baş ağrısı' },
+      { key: 'basDonmesi', label: 'Baş dönmesi' },
+      { key: 'gozdeUcusmalar', label: 'Gözlerde uçuşmalar / siyah nokta görülmesi' },
+      { key: 'bilincDegisikligi', label: 'Bilinç değişikliği' },
+      { key: 'uykuDuzeniDuzensizligi', label: 'Uyku düzeni / düzensizliği' },
+    ]
+  },
+  {
+    title: '2. Psikolojik Durum',
+    icon: '🧘',
+    color: 'purple',
+    questions: [
+      { key: 'stres', label: 'Stres' },
+      { key: 'kaygi', label: 'Kaygı' },
+      { key: 'aniOfkelenme', label: 'Ani öfkelenme' },
+      { key: 'duyguDurumDegisiklikleri', label: 'Duygu durum değişiklikleri' },
+    ]
+  },
+  {
+    title: '3. Kardiyovasküler Sistem',
+    icon: '❤️',
+    color: 'red',
+    questions: [
+      { key: 'carpinti', label: 'Çarpıntı' },
+      { key: 'gogusAgrisi', label: 'Göğüs ağrısı' },
+      { key: 'tansiyonDegisikligi', label: 'Tansiyon yüksekliği / düşüklüğü' },
+    ]
+  },
+  {
+    title: '4. Solunum Sistemi',
+    icon: '🫁',
+    color: 'cyan',
+    questions: [
+      { key: 'nefesDarligi', label: 'Nefes darlığı' },
+      { key: 'oksuruk', label: 'Öksürük' },
+      { key: 'balgam', label: 'Balgam' },
+      { key: 'hirilti', label: 'Hırıltı' },
+    ]
+  },
+  {
+    title: '5. Gastrointestinal Sistem – Mide',
+    icon: '🍽️',
+    color: 'orange',
+    questions: [
+      { key: 'mideYanmasi', label: 'Mide yanması' },
+      { key: 'mideBulantisi', label: 'Mide bulantısı' },
+      { key: 'kusma', label: 'Kusma' },
+      { key: 'siskinlikGaz', label: 'Şişkinlik / gaz' },
+      { key: 'istahDurumu', label: 'İştah durumu' },
+    ]
+  },
+  {
+    title: '5. Gastrointestinal Sistem – Bağırsak',
+    icon: '🔄',
+    color: 'amber',
+    questions: [
+      { key: 'kabizlik', label: 'Kabızlık' },
+      { key: 'ishal', label: 'İshal' },
+      { key: 'mukusluYagliDiskilama', label: 'Mukuslu / yağlı dışkılama' },
+      { key: 'karinAgrisi', label: 'Karın ağrısı' },
+      { key: 'hemoroid', label: 'Hemoroid' },
+    ]
+  },
+  {
+    title: '6. Üriner Sistem – Erkek',
+    icon: '🚹',
+    color: 'indigo',
+    genderFilter: 'Erkek',
+    questions: [
+      { key: 'sikIdraraCikmaErkek', label: 'Sık idrara çıkma' },
+      { key: 'idrarYaparkenYanma', label: 'İdrar yaparken yanma' },
+      { key: 'idrardaKopuklenme', label: 'İdrarda köpüklenme' },
+      { key: 'kesikIdrarYapma', label: 'Kesik idrar yapma' },
+      { key: 'idrariTamBosaltamama', label: 'İdrarı tam boşaltamama' },
+      { key: 'idrarSonrasiDamlama', label: 'İdrar sonrası damlama' },
+    ]
+  },
+  {
+    title: '6. Üriner Sistem – Kadın',
+    icon: '🚺',
+    color: 'pink',
+    genderFilter: 'Kadın',
+    questions: [
+      { key: 'adetDuzeniDuzensizligi', label: 'Adet düzeni / düzensizliği' },
+      { key: 'sonAdetTarihi', label: 'Son adet tarihi (SAT)' },
+      { key: 'vajinalAkinti', label: 'Vajinal akıntı' },
+      { key: 'vajinalKuruluk', label: 'Vajinal kuruluk' },
+      { key: 'cinselIsteksizlik', label: 'Cinsel isteksizlik' },
+      { key: 'sikIYE', label: 'Sık İYE (İdrar Yolu Enfeksiyonu)' },
+      { key: 'atesBasmasi', label: 'Ateş basması' },
+      { key: 'terleme', label: 'Terleme' },
+    ]
+  },
+  {
+    title: '7. Kas – Eklem Sistemi',
+    icon: '💪',
+    color: 'green',
+    questions: [
+      { key: 'kasAgrilari', label: 'Kas ağrıları' },
+      { key: 'eklemAgrilari', label: 'Eklem ağrıları' },
+      { key: 'hareketKisitliligi', label: 'Hareket kısıtlılığı' },
+      { key: 'belBoyunSirtAgrisi', label: 'Bel / boyun / sırt ağrısı' },
+      { key: 'kasilmaKramp', label: 'Kasılma, kramp' },
+      { key: 'uyusma', label: 'Uyuşma' },
+    ]
+  },
+  {
+    title: '8. Genel Durum',
+    icon: '🏥',
+    color: 'teal',
+    questions: [
+      { key: 'halsizlik', label: 'Halsizlik' },
+      { key: 'yorgunluk', label: 'Yorgunluk' },
+      { key: 'yorgunUyanma', label: 'Yorgun uyanma' },
+      { key: 'ates', label: 'Ateş' },
+      { key: 'kiloDegisikligi', label: 'Kilo değişikliği' },
+      { key: 'kasintikizariklikDokuntu', label: 'Vücutta kaşıntı, kızarıklık, döküntü' },
+    ]
+  },
 ];
 
 /* Using shared constants from constants/diagnosisSystems.ts
@@ -246,6 +349,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [historyDate, setHistoryDate] = useState(initialHistoryDate);
+  const [historyTime, setHistoryTime] = useState('09:00');
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [loadingDoctors, setLoadingDoctors] = useState(false);
   // Keep toxicity ratings isolated so they don't inherit values from other sections
@@ -262,6 +366,24 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
     kabizlik: 0
   };
   const [toxicityRatings, setToxicityRatings] = useState<Record<string, number>>(initialToxicityRatings);
+
+  // Symptom notes state
+  const [symptomNotes, setSymptomNotes] = useState<Record<string, string>>({});
+  // Custom symptom questions added by user
+  const [customSymptomQuestions, setCustomSymptomQuestions] = useState<Array<{
+    id: string;
+    label: string;
+    rating: number;
+    note: string;
+    categoryTitle: string;
+  }>>([]);
+  // Expanded note fields
+  const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
+
+  // Diğer (Other) illness input states per system
+  const [digerOpen, setDigerOpen] = useState<Record<string, boolean>>({});
+  const [digerInput, setDigerInput] = useState<Record<string, string>>({});
+  const [digerFocused, setDigerFocused] = useState<Record<string, boolean>>({});
 
   // File upload states for optional scans
   const [meridianScanFile, setMeridianScanFile] = useState<File | null>(null);
@@ -344,46 +466,9 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
     additionalNotes: '',
 
     // Symptom ratings (1-10 scale)
-    symptomRatings: {
-      uykuHali: 0,
-      gozdeUcusmalar: 0,
-      carpinti: 0,
-      siskinlik: 0,
-      adetDuzensizligi: 0,
-      dengeKaybi: 0,
-      yayginKasAgrisi: 0,
-      nefesAlmadaGucluk: 0,
-      ustume: 0,
-      terleme: 0,
-      stres: 0,
-      agriliAdet: 0,
-      uykuDuzensizligi: 0,
-      oksuruk: 0,
-      balgam: 0,
-      kasilmaVeKramplar: 0,
-      elAyakUyusmalari: 0,
-      unutkanlik: 0,
-      kasinti: 0,
-      idrarKacirma: 0,
-      idrardaYanma: 0,
-      geceIdraraKalkma: 0,
-      kesikKesikIdrar: 0,
-      kabizlik: 0,
-      karindaGaz: 0,
-      belAgrisi: 0,
-      ishal: 0,
-      boyunAgrisi: 0,
-      yayginOdem: 0,
-      basur: 0,
-      eklemAgrilari: 0,
-      algiBozuklugu: 0,
-      halsizlikYorgunluk: 0,
-      yorgunUyanma: 0,
-      basDonmesi: 0,
-      basAgrisi: 0,
-      mideAgisi: 0,
-      mideYanmasi: 0
-    } as SymptomRatings,
+    symptomRatings: Object.fromEntries(
+      SYMPTOM_CATEGORIES.flatMap(cat => cat.questions).map(q => [q.key, 0])
+    ) as SymptomRatings,
 
     // Diagnosis-specific questions responses (1-10 ratings)
     diagnosisResponses: {} as Record<string, Record<string, number>>,
@@ -622,6 +707,14 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         optionalScans: prev.optionalScans // Don't copy file URLs
       }));
 
+      // Also load symptom notes and custom symptom questions
+      if (previousAnamnez.symptomNotes) {
+        setSymptomNotes(previousAnamnez.symptomNotes);
+      }
+      if (previousAnamnez.customSymptomQuestions) {
+        setCustomSymptomQuestions(previousAnamnez.customSymptomQuestions);
+      }
+
       // Also set toxicity ratings if available
       if (previousAnamnez.toxicityAssessment?.toxicityScores) {
         setToxicityRatings(previousAnamnez.toxicityAssessment.toxicityScores);
@@ -667,46 +760,9 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         medications: '',
         socialHistory: '',
         additionalNotes: '',
-        symptomRatings: {
-          uykuHali: 0,
-          gozdeUcusmalar: 0,
-          carpinti: 0,
-          siskinlik: 0,
-          adetDuzensizligi: 0,
-          dengeKaybi: 0,
-          yayginKasAgrisi: 0,
-          nefesAlmadaGucluk: 0,
-          ustume: 0,
-          terleme: 0,
-          stres: 0,
-          agriliAdet: 0,
-          uykuDuzensizligi: 0,
-          oksuruk: 0,
-          balgam: 0,
-          kasilmaVeKramplar: 0,
-          elAyakUyusmalari: 0,
-          unutkanlik: 0,
-          kasinti: 0,
-          idrarKacirma: 0,
-          idrardaYanma: 0,
-          geceIdraraKalkma: 0,
-          kesikKesikIdrar: 0,
-          kabizlik: 0,
-          karindaGaz: 0,
-          belAgrisi: 0,
-          ishal: 0,
-          boyunAgrisi: 0,
-          yayginOdem: 0,
-          basur: 0,
-          eklemAgrilari: 0,
-          algiBozuklugu: 0,
-          halsizlikYorgunluk: 0,
-          yorgunUyanma: 0,
-          basDonmesi: 0,
-          basAgrisi: 0,
-          mideAgisi: 0,
-          mideYanmasi: 0
-        } as SymptomRatings,
+        symptomRatings: Object.fromEntries(
+          SYMPTOM_CATEGORIES.flatMap(cat => cat.questions).map(q => [q.key, 0])
+        ) as SymptomRatings,
         diagnosisResponses: {} as Record<string, Record<string, number>>,
         additionalQuestions: {
           education: '',
@@ -755,6 +811,9 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         }
       });
       setToxicityRatings(initialToxicityRatings);
+      setSymptomNotes({});
+      setCustomSymptomQuestions([]);
+      setExpandedNotes({});
     }
   }, [usePreviousAnamnez, previousAnamnez]);
 
@@ -852,6 +911,47 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         }
       };
     });
+  };
+
+  const handleDigerToggle = (system: string, open: boolean) => {
+    setDigerOpen(prev => ({ ...prev, [system]: open }));
+    if (!open) {
+      setDigerInput(prev => ({ ...prev, [system]: '' }));
+      setDigerFocused(prev => ({ ...prev, [system]: false }));
+    }
+  };
+
+  const handleDigerInputChange = (system: string, value: string) => {
+    setDigerInput(prev => ({ ...prev, [system]: value.toUpperCase() }));
+  };
+
+  const handleDigerAdd = (system: string, value?: string) => {
+    const illness = (value || digerInput[system] || '').trim().toUpperCase();
+    if (!illness) return;
+    const currentIllnesses = formData.selectedIllnesses[system] || [];
+    if (currentIllnesses.includes(illness)) {
+      toast.warning('Bu hastalık zaten eklenmiş.');
+      return;
+    }
+    setFormData(prev => ({
+      ...prev,
+      selectedIllnesses: {
+        ...prev.selectedIllnesses,
+        [system]: [...(prev.selectedIllnesses[system] || []), illness]
+      }
+    }));
+    setDigerInput(prev => ({ ...prev, [system]: '' }));
+  };
+
+  const getDigerSuggestions = (system: string): string[] => {
+    const input = (digerInput[system] || '').toUpperCase();
+    if (!input) return [];
+    const predefinedIllnesses = DIAGNOSIS_ILLNESSES[system] || [];
+    const allIllnesses = predefinedIllnesses.map(i => i.toUpperCase());
+    const currentSelected = (formData.selectedIllnesses[system] || []).map(i => i.toUpperCase());
+    return allIllnesses.filter(
+      i => i.includes(input) && !currentSelected.includes(i)
+    );
   };
 
   const handleSymptomRatingChange = (symptomKey: SymptomKey, rating: number) => {
@@ -1270,6 +1370,8 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         socialHistory: formData.socialHistory,
         additionalNotes: formData.additionalNotes,
         symptomRatings: formData.symptomRatings,
+        symptomNotes: symptomNotes,
+        customSymptomQuestions: customSymptomQuestions,
         diagnosisResponses: formData.diagnosisResponses,
         additionalQuestions: formData.additionalQuestions,
         customQuestions: formData.customQuestions,
@@ -1337,14 +1439,15 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         }
 
         // Save to patientHistoryRecords collection for past history
+        const historyDateTime = new Date(`${historyDate}T${historyTime || '09:00'}:00`).toISOString();
         await addDoc(collection(db, 'patientHistoryRecords'), {
           ...anamrezData,
-          historyDate: historyDate,
+          historyDate: historyDateTime,
           isPastHistory: true,
           hasAnamnesis: true,
           hasTreatment: false,
           hasMedications: false,
-          createdAt: new Date().toISOString(),
+          createdAt: historyDateTime,
         });
 
         toast.success('Geçmiş anamnez kaydı başarıyla eklendi!');
@@ -1400,6 +1503,11 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
       setToxicityScanFile(null);
       setDeviceScanFile(null);
 
+      // Reset symptom notes and custom symptom questions
+      setSymptomNotes({});
+      setCustomSymptomQuestions([]);
+      setExpandedNotes({});
+
       // Reset form
       setFormData({
         selectedDiagnosisSystems: [],
@@ -1440,46 +1548,9 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         medications: '',
         socialHistory: '',
         additionalNotes: '',
-        symptomRatings: {
-          uykuHali: 0,
-          gozdeUcusmalar: 0,
-          carpinti: 0,
-          siskinlik: 0,
-          adetDuzensizligi: 0,
-          dengeKaybi: 0,
-          yayginKasAgrisi: 0,
-          nefesAlmadaGucluk: 0,
-          ustume: 0,
-          terleme: 0,
-          stres: 0,
-          agriliAdet: 0,
-          uykuDuzensizligi: 0,
-          oksuruk: 0,
-          balgam: 0,
-          kasilmaVeKramplar: 0,
-          elAyakUyusmalari: 0,
-          unutkanlik: 0,
-          kasinti: 0,
-          idrarKacirma: 0,
-          idrardaYanma: 0,
-          geceIdraraKalkma: 0,
-          kesikKesikIdrar: 0,
-          kabizlik: 0,
-          karindaGaz: 0,
-          belAgrisi: 0,
-          ishal: 0,
-          boyunAgrisi: 0,
-          yayginOdem: 0,
-          basur: 0,
-          eklemAgrilari: 0,
-          algiBozuklugu: 0,
-          halsizlikYorgunluk: 0,
-          yorgunUyanma: 0,
-          basDonmesi: 0,
-          basAgrisi: 0,
-          mideAgisi: 0,
-          mideYanmasi: 0
-        } as SymptomRatings,
+        symptomRatings: Object.fromEntries(
+          SYMPTOM_CATEGORIES.flatMap(cat => cat.questions).map(q => [q.key, 0])
+        ) as SymptomRatings,
         diagnosisResponses: {} as Record<string, Record<string, number>>,
         additionalQuestions: {
           education: '',
@@ -1618,8 +1689,20 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                       required
                     />
                   </div>
+                  <div className="flex-1">
+                    <label className="block text-purple-800 font-semibold mb-2">
+                      ⏰ Saat Seçin *
+                    </label>
+                    <input
+                      type="time"
+                      value={historyTime}
+                      onChange={(e) => setHistoryTime(e.target.value)}
+                      className="w-full px-4 py-3 bg-white border border-purple-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      required
+                    />
+                  </div>
                   <div className="text-purple-700 text-sm max-w-xs">
-                    <p>Bu tarih, hastanın geçmiş tedavi/anamnez kaydının tarihini temsil eder.</p>
+                    <p>Bu tarih ve saat, hastanın geçmiş tedavi/anamnez kaydının zamanını temsil eder.</p>
                   </div>
                 </div>
               </div>
@@ -1768,6 +1851,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                         {formData.selectedDiagnosisSystems.map((system) => {
                           const illnesses = DIAGNOSIS_ILLNESSES[system];
                           if (!illnesses || illnesses.length === 0) return null;
+                          const suggestions = getDigerSuggestions(system);
                           return (
                             <div key={system} className="p-4 bg-white rounded-lg border border-red-200">
                               <p className="text-sm font-bold text-red-700 mb-3">{system} - Hastalık Seçimi</p>
@@ -1789,15 +1873,94 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                                     </label>
                                   </div>
                                 ))}
+                                {/* Diğer checkbox */}
+                                <div className="flex items-center">
+                                  <input
+                                    type="checkbox"
+                                    id={`illness-${system}-diger`}
+                                    checked={digerOpen[system] || false}
+                                    onChange={(e) => handleDigerToggle(system, e.target.checked)}
+                                    className="w-4 h-4 text-red-600 bg-white border-gray-300 rounded focus:ring-red-500 focus:ring-2"
+                                  />
+                                  <label
+                                    htmlFor={`illness-${system}-diger`}
+                                    className="ml-2 text-sm text-gray-700 cursor-pointer font-medium"
+                                  >
+                                    Diğer
+                                  </label>
+                                </div>
                               </div>
+
+                              {/* Diğer input with autocomplete */}
+                              {digerOpen[system] && (
+                                <div className="mt-3 relative">
+                                  <div className="flex gap-2">
+                                    <div className="relative flex-1">
+                                      <input
+                                        type="text"
+                                        value={digerInput[system] || ''}
+                                        onChange={(e) => handleDigerInputChange(system, e.target.value)}
+                                        onFocus={() => setDigerFocused(prev => ({ ...prev, [system]: true }))}
+                                        onBlur={() => setTimeout(() => setDigerFocused(prev => ({ ...prev, [system]: false })), 200)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            handleDigerAdd(system);
+                                          }
+                                        }}
+                                        placeholder="Hastalık adı yazınız..."
+                                        className="w-full px-3 py-2 border border-red-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 uppercase"
+                                        style={{ textTransform: 'uppercase' }}
+                                      />
+                                      {/* Autocomplete suggestions dropdown */}
+                                      {digerFocused[system] && suggestions.length > 0 && (
+                                        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                                          {suggestions.map((suggestion) => (
+                                            <button
+                                              key={suggestion}
+                                              type="button"
+                                              className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-red-50 hover:text-red-700 transition-colors"
+                                              onMouseDown={(e) => {
+                                                e.preventDefault();
+                                                handleDigerAdd(system, suggestion);
+                                              }}
+                                            >
+                                              {suggestion}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDigerAdd(system)}
+                                      disabled={!(digerInput[system] || '').trim()}
+                                      className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                                    >
+                                      Ekle
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
                               {(formData.selectedIllnesses[system] || []).length > 0 && (
                                 <div className="mt-3 flex flex-wrap gap-2">
                                   {formData.selectedIllnesses[system].map((illness) => (
                                     <span
                                       key={illness}
-                                      className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium"
+                                      className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium inline-flex items-center gap-1"
                                     >
                                       {illness}
+                                      {!illnesses.includes(illness) && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleIllnessChange(system, illness, false)}
+                                          className="ml-1 text-red-500 hover:text-red-800 font-bold"
+                                          title="Kaldır"
+                                        >
+                                          ×
+                                        </button>
+                                      )}
                                     </span>
                                   ))}
                                 </div>
@@ -2183,73 +2346,249 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
             {currentPage === 2 && (
               <>
-                {/* Symptom Rating Questions */}
-                <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-200">
-                  <h3 className="text-xl font-bold text-purple-700 mb-6 flex items-center gap-2">
-                    📊 Semptom Değerlendirmesi
-                  </h3>
-                  <p className="text-gray-600 mb-6 text-sm">
-                    Aşağıdaki semptomları 1-10 arasında değerlendirin (1 = Hiç yok, 10 = Çok şiddetli)
-                  </p>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {SYMPTOM_QUESTIONS.map((symptom, index) => {
-                      // Skip female-only questions for male patients
-                      if (patient?.gender === 'Erkek' &&
-                        (symptom.key === 'adetDuzensizligi' || symptom.key === 'agriliAdet')) {
-                        return null;
-                      }
-
-                      return (
-                        <div key={symptom.key} className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-                          <div className="flex items-start justify-between mb-3">
-                            <div>
-                              <h4 className="font-semibold text-gray-800 text-sm">
-                                {index + 1}. {symptom.label}
-                              </h4>
-                              {symptom.note && (
-                                <p className="text-xs text-green-600 mt-1">{symptom.note}</p>
-                              )}
-                            </div>
-                            <div className={`px-2 py-1 rounded-full text-xs font-bold ${formData.symptomRatings[symptom.key] === 0
-                              ? 'bg-gray-100 text-gray-500'
-                              : formData.symptomRatings[symptom.key] <= 3
-                                ? 'bg-green-100 text-green-700'
-                                : formData.symptomRatings[symptom.key] <= 6
-                                  ? 'bg-yellow-100 text-yellow-700'
-                                  : 'bg-red-100 text-red-700'
-                              }`}>
-                              {formData.symptomRatings[symptom.key] || '0'}
-                            </div>
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs text-gray-500">Hiç yok</span>
-                            <div className="flex gap-1">
-                              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((rating) => (
-                                <button
-                                  key={rating}
-                                  type="button"
-                                  onClick={() => handleSymptomRatingChange(symptom.key, rating)}
-                                  className={`w-8 h-8 rounded-full text-xs font-semibold transition-all duration-200 ${formData.symptomRatings[symptom.key] === rating
-                                    ? rating <= 3
-                                      ? 'bg-green-500 text-white shadow-lg scale-110'
-                                      : rating <= 6
-                                        ? 'bg-yellow-500 text-white shadow-lg scale-110'
-                                        : 'bg-red-500 text-white shadow-lg scale-110'
-                                    : 'bg-gray-100 hover:bg-gray-200 text-gray-600 hover:scale-105'
-                                    }`}
-                                >
-                                  {rating}
-                                </button>
-                              ))}
-                            </div>
-                            <span className="text-xs text-gray-500">Çok şiddetli</span>
-                          </div>
-                        </div>
-                      );
-                    })}
+                {/* Symptom Rating Questions - Categorized */}
+                <div className="space-y-6">
+                  <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-4 border border-purple-200">
+                    <h3 className="text-xl font-bold text-purple-700 mb-2 flex items-center gap-2">
+                      📊 Semptom Değerlendirmesi
+                    </h3>
+                    <p className="text-gray-600 text-sm">
+                      Aşağıdaki semptomları 1-10 arasında değerlendirin (1 = Hiç yok, 10 = Çok şiddetli). Her semptom için not ekleyebilirsiniz.
+                    </p>
                   </div>
+
+                  {SYMPTOM_CATEGORIES.map((category) => {
+                    // Skip gender-filtered categories
+                    if (category.genderFilter && patient?.gender && patient.gender !== category.genderFilter) {
+                      return null;
+                    }
+
+                    // Get custom questions for this category
+                    const categoryCustomQuestions = customSymptomQuestions.filter(
+                      q => q.categoryTitle === category.title
+                    );
+
+                    return (
+                      <div key={category.title} className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                        {/* Category Header */}
+                        <div className={`px-6 py-4 bg-gradient-to-r ${
+                          category.color === 'blue' ? 'from-blue-50 to-blue-100 border-b border-blue-200' :
+                          category.color === 'purple' ? 'from-purple-50 to-purple-100 border-b border-purple-200' :
+                          category.color === 'red' ? 'from-red-50 to-red-100 border-b border-red-200' :
+                          category.color === 'cyan' ? 'from-cyan-50 to-cyan-100 border-b border-cyan-200' :
+                          category.color === 'orange' ? 'from-orange-50 to-orange-100 border-b border-orange-200' :
+                          category.color === 'amber' ? 'from-amber-50 to-amber-100 border-b border-amber-200' :
+                          category.color === 'indigo' ? 'from-indigo-50 to-indigo-100 border-b border-indigo-200' :
+                          category.color === 'pink' ? 'from-pink-50 to-pink-100 border-b border-pink-200' :
+                          category.color === 'green' ? 'from-green-50 to-green-100 border-b border-green-200' :
+                          category.color === 'teal' ? 'from-teal-50 to-teal-100 border-b border-teal-200' :
+                          'from-gray-50 to-gray-100 border-b border-gray-200'
+                        }`}>
+                          <h4 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                            {category.icon} {category.title}
+                          </h4>
+                        </div>
+
+                        {/* Questions */}
+                        <div className="p-4 space-y-4">
+                          {category.questions.map((symptom, index) => {
+                            const rating = formData.symptomRatings[symptom.key] || 0;
+                            const noteKey = symptom.key;
+                            const isNoteExpanded = expandedNotes[noteKey];
+
+                            return (
+                              <div key={symptom.key} className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                                <div className="flex items-start justify-between mb-3">
+                                  <div className="flex-1">
+                                    <h4 className="font-semibold text-gray-800 text-sm">
+                                      {index + 1}. {symptom.label}
+                                    </h4>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {/* Note toggle button */}
+                                    <button
+                                      type="button"
+                                      onClick={() => setExpandedNotes(prev => ({ ...prev, [noteKey]: !prev[noteKey] }))}
+                                      className={`p-1.5 rounded-lg text-xs transition-all duration-200 flex items-center gap-1 ${
+                                        symptomNotes[noteKey]
+                                          ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                      }`}
+                                      title="Not ekle"
+                                    >
+                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                      </svg>
+                                      Not
+                                    </button>
+                                    <div className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                      rating === 0
+                                        ? 'bg-gray-100 text-gray-500'
+                                        : rating <= 3
+                                          ? 'bg-green-100 text-green-700'
+                                          : rating <= 6
+                                            ? 'bg-yellow-100 text-yellow-700'
+                                            : 'bg-red-100 text-red-700'
+                                    }`}>
+                                      {rating || '0'}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs text-gray-500">Hiç yok</span>
+                                  <div className="flex gap-1">
+                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((r) => (
+                                      <button
+                                        key={r}
+                                        type="button"
+                                        onClick={() => handleSymptomRatingChange(symptom.key, r)}
+                                        className={`w-8 h-8 rounded-full text-xs font-semibold transition-all duration-200 ${
+                                          rating === r
+                                            ? r <= 3
+                                              ? 'bg-green-500 text-white shadow-lg scale-110'
+                                              : r <= 6
+                                                ? 'bg-yellow-500 text-white shadow-lg scale-110'
+                                                : 'bg-red-500 text-white shadow-lg scale-110'
+                                            : 'bg-gray-100 hover:bg-gray-200 text-gray-600 hover:scale-105'
+                                        }`}
+                                      >
+                                        {r}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <span className="text-xs text-gray-500">Çok şiddetli</span>
+                                </div>
+
+                                {/* Note field */}
+                                {isNoteExpanded && (
+                                  <div className="mt-3 pt-3 border-t border-gray-200">
+                                    <textarea
+                                      value={symptomNotes[noteKey] || ''}
+                                      onChange={(e) => setSymptomNotes(prev => ({ ...prev, [noteKey]: e.target.value }))}
+                                      rows={2}
+                                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                                      placeholder="Not: Sıklığı, süresi, şiddeti, ne zaman başladığı vb. detayları yazınız..."
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+
+                          {/* Custom questions for this category */}
+                          {categoryCustomQuestions.map((customQ) => (
+                            <div key={customQ.id} className="bg-blue-50 rounded-xl p-4 border border-blue-200">
+                              <div className="flex items-start justify-between mb-2">
+                                <div className="flex-1 mr-3">
+                                  <input
+                                    type="text"
+                                    value={customQ.label}
+                                    onChange={(e) => {
+                                      setCustomSymptomQuestions(prev =>
+                                        prev.map(q => q.id === customQ.id ? { ...q, label: e.target.value } : q)
+                                      );
+                                    }}
+                                    className="w-full px-3 py-2 bg-white border border-blue-300 rounded-lg text-gray-900 text-sm font-semibold placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="Soru başlığını yazınız..."
+                                  />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <div className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                    customQ.rating === 0
+                                      ? 'bg-gray-100 text-gray-500'
+                                      : customQ.rating <= 3
+                                        ? 'bg-green-100 text-green-700'
+                                        : customQ.rating <= 6
+                                          ? 'bg-yellow-100 text-yellow-700'
+                                          : 'bg-red-100 text-red-700'
+                                  }`}>
+                                    {customQ.rating || '0'}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setCustomSymptomQuestions(prev => prev.filter(q => q.id !== customQ.id));
+                                    }}
+                                    className="text-red-500 hover:text-red-700 transition-colors"
+                                  >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between mb-3">
+                                <span className="text-xs text-gray-500">Hiç yok</span>
+                                <div className="flex gap-1">
+                                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((r) => (
+                                    <button
+                                      key={r}
+                                      type="button"
+                                      onClick={() => {
+                                        setCustomSymptomQuestions(prev =>
+                                          prev.map(q => q.id === customQ.id ? { ...q, rating: r } : q)
+                                        );
+                                      }}
+                                      className={`w-8 h-8 rounded-full text-xs font-semibold transition-all duration-200 ${
+                                        customQ.rating === r
+                                          ? r <= 3
+                                            ? 'bg-green-500 text-white shadow-lg scale-110'
+                                            : r <= 6
+                                              ? 'bg-yellow-500 text-white shadow-lg scale-110'
+                                              : 'bg-red-500 text-white shadow-lg scale-110'
+                                          : 'bg-gray-100 hover:bg-gray-200 text-gray-600 hover:scale-105'
+                                      }`}
+                                    >
+                                      {r}
+                                    </button>
+                                  ))}
+                                </div>
+                                <span className="text-xs text-gray-500">Çok şiddetli</span>
+                              </div>
+
+                              {/* Note for custom question */}
+                              <textarea
+                                value={customQ.note}
+                                onChange={(e) => {
+                                  setCustomSymptomQuestions(prev =>
+                                    prev.map(q => q.id === customQ.id ? { ...q, note: e.target.value } : q)
+                                  );
+                                }}
+                                rows={2}
+                                className="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                                placeholder="Not ekleyin..."
+                              />
+                            </div>
+                          ))}
+
+                          {/* Add Custom Question Button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCustomSymptomQuestions(prev => [
+                                ...prev,
+                                {
+                                  id: `custom_${Date.now()}`,
+                                  label: '',
+                                  rating: 0,
+                                  note: '',
+                                  categoryTitle: category.title
+                                }
+                              ]);
+                            }}
+                            className="w-full px-4 py-2.5 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors flex items-center justify-center gap-2 text-sm"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                            </svg>
+                            Bu kategoriye soru ekle
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </>
             )}

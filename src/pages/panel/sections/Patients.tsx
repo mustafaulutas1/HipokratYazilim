@@ -44,6 +44,11 @@ interface Patient {
   clinicId?: string;
   paymentCompleted?: boolean;
   assignedDoctorName?: string;
+  optionalScans?: {
+    hasMediaGallery?: boolean;
+    [key: string]: any;
+  };
+  mediaFiles?: any[];
 }
 
 interface PatientsProps {
@@ -383,8 +388,14 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10">
-              {filteredPatients.map((patient) => (
-                <tr key={patient.id} className="hover:bg-white/5 transition-colors duration-200">
+              {filteredPatients.map((patient) => {
+                const needsMediaUpload = patient.optionalScans?.hasMediaGallery && (!patient.mediaFiles || patient.mediaFiles.length === 0);
+                return (
+                <tr key={patient.id} className={`transition-colors duration-200 ${
+                  needsMediaUpload 
+                    ? 'bg-pink-500/15 hover:bg-pink-500/25 border-l-4 border-l-pink-400' 
+                    : 'hover:bg-white/5'
+                }`}>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
@@ -393,7 +404,14 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
                         </span>
                       </div>
                       <div>
-                        <div className="text-white font-semibold">{patient.fullName}</div>
+                        <div className="text-white font-semibold flex items-center gap-2">
+                          {patient.fullName}
+                          {needsMediaUpload && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-pink-500/30 border border-pink-400/50 rounded-full text-pink-200 text-xs font-medium animate-pulse" title="Fotoğraf/Video yüklenmesi gerekiyor">
+                              📷 Medya Bekleniyor
+                            </span>
+                          )}
+                        </div>
                         <div className="text-white/60 text-sm">{calculateAge(patient.birthDate)} yaş, {patient.gender}</div>
                       </div>
                     </div>
@@ -461,7 +479,8 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
