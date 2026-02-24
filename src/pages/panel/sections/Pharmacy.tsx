@@ -96,10 +96,11 @@ interface PharmacyPatient {
 }
 
 const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorProfile }) => {
-  const [activeTab, setActiveTab] = useState<'medications' | 'devices' | 'patients' | 'sales_history'>('medications');
+  const [activeTab, setActiveTab] = useState<'medications' | 'devices' | 'patients' | 'pharmacy_debt' | 'sales_history'>('medications');
   const [savedMedications, setSavedMedications] = useState<SavedMedication[]>([]);
   const [savedDevices, setSavedDevices] = useState<SavedMedicalDevice[]>([]);
   const [waitingPatients, setWaitingPatients] = useState<PharmacyPatient[]>([]);
+  const [patientsWithDebt, setPatientsWithDebt] = useState<any[]>([]);
   const [completedSales, setCompletedSales] = useState<any[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingMedication, setEditingMedication] = useState<SavedMedication | null>(null);
@@ -127,6 +128,10 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const [selectedDebts, setSelectedDebts] = useState<string[]>([]);
   const [loadingDebtHistory, setLoadingDebtHistory] = useState(false);
   const [debtsAddedToPayment, setDebtsAddedToPayment] = useState<boolean>(false);
+  // Pharmacy debt list states
+  const [loadingPharmacyDebts, setLoadingPharmacyDebts] = useState(false);
+  const [pharmacyDebtSearchTerm, setPharmacyDebtSearchTerm] = useState('');
+  const [pharmacyDebtSortBy, setPharmacyDebtSortBy] = useState<'name' | 'amount' | 'date'>('date');
   // Sale detail modal state
   const [selectedSaleDetail, setSelectedSaleDetail] = useState<any | null>(null);
   // Extra medicine picker state
@@ -503,6 +508,63 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     return patientDebtHistory
       .filter(d => selectedDebts.includes(d.id))
       .reduce((sum, d) => sum + (d.amount || 0), 0);
+  };
+
+  // Fetch all patients with outstanding pharmacy debts
+  const fetchPatientsWithPharmacyDebts = async () => {
+    if (!doctorProfile?.clinicId) return;
+    
+    setLoadingPharmacyDebts(true);
+    try {
+      // Query for all unpaid debts in pharmacy_debts collection
+      const debtsRef = collection(db, 'pharmacy_debts');
+      const debtsQuery = query(
+        debtsRef,
+        where('clinicId', '==', doctorProfile.clinicId),
+        where('isPaid', '==', false)
+      );
+      
+      const debtsSnapshot = await getDocs(debtsQuery);
+      const debtsByPatient: { [key: string]: any } = {};
+      
+      debtsSnapshot.forEach((docSnap) => {
+        const debt = docSnap.data();
+        const patientKey = debt.patientTcNo;
+        
+        if (!debtsByPatient[patientKey]) {
+          debtsByPatient[patientKey] = {
+            tcNo: debt.patientTcNo,
+            patientName: debt.patientName || 'Bilinmiyor',
+            phone: debt.patientPhone || '',
+            totalDebt: 0,
+            debtCount: 0,
+            lastDebtDate: '',
+            debts: []
+          };
+        }
+        
+        debtsByPatient[patientKey].totalDebt += (debt.amount || 0);
+        debtsByPatient[patientKey].debtCount += 1;
+        
+        // Keep the latest debt date
+        if (!debtsByPatient[patientKey].lastDebtDate || 
+            new Date(debt.createdAt) > new Date(debtsByPatient[patientKey].lastDebtDate)) {
+          debtsByPatient[patientKey].lastDebtDate = debt.createdAt;
+        }
+        
+        debtsByPatient[patientKey].debts.push({
+          id: docSnap.id,
+          ...debt
+        });
+      });
+      
+      setPatientsWithDebt(Object.values(debtsByPatient));
+    } catch (error) {
+      console.error('Error fetching patients with pharmacy debts:', error);
+      setPatientsWithDebt([]);
+    } finally {
+      setLoadingPharmacyDebts(false);
+    }
   };
 
   useEffect(() => {
@@ -1184,6 +1246,26 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
           </button>
           <button
             onClick={() => {
+              setActiveTab('pharmacy_debt');
+              setShowAddForm(false);
+              setPharmacyDebtSearchTerm('');
+              fetchPatientsWithPharmacyDebts();
+            }}
+            className={`px-8 py-3 rounded-xl font-medium transition-all duration-200 relative ${
+              activeTab === 'pharmacy_debt'
+                ? 'bg-gradient-to-r from-red-600 to-red-700 text-white shadow-lg'
+                : 'bg-white/10 text-white/70 hover:bg-white/20'
+            }`}
+          >
+            💳 Borçlu Hastalar
+            {patientsWithDebt.length > 0 && (
+              <span className="absolute -top-2 -right-2 w-6 h-6 bg-yellow-400 text-red-600 text-xs font-bold flex items-center justify-center rounded-full border-2 border-[#1a1f37]">
+                {patientsWithDebt.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => {
               setActiveTab('sales_history');
               setShowAddForm(false);
               setSearchTerm('');
@@ -1265,10 +1347,35 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                 <div className="text-white/70 text-sm">Mevcut İlaç Çeşidi</div>
               </div>
             </div>
+          ) : activeTab === 'pharmacy_debt' ? (
+            // Pharmacy Debt Stats
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-gradient-to-r from-red-500/20 to-red-600/20 border border-red-500/30 rounded-2xl p-4">
+                <div className="text-red-300 text-2xl mb-1">💳</div>
+                <div className="text-white text-2xl font-bold">{patientsWithDebt.length}</div>
+                <div className="text-white/70 text-sm">Borçlu Hasta</div>
+              </div>
+              
+              <div className="bg-gradient-to-r from-orange-500/20 to-orange-600/20 border border-orange-500/30 rounded-2xl p-4">
+                <div className="text-orange-300 text-2xl mb-1">📊</div>
+                <div className="text-white text-2xl font-bold">
+                  {patientsWithDebt.reduce((sum, p) => sum + p.totalDebt, 0).toLocaleString('tr-TR')} TL
+                </div>
+                <div className="text-white/70 text-sm">Toplam Borç</div>
+              </div>
+              
+              <div className="bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 border border-yellow-500/30 rounded-2xl p-4">
+                <div className="text-yellow-300 text-2xl mb-1">📝</div>
+                <div className="text-white text-2xl font-bold">
+                  {patientsWithDebt.reduce((sum, p) => sum + p.debtCount, 0)}
+                </div>
+                <div className="text-white/70 text-sm">Toplam Borç İşlemi</div>
+              </div>
+            </div>
           ) : null}
-
-          {/* Action Buttons and Filters */}
-          {activeTab !== 'patients' && activeTab !== 'sales_history' && (
+          
+          {/* Action Buttons and Filters - Only for medications and devices tabs */}
+          {activeTab !== 'patients' && activeTab !== 'pharmacy_debt' && activeTab !== 'sales_history' && (
           <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
             <div className="mb-6 flex flex-wrap items-center gap-3">
               <button
@@ -1679,6 +1786,155 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                         </button>
                       </div>
                     ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Patients with Pharmacy Debts */}
+          {activeTab === 'pharmacy_debt' && (
+            <div className="space-y-4">
+              {/* Search and Sort */}
+              <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex-1 min-w-[250px]">
+                    <input
+                      type="text"
+                      value={pharmacyDebtSearchTerm}
+                      onChange={(e) => setPharmacyDebtSearchTerm(e.target.value)}
+                      placeholder="Hasta adı veya TC No ile ara..."
+                      className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                    />
+                  </div>
+                  
+                  <select
+                    value={pharmacyDebtSortBy}
+                    onChange={(e) => setPharmacyDebtSortBy(e.target.value as 'name' | 'amount' | 'date')}
+                    className="px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  >
+                    <option value="date" className="text-gray-900 bg-white">En Yeni Borç</option>
+                    <option value="amount" className="text-gray-900 bg-white">Borç Tutarı (Yüksek)</option>
+                    <option value="name" className="text-gray-900 bg-white">İsim</option>
+                  </select>
+                  
+                  <button
+                    onClick={() => fetchPatientsWithPharmacyDebts()}
+                    className="px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white hover:bg-white/20 transition-all duration-200"
+                  >
+                    🔄 Yenile
+                  </button>
+                </div>
+              </div>
+
+              {loadingPharmacyDebts ? (
+                <div className="text-center py-12">
+                  <div className="inline-block">
+                    <div className="w-12 h-12 border-4 border-white/20 border-t-blue-500 rounded-full animate-spin"></div>
+                  </div>
+                  <p className="text-white/70 mt-4">Borçlu hastalar yükleniyor...</p>
+                </div>
+              ) : patientsWithDebt.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-6xl mb-4">✅</div>
+                  <h3 className="text-xl font-semibold text-white mb-2">
+                    Borçlu Hasta Yok
+                  </h3>
+                  <p className="text-white/60">
+                    Eczanede bekleyen borçlu hasta bulunmamaktadır.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <h3 className="text-lg font-semibold text-white mb-4">
+                    💳 Borçlu Hastalar ({patientsWithDebt.length})
+                  </h3>
+                  <div className="space-y-3">
+                    {patientsWithDebt
+                      .filter(patient =>
+                        patient.patientName.toLowerCase().includes(pharmacyDebtSearchTerm.toLowerCase()) ||
+                        patient.tcNo.includes(pharmacyDebtSearchTerm)
+                      )
+                      .sort((a, b) => {
+                        if (pharmacyDebtSortBy === 'amount') {
+                          return b.totalDebt - a.totalDebt;
+                        } else if (pharmacyDebtSortBy === 'date') {
+                          return new Date(b.lastDebtDate).getTime() - new Date(a.lastDebtDate).getTime();
+                        } else {
+                          return a.patientName.localeCompare(b.patientName);
+                        }
+                      })
+                      .map((patient) => (
+                        <div
+                          key={patient.tcNo}
+                          className="bg-white/5 border border-red-400/30 hover:border-red-400/50 rounded-xl p-5 transition-all duration-200 hover:bg-white/10"
+                        >
+                          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                            {/* Patient Info */}
+                            <div className="flex items-start gap-4 flex-1">
+                              <div className="w-12 h-12 rounded-full flex items-center justify-center text-xl text-white bg-gradient-to-br from-red-500 to-orange-600">
+                                👤
+                              </div>
+                              <div className="flex-1">
+                                <h4 className="text-lg font-semibold text-white">{patient.patientName}</h4>
+                                <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-white/60">
+                                  <span>TC: {patient.tcNo}</span>
+                                  {patient.phone && <span>📱 {patient.phone}</span>}
+                                  <span>Son Borç: {new Date(patient.lastDebtDate).toLocaleDateString('tr-TR')}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Debt Stats */}
+                            <div className="flex flex-wrap items-center gap-4 md:flex-col md:items-end">
+                              <div className="bg-red-600 rounded-lg px-4 py-2 text-white font-semibold">
+                                <div className="text-xs text-red-200">Toplam Borç</div>
+                                <div className="text-lg">
+                                  {patient.totalDebt.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                                </div>
+                              </div>
+                              <div className="bg-yellow-600 rounded-lg px-4 py-2 text-white font-semibold">
+                                <div className="text-xs text-yellow-200">İşlem Sayısı</div>
+                                <div className="text-lg">{patient.debtCount}</div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Debt Details */}
+                          <div className="mt-4 pt-4 border-t border-white/10">
+                            <details className="cursor-pointer group">
+                              <summary className="flex items-center justify-between text-sm text-white/70 hover:text-white transition-colors">
+                                <span className="flex items-center gap-2">
+                                  <span>📝</span>
+                                  Borç Detayları ({patient.debtCount})
+                                </span>
+                                <span className="text-lg group-open:rotate-180 transition-transform">›</span>
+                              </summary>
+                              <div className="mt-3 space-y-2">
+                                {patient.debts.map((debt: any, idx: number) => (
+                                  <div key={idx} className="bg-white/5 rounded-lg p-3 border border-white/10">
+                                    <div className="flex items-center justify-between">
+                                      <div className="text-sm">
+                                        <p className="text-white font-medium">
+                                          {debt.amount?.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                                        </p>
+                                        <p className="text-white/50 text-xs">
+                                          {new Date(debt.createdAt).toLocaleDateString('tr-TR')} {new Date(debt.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                                        </p>
+                                      </div>
+                                      {debt.reason && (
+                                        <div className="text-right">
+                                          <p className="text-white/60 text-xs">{debt.reason}</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
+                          </div>
+                        </div>
+                      ))}
                   </div>
                 </>
               )}

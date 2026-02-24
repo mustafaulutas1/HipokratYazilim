@@ -187,8 +187,42 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
             toast.warning('Randevu onaylandı, ancak hasta tedavi ekranına yönlendirilemedi.');
           }
         } else {
-          // Kontrol / other types go through normal anamnez flow
+          // Kontrol / other types go through normal anamnez flow AND create accounting record
           try {
+            const patientRef = doc(db, 'patients', appointment.patientId);
+            const patientDoc = await getDoc(patientRef);
+            
+            // Update patient with treatment_decided status so it appears in Accounting
+            if (patientDoc.exists()) {
+              const existingData = patientDoc.data();
+              await updateDoc(patientRef, {
+                status: 'treatment_decided',
+                appointmentType: 'kontrol',
+                treatmentStartedAt: new Date().toISOString(),
+                paymentCompleted: false,
+                // Keep existing payment amount if set, otherwise use default or 0
+                paymentAmount: existingData.paymentAmount || 0,
+                updatedAt: new Date().toISOString(),
+              });
+            } else {
+              // Create patient record with treatment_decided status
+              await setDoc(patientRef, {
+                fullName: appointment.patientName || 'Hasta',
+                tcNo: appointment.patientTcNo || '',
+                phone: appointment.patientPhone || '',
+                clinicId: appointment.clinicId || 'default-clinic',
+                status: 'treatment_decided',
+                appointmentType: 'kontrol',
+                treatmentStartedAt: new Date().toISOString(),
+                paymentCompleted: false,
+                paymentAmount: 0,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              });
+            }
+            console.log('✅ Patient record created/updated for accounting');
+            
+            // Create anamnez record
             const existingAnamrezQuery = query(
               collection(db, 'anamrezRecords'),
               where('appointmentId', '==', appointment.id)
@@ -206,7 +240,8 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
               });
-              toast.success('Anamnez kaydı oluşturuldu!');
+              console.log('✅ Anamnez kaydı oluşturuldu');
+              toast.success('Anamnez kaydı oluşturuldu ve hasta muhasebe kısmına eklendi!');
             }
           } catch (anamrezError) {
             console.error('Error creating anamnez:', anamrezError);
