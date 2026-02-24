@@ -652,10 +652,27 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
           ${(anamrezData.optionalScans?.meridianScan?.enabled || anamrezData.optionalScans?.thermalScan?.enabled || anamrezData.optionalScans?.toxicityScan?.enabled) ? `
           <div class="section no-break">
             <div class="section-title">Opsiyonel Taramalar <span class="date-badge">📅 ${formatDate(anamrezData.createdAt)}</span></div>
-            <div style="display:flex; flex-direction:column; gap:5px;">
+            <div style="display:flex; flex-direction:column; gap:5px; margin-bottom:10px;">
               ${anamrezData.optionalScans.meridianScan?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Meridyen Tarama</div>' : ''}
               ${anamrezData.optionalScans.thermalScan?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Termal Tarama (IRIS-XP)</div>' : ''}
               ${anamrezData.optionalScans.toxicityScan?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Toksisite Ölçümü</div>' : ''}
+            </div>
+            <div style="display:flex; flex-direction:column; gap:15px;">
+              ${anamrezData.optionalScans.meridianScan?.enabled && anamrezData.optionalScans.meridianScan?.fileUrl && anamrezData.optionalScans.meridianScan.fileUrl !== 'pending' ? `
+              <div style="border:1px solid #e2e8f0; padding:10px; border-radius:8px;">
+                <p style="font-size:11px; font-weight:bold; margin-bottom:8px; color:#2c5282;">📎 Meridyen Tarama Dosyası</p>
+                <img src="${anamrezData.optionalScans.meridianScan.fileUrl}" alt="Meridyen Tarama" style="max-width:100%; height:auto; max-height:200px; border-radius:4px;" />
+              </div>` : ''}
+              ${anamrezData.optionalScans.thermalScan?.enabled && anamrezData.optionalScans.thermalScan?.fileUrl && anamrezData.optionalScans.thermalScan.fileUrl !== 'pending' ? `
+              <div style="border:1px solid #e2e8f0; padding:10px; border-radius:8px;">
+                <p style="font-size:11px; font-weight:bold; margin-bottom:8px; color:#2c5282;">📎 Termal Tarama Dosyası</p>
+                <img src="${anamrezData.optionalScans.thermalScan.fileUrl}" alt="Termal Tarama" style="max-width:100%; height:auto; max-height:200px; border-radius:4px;" />
+              </div>` : ''}
+              ${anamrezData.optionalScans.toxicityScan?.enabled && anamrezData.optionalScans.toxicityScan?.fileUrl && anamrezData.optionalScans.toxicityScan.fileUrl !== 'pending' ? `
+              <div style="border:1px solid #e2e8f0; padding:10px; border-radius:8px;">
+                <p style="font-size:11px; font-weight:bold; margin-bottom:8px; color:#2c5282;">📎 Toksisite Ölçümü Dosyası</p>
+                <img src="${anamrezData.optionalScans.toxicityScan.fileUrl}" alt="Toksisite Ölçümü" style="max-width:100%; height:auto; max-height:200px; border-radius:4px;" />
+              </div>` : ''}
             </div>
           </div>` : ''}
 
@@ -670,6 +687,11 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                 <span class="label">Diğer Tedaviler</span>
                 <div class="text-content">${anamrezData.conventionalTreatment?.otherTreatments || '-'}</div>
               </div>
+              ${anamrezData.conventionalTreatment?.deviceScanFileUrl && anamrezData.conventionalTreatment.deviceScanFileUrl !== 'pending' ? `
+              <div class="field full-width" style="margin-top:10px; border-top:1px solid #e2e8f0; padding-top:10px;">
+                <span class="label">📎 Cihaz Tarama Dosyası</span>
+                <img src="${anamrezData.conventionalTreatment.deviceScanFileUrl}" alt="Cihaz Tarama" style="max-width:100%; height:auto; max-height:200px; border-radius:4px; border:1px solid #e2e8f0; padding:5px;" />
+              </div>` : ''}
             </div>
           </div>
 

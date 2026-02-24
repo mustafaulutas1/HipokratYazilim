@@ -58,17 +58,17 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
     return `${year}-${month}-${day}`;
   };
 
-  const WORK_START = '08:00';
-  const WORK_END = '17:30';
+  const WORK_START = '08:45';
+  const WORK_END = '19:00';
   const hourSlots = useMemo(() => {
     const start = timeToMinutes(WORK_START);
     const end = timeToMinutes(WORK_END);
     const arr: number[] = [];
-    for (let t = start; t <= end; t += 15) arr.push(t);
+    for (let t = start; t <= end; t += 5) arr.push(t);
     return arr;
   }, []);
 
-  // Breakpoint'ler: sadece 15 dakikalık slotlar
+  // Breakpoint'ler: sadece 5 dakikalık slotlar
   const breakpoints = useMemo(() => {
     return hourSlots;
   }, [hourSlots]);
@@ -725,8 +725,8 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
               return day;
             });
 
-            // Saatlik slotlar (08:00 - 18:00)
-            const timeSlots = Array.from({ length: 11 }, (_, i) => 8 + i); // 8-18 arası saatler
+            // Saatlik slotlar (08:45 - 19:00)
+            const timeSlots = Array.from({ length: 11 }, (_, i) => 8 + i); // 8-19 arası saatler
 
             return (
               <div className="overflow-auto max-h-[600px]">

@@ -20,7 +20,7 @@ interface AppointmentType {
 
 const AppointmentTypeManager: React.FC<AppointmentTypeManagerProps> = ({ isOpen, onClose, onAdded }) => {
   const [name, setName] = useState('');
-  const [duration, setDuration] = useState<number>(30);
+  const [duration, setDuration] = useState<number>(5);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [existingTypes, setExistingTypes] = useState<AppointmentType[]>([]);
@@ -28,7 +28,7 @@ const AppointmentTypeManager: React.FC<AppointmentTypeManagerProps> = ({ isOpen,
   const [isTypesExpanded, setIsTypesExpanded] = useState(false);
   const [editingType, setEditingType] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
-  const [editDuration, setEditDuration] = useState(30);
+  const [editDuration, setEditDuration] = useState(5);
   const [updateLoading, setUpdateLoading] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
   const [reactivateLoading, setReactivateLoading] = useState<string | null>(null);
@@ -66,11 +66,11 @@ const AppointmentTypeManager: React.FC<AppointmentTypeManagerProps> = ({ isOpen,
     const setCurrentDuration = isEdit ? setEditDuration : setDuration;
     
     let next = currentDuration + delta;
-    if (next < 15) next = 15;
-    if (next > 90) next = 90;
-    // 15 dk katına yuvarla
-    const remainder = next % 15;
-    if (remainder !== 0) next = next - remainder + (remainder >= 8 ? 15 : 0);
+    if (next < 5) next = 5;
+    if (next > 120) next = 120;
+    // 5 dk katına yuvarla
+    const remainder = next % 5;
+    if (remainder !== 0) next = next - remainder + (remainder >= 3 ? 5 : 0);
     setCurrentDuration(next);
   };
 
@@ -83,12 +83,12 @@ const AppointmentTypeManager: React.FC<AppointmentTypeManagerProps> = ({ isOpen,
   const cancelEditing = () => {
     setEditingType(null);
     setEditName('');
-    setEditDuration(30);
+    setEditDuration(5);
   };
 
   const handleUpdate = async (typeId: string) => {
     if (!editName.trim()) return;
-    if (editDuration < 15 || editDuration > 90 || editDuration % 15 !== 0) return;
+    if (editDuration < 5 || editDuration > 120 || editDuration % 5 !== 0) return;
     
     setUpdateLoading(typeId);
     try {
@@ -378,7 +378,7 @@ const AppointmentTypeManager: React.FC<AppointmentTypeManagerProps> = ({ isOpen,
                                 <div className="flex items-center gap-3 bg-white/90 backdrop-blur-sm border border-purple-300/50 rounded-xl p-3 shadow-sm">
                                   <button 
                                     type="button" 
-                                    onClick={() => stepDuration(-15, true)} 
+                                    onClick={() => stepDuration(-5, true)} 
                                     className="p-2.5 bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 rounded-lg border border-gray-300 transition-all duration-200 hover:scale-110 active:scale-95 shadow-sm"
                                   >
                                     <span className="text-gray-700 font-bold">−</span>
@@ -391,7 +391,7 @@ const AppointmentTypeManager: React.FC<AppointmentTypeManagerProps> = ({ isOpen,
                                   </div>
                                   <button 
                                     type="button" 
-                                    onClick={() => stepDuration(15, true)} 
+                                    onClick={() => stepDuration(5, true)} 
                                     className="p-2.5 bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 rounded-lg border border-gray-300 transition-all duration-200 hover:scale-110 active:scale-95 shadow-sm"
                                   >
                                     <span className="text-gray-700 font-bold">+</span>
@@ -542,7 +542,7 @@ const AppointmentTypeManager: React.FC<AppointmentTypeManagerProps> = ({ isOpen,
               <div className="flex items-center gap-4 bg-white/80 backdrop-blur-sm border border-gray-300/50 rounded-xl p-2">
                 <button 
                   type="button" 
-                  onClick={()=>stepDuration(-15)} 
+                  onClick={()=>stepDuration(-5)} 
                   className="p-3 bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 rounded-lg border border-gray-300 transition-all duration-200 hover:scale-105 active:scale-95"
                 >
                   <span className="text-gray-600 font-bold">−</span>
@@ -555,7 +555,7 @@ const AppointmentTypeManager: React.FC<AppointmentTypeManagerProps> = ({ isOpen,
                 </div>
                 <button 
                   type="button" 
-                  onClick={()=>stepDuration(15)} 
+                  onClick={()=>stepDuration(5)} 
                   className="p-3 bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 rounded-lg border border-gray-300 transition-all duration-200 hover:scale-105 active:scale-95"
                 >
                   <span className="text-gray-600 font-bold">+</span>

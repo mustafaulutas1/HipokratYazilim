@@ -21,8 +21,8 @@ interface AppointmentModalProps {
 interface PatientDoc { id: string; fullName: string; }
 interface TypeDoc { id: string; name: string; durationMinutes: number; }
 
-const WORK_START = '08:00';
-const WORK_END = '17:30';
+const WORK_START = '08:45';
+const WORK_END = '19:00';
 
 function timeToMinutes(t: string) { const [h, m] = t.split(':').map(Number); return h * 60 + m; }
 function minutesToTime(mins: number) {
@@ -35,8 +35,8 @@ function minutesToTime(mins: number) {
 const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, onAdded, doctorId, editedAppointment, doctorProfile, initialDate, initialTime, initialPatientId, initialTypeId }) => {
   const [patients, setPatients] = useState<PatientDoc[]>([]);
   const [types] = useState<TypeDoc[]>([
-    { id: 'kontrol', name: 'Kontrol', durationMinutes: 15 },
-    { id: 'tedavi', name: 'Tedavi', durationMinutes: 15 },
+    { id: 'kontrol', name: 'Kontrol', durationMinutes: 5 },
+    { id: 'tedavi', name: 'Tedavi', durationMinutes: 5 },
   ]);
   const [patientOpen, setPatientOpen] = useState<boolean>(false);
   const [typeOpen, setTypeOpen] = useState<boolean>(false);
@@ -277,7 +277,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
     const slots = [];
     const startMinutes = timeToMinutes(WORK_START);
     const endMinutes = timeToMinutes(WORK_END);
-    const slotDuration = 15; // 15 dakikalık slotlar
+    const slotDuration = 5; // 5 dakikalık slotlar
 
     for (let time = startMinutes; time < endMinutes; time += slotDuration) {
       const timeStr = minutesToTime(time);
@@ -773,7 +773,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
                     <div className="p-2 bg-red-50 border border-red-200 rounded-lg">
                       <div className="flex items-center gap-2 text-red-600">
                         <span>⚠️</span>
-                        <span className="text-xs font-medium">Mesai dışı seçim. 08:00-17:30 aralığında seçin.</span>
+                        <span className="text-xs font-medium">Mesai dışı seçim. 08:45-19:00 aralığında seçin.</span>
                       </div>
                     </div>
                   )}
