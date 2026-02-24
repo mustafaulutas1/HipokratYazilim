@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import AnamrezFormModal from './AnamrezFormModal';
 import AnamrezViewModal from './AnamrezViewModal';
@@ -219,6 +219,22 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
     }
   };
 
+  const handleDeletePendingRecord = async (record: AnamrezRecord, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm(`"${record.patientName}" adlı hastanın bekleyen anamnez kaydı iptal edilsin mi?`)) return;
+    try {
+      await deleteDoc(doc(db, 'anamrezRecords', record.id));
+      setPendingAnamrezRecords(prev => prev.filter(r => r.id !== record.id));
+      if (selectedAnamrezRecord?.id === record.id) {
+        setSelectedAnamrezRecord(null);
+        setSelectedPatient(null);
+      }
+    } catch (error) {
+      console.error('Kayıt silinirken hata:', error);
+      alert('Kayıt silinirken bir hata oluştu.');
+    }
+  };
+
   const handleAnamrezCompleted = () => {
     // Immediately update the UI to reflect the change
     if (selectedAnamrezRecord) {
@@ -401,10 +417,16 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                               Oluşturulma: {new Date(record.createdAt).toLocaleDateString('tr-TR')}
                             </p>
                           </div>
-                          <div className="text-right">
+                          <div className="text-right flex flex-col items-end gap-2">
                             <div className="px-2 py-1 bg-orange-500/20 text-orange-300 rounded-full text-xs">
                               Bekliyor
                             </div>
+                            <button
+                              onClick={(e) => handleDeletePendingRecord(record, e)}
+                              className="px-2 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-300 rounded-full text-xs transition-colors"
+                            >
+                              İptal Et
+                            </button>
                           </div>
                         </div>
                       </div>

@@ -5,6 +5,7 @@ import { toast } from 'react-toastify';
 import { db, storage } from '../../../firebase/config';
 import { DIAGNOSIS_SYSTEMS, DIAGNOSIS_SPECIFIC_QUESTIONS, DIAGNOSIS_ILLNESSES } from '../../../constants';
 import FileUpload from '../../../components/UI/FileUpload';
+import { nowISO, todayLocalDate } from '../../../utils/dateUtils';
 
 interface Patient {
   id: string;
@@ -1310,6 +1311,30 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         updatedOptionalScans.toxicityScan.fileUrl = toxicityScanUrl;
       }
 
+      // Upload Biyokimya file if selected
+      if (biyokimyaFile && updatedOptionalScans.biyokimya?.enabled) {
+        const biyokimyaRef = ref(storage, `scans/${patient.id}/biyokimya_${Date.now()}_${biyokimyaFile.name}`);
+        await uploadBytes(biyokimyaRef, biyokimyaFile);
+        const biyokimyaUrl = await getDownloadURL(biyokimyaRef);
+        updatedOptionalScans.biyokimya.fileUrl = biyokimyaUrl;
+      }
+
+      // Upload Radyoloji file if selected
+      if (radyolojiFile && updatedOptionalScans.radyoloji?.enabled) {
+        const radyolojiRef = ref(storage, `scans/${patient.id}/radyoloji_${Date.now()}_${radyolojiFile.name}`);
+        await uploadBytes(radyolojiRef, radyolojiFile);
+        const radyolojiUrl = await getDownloadURL(radyolojiRef);
+        updatedOptionalScans.radyoloji.fileUrl = radyolojiUrl;
+      }
+
+      // Upload Patoloji file if selected
+      if (patolojiFile && updatedOptionalScans.patoloji?.enabled) {
+        const patolojiRef = ref(storage, `scans/${patient.id}/patoloji_${Date.now()}_${patolojiFile.name}`);
+        await uploadBytes(patolojiRef, patolojiFile);
+        const patolojiUrl = await getDownloadURL(patolojiRef);
+        updatedOptionalScans.patoloji.fileUrl = patolojiUrl;
+      }
+
       // Upload Device Scan file if selected
       if (deviceScanFile) {
         const deviceScanRef = ref(storage, `scans/${patient.id}/device_${Date.now()}_${deviceScanFile.name}`);
@@ -1426,7 +1451,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
           email: doctorProfile?.email || ''
         },
         status: 'completed',
-        updatedAt: new Date().toISOString()
+        updatedAt: nowISO()
       };
 
       // Handle past history mode vs normal mode
@@ -1464,7 +1489,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
           // Create new anamnez record (legacy flow)
           await addDoc(collection(db, 'anamrezRecords'), {
             ...anamrezData,
-            createdAt: new Date().toISOString(),
+            createdAt: nowISO(),
             appointmentId: appointmentId || '',
           });
         }
@@ -1473,7 +1498,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         const patientRef = doc(db, 'patients', patient.id);
         await updateDoc(patientRef, {
           isAnamnezCompleted: true,
-          anamrezCompletedAt: new Date().toISOString(),
+          anamrezCompletedAt: nowISO(),
           anamrezCompletedBy: doctorProfile?.fullName || '',
           optionalScans: updatedOptionalScans,
           // Reset assignment status for new visit - patient can be reassigned to a doctor
@@ -1481,7 +1506,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
           assignedDoctorId: null,
           assignedDoctorName: null,
           assignedAt: null,
-          updatedAt: new Date().toISOString()
+          updatedAt: nowISO()
         });
       }
 
@@ -1685,7 +1710,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                       value={historyDate}
                       onChange={(e) => setHistoryDate(e.target.value)}
                       className="w-full px-4 py-3 bg-white border border-purple-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                      max={new Date().toISOString().split('T')[0]}
+                      max={todayLocalDate()}
                       required
                     />
                   </div>

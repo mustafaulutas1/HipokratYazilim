@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { collection, getDocs, query, where, doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { toast } from 'react-toastify';
 import { db } from '../../../firebase/config';
+import { nowISO } from '../../../utils/dateUtils';
 import { DIAGNOSIS_SPECIFIC_QUESTIONS, DIAGNOSIS_SYSTEMS, DIAGNOSIS_ILLNESSES } from '../../../constants';
 
 // Use shared diagnosis structure from constants
@@ -94,6 +95,18 @@ interface AnamrezData {
       fileUrl: string;
     };
     toxicityScan?: {
+      enabled: boolean;
+      fileUrl: string;
+    };
+    biyokimya?: {
+      enabled: boolean;
+      fileUrl: string;
+    };
+    radyoloji?: {
+      enabled: boolean;
+      fileUrl: string;
+    };
+    patoloji?: {
       enabled: boolean;
       fileUrl: string;
     };
@@ -299,7 +312,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
       const updatedData = {
         ...editedData,
         toxicityAssessment: { totalScore, ratedSymptomsCount, hasToxicity, toxicityScores },
-        updatedAt: new Date().toISOString(),
+        updatedAt: nowISO(),
       };
 
       // Remove id before saving to Firestore
@@ -649,13 +662,16 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
             </div>
           </div>
 
-          ${(anamrezData.optionalScans?.meridianScan?.enabled || anamrezData.optionalScans?.thermalScan?.enabled || anamrezData.optionalScans?.toxicityScan?.enabled) ? `
+          ${(anamrezData.optionalScans?.meridianScan?.enabled || anamrezData.optionalScans?.thermalScan?.enabled || anamrezData.optionalScans?.toxicityScan?.enabled || anamrezData.optionalScans?.biyokimya?.enabled || anamrezData.optionalScans?.radyoloji?.enabled || anamrezData.optionalScans?.patoloji?.enabled) ? `
           <div class="section no-break">
             <div class="section-title">Opsiyonel Taramalar <span class="date-badge">📅 ${formatDate(anamrezData.createdAt)}</span></div>
             <div style="display:flex; flex-direction:column; gap:5px; margin-bottom:10px;">
               ${anamrezData.optionalScans.meridianScan?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Meridyen Tarama</div>' : ''}
               ${anamrezData.optionalScans.thermalScan?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Termal Tarama (IRIS-XP)</div>' : ''}
               ${anamrezData.optionalScans.toxicityScan?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Toksisite Ölçümü</div>' : ''}
+              ${anamrezData.optionalScans.biyokimya?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Biyokimya</div>' : ''}
+              ${anamrezData.optionalScans.radyoloji?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Radyolojik Görüntüleme</div>' : ''}
+              ${anamrezData.optionalScans.patoloji?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Patoloji</div>' : ''}
             </div>
             <div style="display:flex; flex-direction:column; gap:15px;">
               ${anamrezData.optionalScans.meridianScan?.enabled && anamrezData.optionalScans.meridianScan?.fileUrl && anamrezData.optionalScans.meridianScan.fileUrl !== 'pending' ? `
@@ -672,6 +688,21 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
               <div style="border:1px solid #e2e8f0; padding:10px; border-radius:8px;">
                 <p style="font-size:11px; font-weight:bold; margin-bottom:8px; color:#2c5282;">📎 Toksisite Ölçümü Dosyası</p>
                 <img src="${anamrezData.optionalScans.toxicityScan.fileUrl}" alt="Toksisite Ölçümü" style="max-width:100%; height:auto; max-height:200px; border-radius:4px;" />
+              </div>` : ''}
+              ${anamrezData.optionalScans.biyokimya?.enabled && anamrezData.optionalScans.biyokimya?.fileUrl && anamrezData.optionalScans.biyokimya.fileUrl !== 'pending' ? `
+              <div style="border:1px solid #e2e8f0; padding:10px; border-radius:8px;">
+                <p style="font-size:11px; font-weight:bold; margin-bottom:8px; color:#2c5282;">📎 Biyokimya Dosyası</p>
+                <img src="${anamrezData.optionalScans.biyokimya.fileUrl}" alt="Biyokimya" style="max-width:100%; height:auto; max-height:200px; border-radius:4px;" />
+              </div>` : ''}
+              ${anamrezData.optionalScans.radyoloji?.enabled && anamrezData.optionalScans.radyoloji?.fileUrl && anamrezData.optionalScans.radyoloji.fileUrl !== 'pending' ? `
+              <div style="border:1px solid #e2e8f0; padding:10px; border-radius:8px;">
+                <p style="font-size:11px; font-weight:bold; margin-bottom:8px; color:#2c5282;">📎 Radyolojik Görüntüleme Dosyası</p>
+                <img src="${anamrezData.optionalScans.radyoloji.fileUrl}" alt="Radyolojik Görüntüleme" style="max-width:100%; height:auto; max-height:200px; border-radius:4px;" />
+              </div>` : ''}
+              ${anamrezData.optionalScans.patoloji?.enabled && anamrezData.optionalScans.patoloji?.fileUrl && anamrezData.optionalScans.patoloji.fileUrl !== 'pending' ? `
+              <div style="border:1px solid #e2e8f0; padding:10px; border-radius:8px;">
+                <p style="font-size:11px; font-weight:bold; margin-bottom:8px; color:#2c5282;">📎 Patoloji Dosyası</p>
+                <img src="${anamrezData.optionalScans.patoloji.fileUrl}" alt="Patoloji" style="max-width:100%; height:auto; max-height:200px; border-radius:4px;" />
               </div>` : ''}
             </div>
           </div>` : ''}
@@ -2224,7 +2255,10 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                         {anamrezData.optionalScans && (
                           anamrezData.optionalScans.meridianScan?.enabled ||
                           anamrezData.optionalScans.thermalScan?.enabled ||
-                          anamrezData.optionalScans.toxicityScan?.enabled
+                          anamrezData.optionalScans.toxicityScan?.enabled ||
+                          anamrezData.optionalScans.biyokimya?.enabled ||
+                          anamrezData.optionalScans.radyoloji?.enabled ||
+                          anamrezData.optionalScans.patoloji?.enabled
                         ) ? (
                           <div className="space-y-4">
                             {anamrezData.optionalScans.meridianScan?.enabled && (
@@ -2413,7 +2447,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                   </div>
                                 </div>
                                 {/* Display uploaded file */}
-                                {anamrezData.optionalScans.toxicityScan?.fileUrl && 
+                                {anamrezData.optionalScans.toxicityScan?.fileUrl &&
                                  anamrezData.optionalScans.toxicityScan.fileUrl !== 'pending' && (
                                   <div className="mt-4 border-t border-purple-200 pt-4">
                                     <p className="text-sm font-medium text-purple-800 mb-3">📎 Yüklenen Dosya:</p>
@@ -2421,19 +2455,19 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                       const fileUrl = anamrezData.optionalScans.toxicityScan.fileUrl;
                                       const isImage = /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(fileUrl);
                                       const isPdf = /\.pdf(\?|$)/i.test(fileUrl);
-                                      
+
                                       if (isImage) {
                                         return (
                                           <div className="space-y-3">
-                                            <img 
-                                              src={fileUrl} 
-                                              alt="Toksisite Ölçümü" 
+                                            <img
+                                              src={fileUrl}
+                                              alt="Toksisite Ölçümü"
                                               className="max-w-full h-auto max-h-64 rounded-lg border border-purple-300 shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
                                               onClick={() => window.open(fileUrl, '_blank')}
                                             />
-                                            <a 
-                                              href={fileUrl} 
-                                              target="_blank" 
+                                            <a
+                                              href={fileUrl}
+                                              target="_blank"
                                               rel="noopener noreferrer"
                                               className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors"
                                             >
@@ -2451,9 +2485,9 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                               <p className="font-medium text-gray-800">PDF Dosyası</p>
                                               <p className="text-sm text-gray-500">Görüntülemek için tıklayın</p>
                                             </div>
-                                            <a 
-                                              href={fileUrl} 
-                                              target="_blank" 
+                                            <a
+                                              href={fileUrl}
+                                              target="_blank"
                                               rel="noopener noreferrer"
                                               className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
                                             >
@@ -2471,12 +2505,222 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                               <p className="font-medium text-gray-800">Dosya</p>
                                               <p className="text-sm text-gray-500">İndirmek için tıklayın</p>
                                             </div>
-                                            <a 
-                                              href={fileUrl} 
-                                              target="_blank" 
+                                            <a
+                                              href={fileUrl}
+                                              target="_blank"
                                               rel="noopener noreferrer"
                                               className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors"
                                             >
+                                              ⬇️ İndir
+                                            </a>
+                                          </div>
+                                        );
+                                      }
+                                    })()}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {anamrezData.optionalScans.biyokimya?.enabled && (
+                              <div className="bg-purple-50 border border-purple-200 rounded-xl p-6">
+                                <div className="flex items-center gap-3 mb-3">
+                                  <div className="w-10 h-10 bg-purple-500 text-white rounded-full flex items-center justify-center font-bold">
+                                    ✓
+                                  </div>
+                                  <div className="flex-1">
+                                    <h4 className="font-bold text-purple-900">Biyokimya</h4>
+                                    <p className="text-sm text-purple-700">Seçilmiş</p>
+                                  </div>
+                                </div>
+                                {anamrezData.optionalScans.biyokimya?.fileUrl &&
+                                 anamrezData.optionalScans.biyokimya.fileUrl !== 'pending' && (
+                                  <div className="mt-4 border-t border-purple-200 pt-4">
+                                    <p className="text-sm font-medium text-purple-800 mb-3">📎 Yüklenen Dosya:</p>
+                                    {(() => {
+                                      const fileUrl = anamrezData.optionalScans.biyokimya.fileUrl;
+                                      const isImage = /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(fileUrl);
+                                      const isPdf = /\.pdf(\?|$)/i.test(fileUrl);
+                                      if (isImage) {
+                                        return (
+                                          <div className="space-y-3">
+                                            <img
+                                              src={fileUrl}
+                                              alt="Biyokimya"
+                                              className="max-w-full h-auto max-h-64 rounded-lg border border-purple-300 shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
+                                              onClick={() => window.open(fileUrl, '_blank')}
+                                            />
+                                            <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors">
+                                              🔍 Tam Boyut Görüntüle
+                                            </a>
+                                          </div>
+                                        );
+                                      } else if (isPdf) {
+                                        return (
+                                          <div className="flex items-center gap-3 p-4 bg-white rounded-lg border border-purple-200">
+                                            <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+                                              <span className="text-red-600 text-xl">📄</span>
+                                            </div>
+                                            <div className="flex-1">
+                                              <p className="font-medium text-gray-800">PDF Dosyası</p>
+                                              <p className="text-sm text-gray-500">Görüntülemek için tıklayın</p>
+                                            </div>
+                                            <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors">
+                                              📄 PDF Aç
+                                            </a>
+                                          </div>
+                                        );
+                                      } else {
+                                        return (
+                                          <div className="flex items-center gap-3 p-4 bg-white rounded-lg border border-purple-200">
+                                            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                                              <span className="text-gray-600 text-xl">📎</span>
+                                            </div>
+                                            <div className="flex-1">
+                                              <p className="font-medium text-gray-800">Dosya</p>
+                                              <p className="text-sm text-gray-500">İndirmek için tıklayın</p>
+                                            </div>
+                                            <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors">
+                                              ⬇️ İndir
+                                            </a>
+                                          </div>
+                                        );
+                                      }
+                                    })()}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {anamrezData.optionalScans.radyoloji?.enabled && (
+                              <div className="bg-purple-50 border border-purple-200 rounded-xl p-6">
+                                <div className="flex items-center gap-3 mb-3">
+                                  <div className="w-10 h-10 bg-purple-500 text-white rounded-full flex items-center justify-center font-bold">
+                                    ✓
+                                  </div>
+                                  <div className="flex-1">
+                                    <h4 className="font-bold text-purple-900">Radyolojik Görüntüleme</h4>
+                                    <p className="text-sm text-purple-700">Seçilmiş</p>
+                                  </div>
+                                </div>
+                                {anamrezData.optionalScans.radyoloji?.fileUrl &&
+                                 anamrezData.optionalScans.radyoloji.fileUrl !== 'pending' && (
+                                  <div className="mt-4 border-t border-purple-200 pt-4">
+                                    <p className="text-sm font-medium text-purple-800 mb-3">📎 Yüklenen Dosya:</p>
+                                    {(() => {
+                                      const fileUrl = anamrezData.optionalScans.radyoloji.fileUrl;
+                                      const isImage = /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(fileUrl);
+                                      const isPdf = /\.pdf(\?|$)/i.test(fileUrl);
+                                      if (isImage) {
+                                        return (
+                                          <div className="space-y-3">
+                                            <img
+                                              src={fileUrl}
+                                              alt="Radyolojik Görüntüleme"
+                                              className="max-w-full h-auto max-h-64 rounded-lg border border-purple-300 shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
+                                              onClick={() => window.open(fileUrl, '_blank')}
+                                            />
+                                            <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors">
+                                              🔍 Tam Boyut Görüntüle
+                                            </a>
+                                          </div>
+                                        );
+                                      } else if (isPdf) {
+                                        return (
+                                          <div className="flex items-center gap-3 p-4 bg-white rounded-lg border border-purple-200">
+                                            <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+                                              <span className="text-red-600 text-xl">📄</span>
+                                            </div>
+                                            <div className="flex-1">
+                                              <p className="font-medium text-gray-800">PDF Dosyası</p>
+                                              <p className="text-sm text-gray-500">Görüntülemek için tıklayın</p>
+                                            </div>
+                                            <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors">
+                                              📄 PDF Aç
+                                            </a>
+                                          </div>
+                                        );
+                                      } else {
+                                        return (
+                                          <div className="flex items-center gap-3 p-4 bg-white rounded-lg border border-purple-200">
+                                            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                                              <span className="text-gray-600 text-xl">📎</span>
+                                            </div>
+                                            <div className="flex-1">
+                                              <p className="font-medium text-gray-800">Dosya</p>
+                                              <p className="text-sm text-gray-500">İndirmek için tıklayın</p>
+                                            </div>
+                                            <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors">
+                                              ⬇️ İndir
+                                            </a>
+                                          </div>
+                                        );
+                                      }
+                                    })()}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {anamrezData.optionalScans.patoloji?.enabled && (
+                              <div className="bg-purple-50 border border-purple-200 rounded-xl p-6">
+                                <div className="flex items-center gap-3 mb-3">
+                                  <div className="w-10 h-10 bg-purple-500 text-white rounded-full flex items-center justify-center font-bold">
+                                    ✓
+                                  </div>
+                                  <div className="flex-1">
+                                    <h4 className="font-bold text-purple-900">Patoloji</h4>
+                                    <p className="text-sm text-purple-700">Seçilmiş</p>
+                                  </div>
+                                </div>
+                                {anamrezData.optionalScans.patoloji?.fileUrl &&
+                                 anamrezData.optionalScans.patoloji.fileUrl !== 'pending' && (
+                                  <div className="mt-4 border-t border-purple-200 pt-4">
+                                    <p className="text-sm font-medium text-purple-800 mb-3">📎 Yüklenen Dosya:</p>
+                                    {(() => {
+                                      const fileUrl = anamrezData.optionalScans.patoloji.fileUrl;
+                                      const isImage = /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(fileUrl);
+                                      const isPdf = /\.pdf(\?|$)/i.test(fileUrl);
+                                      if (isImage) {
+                                        return (
+                                          <div className="space-y-3">
+                                            <img
+                                              src={fileUrl}
+                                              alt="Patoloji"
+                                              className="max-w-full h-auto max-h-64 rounded-lg border border-purple-300 shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
+                                              onClick={() => window.open(fileUrl, '_blank')}
+                                            />
+                                            <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors">
+                                              🔍 Tam Boyut Görüntüle
+                                            </a>
+                                          </div>
+                                        );
+                                      } else if (isPdf) {
+                                        return (
+                                          <div className="flex items-center gap-3 p-4 bg-white rounded-lg border border-purple-200">
+                                            <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+                                              <span className="text-red-600 text-xl">📄</span>
+                                            </div>
+                                            <div className="flex-1">
+                                              <p className="font-medium text-gray-800">PDF Dosyası</p>
+                                              <p className="text-sm text-gray-500">Görüntülemek için tıklayın</p>
+                                            </div>
+                                            <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors">
+                                              📄 PDF Aç
+                                            </a>
+                                          </div>
+                                        );
+                                      } else {
+                                        return (
+                                          <div className="flex items-center gap-3 p-4 bg-white rounded-lg border border-purple-200">
+                                            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                                              <span className="text-gray-600 text-xl">📎</span>
+                                            </div>
+                                            <div className="flex-1">
+                                              <p className="font-medium text-gray-800">Dosya</p>
+                                              <p className="text-sm text-gray-500">İndirmek için tıklayın</p>
+                                            </div>
+                                            <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors">
                                               ⬇️ İndir
                                             </a>
                                           </div>

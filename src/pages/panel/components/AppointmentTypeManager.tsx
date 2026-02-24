@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { addDoc, collection, getDocs, updateDoc, doc, query, where } from 'firebase/firestore';
 import { toast } from 'react-toastify';
 import { db } from '../../../firebase/config';
+import { todayLocalDate } from '../../../utils/dateUtils';
 
 interface AppointmentTypeManagerProps {
   isOpen: boolean;
@@ -111,7 +112,7 @@ const AppointmentTypeManager: React.FC<AppointmentTypeManagerProps> = ({ isOpen,
   };
 
   const checkFutureAppointments = async (typeId: string) => {
-    const today = new Date().toISOString().slice(0, 10); // Today in YYYY-MM-DD format
+    const today = todayLocalDate();
     const currentTime = new Date();
     const currentTimeString = `${currentTime.getHours().toString().padStart(2, '0')}:${currentTime.getMinutes().toString().padStart(2, '0')}`;
     

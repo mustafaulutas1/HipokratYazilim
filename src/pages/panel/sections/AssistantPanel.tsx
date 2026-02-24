@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { collection, query, where, getDocs, onSnapshot, orderBy, limit } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
+import { todayLocalDate } from '../../../utils/dateUtils';
 import AnamrezViewModal from './AnamrezViewModal';
 import DoctorNotesModal from './DoctorNotesModal';
 import DoctorMessageModal from '../components/DoctorMessageModal';
@@ -247,7 +248,7 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
       const completedTreatmentsCount = allClinicPatients.filter(p => p.isAnamnezCompleted === true).length;
 
       // Count today's appointments
-      const todayDateString = new Date().toISOString().split('T')[0];
+      const todayDateString = todayLocalDate();
       let todayAppointments = 0;
       try {
         const appointmentsQuery = query(
@@ -261,7 +262,7 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
           if (!appointmentDate) return false;
           const dateStr = typeof appointmentDate === 'string' ?
             appointmentDate.split('T')[0] :
-            new Date(appointmentDate).toISOString().split('T')[0];
+            (() => { const d = new Date(appointmentDate); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
           return dateStr === todayDateString;
         }).length;
       } catch (appointmentError) {
