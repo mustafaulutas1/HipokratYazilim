@@ -279,7 +279,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
     const endMinutes = timeToMinutes(WORK_END);
     const slotDuration = 5; // 5 dakikalık slotlar
 
-    for (let time = startMinutes; time < endMinutes; time += slotDuration) {
+    for (let time = startMinutes; time <= endMinutes; time += slotDuration) {
       const timeStr = minutesToTime(time);
 
       // Only block if an appointment STARTS in this exact time slot (exclude cancelled appointments)
