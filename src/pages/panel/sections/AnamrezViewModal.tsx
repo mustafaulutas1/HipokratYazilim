@@ -385,6 +385,40 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
       return new Date(dateString).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     };
 
+    // Render a scan file block with download button + preview
+    const renderScanFileBlock = (label: string, fileUrl: string): string => {
+      const isImage = /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(fileUrl);
+      const isPdf = /\.pdf(\?|$)/i.test(fileUrl);
+      return `
+        <div style="border:1px solid #e2e8f0; padding:12px; border-radius:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+            <p style="font-size:11px; font-weight:bold; color:#2c5282; margin:0;">📎 ${label}</p>
+            <a href="${fileUrl}" target="_blank"
+               style="font-size:10px; background:#3182ce; color:white; padding:4px 12px; border-radius:4px; text-decoration:none; font-weight:600; display:inline-block;">
+              ⬇️ İndir / Görüntüle
+            </a>
+          </div>
+          ${isImage ? `<img src="${fileUrl}" alt="${label}" style="max-width:100%; height:auto; max-height:200px; border-radius:4px; display:block;" />` : ''}
+          ${isPdf ? `
+            <div style="padding:10px; background:#fff5f5; border:1px solid #fed7d7; border-radius:6px; display:flex; align-items:center; gap:10px;">
+              <span style="font-size:22px;">📄</span>
+              <div>
+                <p style="font-size:11px; font-weight:bold; color:#c53030; margin:0 0 4px 0;">PDF Dosyası</p>
+                <a href="${fileUrl}" target="_blank" style="font-size:10px; color:#3182ce; text-decoration:underline;">Görüntülemek için tıklayın</a>
+              </div>
+            </div>` : ''}
+          ${!isImage && !isPdf ? `
+            <div style="padding:10px; background:#f7fafc; border:1px solid #e2e8f0; border-radius:6px; display:flex; align-items:center; gap:10px;">
+              <span style="font-size:22px;">📎</span>
+              <div>
+                <p style="font-size:11px; font-weight:bold; color:#4a5568; margin:0 0 4px 0;">Ek Dosya</p>
+                <a href="${fileUrl}" target="_blank" style="font-size:10px; color:#3182ce; text-decoration:underline;">İndirmek için tıklayın</a>
+              </div>
+            </div>` : ''}
+        </div>
+      `;
+    };
+
     // Get all records sorted by date (oldest first for column display)
     const sortedRecords = [...allAnamrezRecords].sort((a, b) => 
       new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
@@ -674,36 +708,12 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
               ${anamrezData.optionalScans.patoloji?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Patoloji</div>' : ''}
             </div>
             <div style="display:flex; flex-direction:column; gap:15px;">
-              ${anamrezData.optionalScans.meridianScan?.enabled && anamrezData.optionalScans.meridianScan?.fileUrl && anamrezData.optionalScans.meridianScan.fileUrl !== 'pending' ? `
-              <div style="border:1px solid #e2e8f0; padding:10px; border-radius:8px;">
-                <p style="font-size:11px; font-weight:bold; margin-bottom:8px; color:#2c5282;">📎 Meridyen Tarama Dosyası</p>
-                <img src="${anamrezData.optionalScans.meridianScan.fileUrl}" alt="Meridyen Tarama" style="max-width:100%; height:auto; max-height:200px; border-radius:4px;" />
-              </div>` : ''}
-              ${anamrezData.optionalScans.thermalScan?.enabled && anamrezData.optionalScans.thermalScan?.fileUrl && anamrezData.optionalScans.thermalScan.fileUrl !== 'pending' ? `
-              <div style="border:1px solid #e2e8f0; padding:10px; border-radius:8px;">
-                <p style="font-size:11px; font-weight:bold; margin-bottom:8px; color:#2c5282;">📎 Termal Tarama Dosyası</p>
-                <img src="${anamrezData.optionalScans.thermalScan.fileUrl}" alt="Termal Tarama" style="max-width:100%; height:auto; max-height:200px; border-radius:4px;" />
-              </div>` : ''}
-              ${anamrezData.optionalScans.toxicityScan?.enabled && anamrezData.optionalScans.toxicityScan?.fileUrl && anamrezData.optionalScans.toxicityScan.fileUrl !== 'pending' ? `
-              <div style="border:1px solid #e2e8f0; padding:10px; border-radius:8px;">
-                <p style="font-size:11px; font-weight:bold; margin-bottom:8px; color:#2c5282;">📎 Toksisite Ölçümü Dosyası</p>
-                <img src="${anamrezData.optionalScans.toxicityScan.fileUrl}" alt="Toksisite Ölçümü" style="max-width:100%; height:auto; max-height:200px; border-radius:4px;" />
-              </div>` : ''}
-              ${anamrezData.optionalScans.biyokimya?.enabled && anamrezData.optionalScans.biyokimya?.fileUrl && anamrezData.optionalScans.biyokimya.fileUrl !== 'pending' ? `
-              <div style="border:1px solid #e2e8f0; padding:10px; border-radius:8px;">
-                <p style="font-size:11px; font-weight:bold; margin-bottom:8px; color:#2c5282;">📎 Biyokimya Dosyası</p>
-                <img src="${anamrezData.optionalScans.biyokimya.fileUrl}" alt="Biyokimya" style="max-width:100%; height:auto; max-height:200px; border-radius:4px;" />
-              </div>` : ''}
-              ${anamrezData.optionalScans.radyoloji?.enabled && anamrezData.optionalScans.radyoloji?.fileUrl && anamrezData.optionalScans.radyoloji.fileUrl !== 'pending' ? `
-              <div style="border:1px solid #e2e8f0; padding:10px; border-radius:8px;">
-                <p style="font-size:11px; font-weight:bold; margin-bottom:8px; color:#2c5282;">📎 Radyolojik Görüntüleme Dosyası</p>
-                <img src="${anamrezData.optionalScans.radyoloji.fileUrl}" alt="Radyolojik Görüntüleme" style="max-width:100%; height:auto; max-height:200px; border-radius:4px;" />
-              </div>` : ''}
-              ${anamrezData.optionalScans.patoloji?.enabled && anamrezData.optionalScans.patoloji?.fileUrl && anamrezData.optionalScans.patoloji.fileUrl !== 'pending' ? `
-              <div style="border:1px solid #e2e8f0; padding:10px; border-radius:8px;">
-                <p style="font-size:11px; font-weight:bold; margin-bottom:8px; color:#2c5282;">📎 Patoloji Dosyası</p>
-                <img src="${anamrezData.optionalScans.patoloji.fileUrl}" alt="Patoloji" style="max-width:100%; height:auto; max-height:200px; border-radius:4px;" />
-              </div>` : ''}
+              ${anamrezData.optionalScans.meridianScan?.enabled && anamrezData.optionalScans.meridianScan?.fileUrl && anamrezData.optionalScans.meridianScan.fileUrl !== 'pending' ? renderScanFileBlock('Meridyen Tarama Dosyası', anamrezData.optionalScans.meridianScan.fileUrl) : ''}
+              ${anamrezData.optionalScans.thermalScan?.enabled && anamrezData.optionalScans.thermalScan?.fileUrl && anamrezData.optionalScans.thermalScan.fileUrl !== 'pending' ? renderScanFileBlock('Termal Tarama Dosyası', anamrezData.optionalScans.thermalScan.fileUrl) : ''}
+              ${anamrezData.optionalScans.toxicityScan?.enabled && anamrezData.optionalScans.toxicityScan?.fileUrl && anamrezData.optionalScans.toxicityScan.fileUrl !== 'pending' ? renderScanFileBlock('Toksisite Ölçümü Dosyası', anamrezData.optionalScans.toxicityScan.fileUrl) : ''}
+              ${anamrezData.optionalScans.biyokimya?.enabled && anamrezData.optionalScans.biyokimya?.fileUrl && anamrezData.optionalScans.biyokimya.fileUrl !== 'pending' ? renderScanFileBlock('Biyokimya Dosyası', anamrezData.optionalScans.biyokimya.fileUrl) : ''}
+              ${anamrezData.optionalScans.radyoloji?.enabled && anamrezData.optionalScans.radyoloji?.fileUrl && anamrezData.optionalScans.radyoloji.fileUrl !== 'pending' ? renderScanFileBlock('Radyolojik Görüntüleme Dosyası', anamrezData.optionalScans.radyoloji.fileUrl) : ''}
+              ${anamrezData.optionalScans.patoloji?.enabled && anamrezData.optionalScans.patoloji?.fileUrl && anamrezData.optionalScans.patoloji.fileUrl !== 'pending' ? renderScanFileBlock('Patoloji Dosyası', anamrezData.optionalScans.patoloji.fileUrl) : ''}
             </div>
           </div>` : ''}
 
@@ -745,7 +755,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
           </div>
 
           <script>
-            window.onload = function() { window.print(); }
+            window.onload = function() { setTimeout(function() { window.print(); }, 800); }
           </script>
         </body>
       </html>
