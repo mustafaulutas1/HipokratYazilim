@@ -1308,8 +1308,10 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                     </div>
                     <button
                       onClick={() => {
+                        const debtAmount = patient.debtAmount || 0;
                         setSelectedPatient(patient);
-                        setDebtPaymentAmount(patient.debtAmount?.toString() || '');
+                        setDebtPaymentAmount(debtAmount.toString());
+                        setDebtPaymentMethods([{ method: 'nakit', amount: debtAmount }]);
                         setIsPartialPayment(false);
                         setRemainingDebtAmount('');
                         setIsDebtPaymentModalOpen(true);
@@ -1613,9 +1615,20 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   type="number"
                   value={paymentAmount}
                   onChange={(e) => {
-                    setPaymentAmount(e.target.value);
+                    const newAmount = e.target.value;
+                    setPaymentAmount(newAmount);
+                    
+                    // Otomatik olarak ödeme yöntemi tutarını güncelle
+                    if (paymentMethods.length > 0) {
+                      const numAmount = parseFloat(newAmount) || 0;
+                      setPaymentMethods([{
+                        method: paymentMethods[0].method,
+                        amount: numAmount
+                      }]);
+                    }
+                    
                     if (!isDiscountActive) {
-                      setOriginalAmount(e.target.value);
+                      setOriginalAmount(newAmount);
                     }
                   }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -2086,7 +2099,19 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                 <input
                   type="number"
                   value={refundAmount}
-                  onChange={(e) => setRefundAmount(e.target.value)}
+                  onChange={(e) => {
+                    const newAmount = e.target.value;
+                    setRefundAmount(newAmount);
+                    
+                    // Otomatik olarak ödeme yöntemi tutarını güncelle
+                    if (refundMethods.length > 0) {
+                      const numAmount = parseFloat(newAmount) || 0;
+                      setRefundMethods([{
+                        method: refundMethods[0].method,
+                        amount: numAmount
+                      }]);
+                    }
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
                   placeholder={selectedPatient.paymentAmount?.toString() || "0"}
                   min="0"
@@ -2235,9 +2260,20 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   type="number"
                   value={debtPaymentAmount}
                   onChange={(e) => {
-                    setDebtPaymentAmount(e.target.value);
-                    if (isPartialPayment && e.target.value) {
-                      const paid = parseFloat(e.target.value) || 0;
+                    const newAmount = e.target.value;
+                    setDebtPaymentAmount(newAmount);
+                    
+                    // Otomatik olarak ödeme yöntemi tutarını güncelle
+                    if (debtPaymentMethods.length > 0) {
+                      const numAmount = parseFloat(newAmount) || 0;
+                      setDebtPaymentMethods([{
+                        method: debtPaymentMethods[0].method,
+                        amount: numAmount
+                      }]);
+                    }
+                    
+                    if (isPartialPayment && newAmount) {
+                      const paid = parseFloat(newAmount) || 0;
                       const totalDebt = selectedPatient.debtAmount || 0;
                       const remaining = Math.max(0, totalDebt - paid);
                       setRemainingDebtAmount(remaining.toString());

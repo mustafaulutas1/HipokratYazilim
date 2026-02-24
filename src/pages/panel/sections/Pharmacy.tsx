@@ -2481,7 +2481,19 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                     <input
                       type="number"
                       value={pharmacyPaymentAmount}
-                      onChange={(e) => setPharmacyPaymentAmount(e.target.value)}
+                      onChange={(e) => {
+                        const newAmount = e.target.value;
+                        setPharmacyPaymentAmount(newAmount);
+                        
+                        // Otomatik olarak ödeme yöntemi tutarını güncelle
+                        if (pharmacyPaymentMethods.length > 0) {
+                          const numAmount = parseFloat(newAmount) || 0;
+                          setPharmacyPaymentMethods([{
+                            method: pharmacyPaymentMethods[0].method,
+                            amount: numAmount
+                          }]);
+                        }
+                      }}
                       className="w-full px-4 py-3 text-lg font-bold border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       placeholder="0.00"
                       min="0"
