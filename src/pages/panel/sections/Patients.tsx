@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, doc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import AddPatientModal from './AddPatientModal';
 import EditPatientModal from '../components/EditPatientModal';
@@ -161,6 +161,17 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
       );
     } catch (error) {
       console.error('Error toggling patient status:', error);
+    }
+  };
+
+  const handleDeletePatient = async (patient: Patient) => {
+    if (!window.confirm(`"${patient.fullName}" adlı hasta kalıcı olarak silinecek. Bu işlem geri alınamaz. Devam etmek istiyor musunuz?`)) return;
+    try {
+      await deleteDoc(doc(db, 'patients', patient.id));
+      setPatients(prev => prev.filter(p => p.id !== patient.id));
+    } catch (error) {
+      console.error('Hasta silinirken hata:', error);
+      alert('Hasta silinirken bir hata oluştu.');
     }
   };
 
@@ -475,6 +486,13 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
                         title={patient.status === 'passive' ? 'Aktif Yap' : 'Pasif Yap'}
                       >
                         {patient.status === 'passive' ? '🔴' : '🟢'}
+                      </button>
+                      <button
+                        onClick={() => handleDeletePatient(patient)}
+                        className="p-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-all duration-200"
+                        title="Hastayı Sil"
+                      >
+                        🗑️
                       </button>
                     </div>
                   </td>
