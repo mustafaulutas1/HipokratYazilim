@@ -6,6 +6,7 @@ import EditPatientModal from '../components/EditPatientModal';
 import PatientDetailsModal from './PatientDetailsModal';
 import AnamrezFormModal from './AnamrezFormModal';
 import DischargeSurveyModal from '../components/DischargeSurveyModal';
+import SurveyAnalyticsModal from '../components/SurveyAnalyticsModal';
 
 interface TreatmentOptions {
   protocol?: string;
@@ -70,6 +71,7 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
   const [selectedPatientForHistory, setSelectedPatientForHistory] = useState<Patient | null>(null);
   const [isSurveyModalOpen, setIsSurveyModalOpen] = useState(false);
   const [selectedPatientForSurvey, setSelectedPatientForSurvey] = useState<Patient | null>(null);
+  const [isSurveyAnalyticsOpen, setIsSurveyAnalyticsOpen] = useState(false);
 
   // Fetch patients from Firestore
   const fetchPatients = async () => {
@@ -196,7 +198,7 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
 
       console.log(`✅ Patient discharged: ${selectedPatientForSurvey.fullName}`);
     }
-    
+
     setIsSurveyModalOpen(false);
     setSelectedPatientForSurvey(null);
   };
@@ -269,7 +271,7 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {[
           { title: 'Toplam Hasta', value: patients.length.toString(), icon: '👥', color: 'from-blue-500 to-cyan-500' },
           { title: 'Aktif Hasta', value: patients.filter(p => p.status !== 'passive').length.toString(), icon: '✅', color: 'from-green-500 to-emerald-500' },
@@ -282,18 +284,145 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
           },
           { title: 'Pasif Hasta', value: patients.filter(p => p.status === 'passive').length.toString(), icon: '⏸️', color: 'from-gray-500 to-gray-600' }
         ].map((stat, index) => (
-        <div key={index} className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-          <div className="flex items-center gap-4">
-            <div className={`w-12 h-12 bg-gradient-to-br ${stat.color} rounded-xl flex items-center justify-center shadow-lg`}>
-              <span className="text-white text-xl">{stat.icon}</span>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-white">{stat.value}</div>
-              <div className="text-white/70 text-sm">{stat.title}</div>
+          <div key={index} className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-5">
+            <div className="flex items-center gap-3">
+              <div className={`w-11 h-11 bg-gradient-to-br ${stat.color} rounded-xl flex items-center justify-center shadow-lg`}>
+                <span className="text-white text-lg">{stat.icon}</span>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-white">{stat.value}</div>
+                <div className="text-white/70 text-sm">{stat.title}</div>
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        ))}
+
+        {/* 5th Card – Memnuniyet Anketi (3D physical button) */}
+        <button
+          onClick={() => setIsSurveyAnalyticsOpen(true)}
+          className="relative group text-left rounded-2xl p-5 overflow-hidden cursor-pointer select-none"
+          style={{
+            background: 'linear-gradient(145deg, #5b21b6 0%, #7c3aed 50%, #be185d 100%)',
+            boxShadow: [
+              'inset 0 1px 0 rgba(255,255,255,0.2)',   /* top highlight */
+              'inset 0 -5px 0 rgba(0,0,0,0.4)',         /* bottom inner edge = slab depth */
+              '0 6px 0 #2e0a66',                        /* solid bottom "floor" */
+              '0 10px 20px rgba(109,40,217,0.5)',        /* ambient glow */
+              '0 2px 6px rgba(0,0,0,0.5)',              /* base shadow */
+            ].join(', '),
+            border: '1px solid rgba(196,158,254,0.4)',
+            transform: 'translateY(0)',
+            transition: 'transform 0.1s ease, box-shadow 0.1s ease',
+          }}
+          onMouseEnter={e => {
+            const el = e.currentTarget;
+            el.style.transform = 'translateY(-5px)';
+            el.style.boxShadow = [
+              'inset 0 1px 0 rgba(255,255,255,0.25)',
+              'inset 0 -5px 0 rgba(0,0,0,0.4)',
+              '0 11px 0 #2e0a66',
+              '0 16px 28px rgba(109,40,217,0.6)',
+              '0 4px 10px rgba(0,0,0,0.5)',
+            ].join(', ');
+          }}
+          onMouseLeave={e => {
+            const el = e.currentTarget;
+            el.style.transform = 'translateY(0)';
+            el.style.boxShadow = [
+              'inset 0 1px 0 rgba(255,255,255,0.2)',
+              'inset 0 -5px 0 rgba(0,0,0,0.4)',
+              '0 6px 0 #2e0a66',
+              '0 10px 20px rgba(109,40,217,0.5)',
+              '0 2px 6px rgba(0,0,0,0.5)',
+            ].join(', ');
+          }}
+          onMouseDown={e => {
+            const el = e.currentTarget;
+            el.style.transform = 'translateY(4px)';
+            el.style.boxShadow = [
+              'inset 0 1px 0 rgba(255,255,255,0.12)',
+              'inset 0 -2px 0 rgba(0,0,0,0.4)',
+              '0 2px 0 #2e0a66',
+              '0 4px 10px rgba(109,40,217,0.3)',
+              '0 1px 3px rgba(0,0,0,0.5)',
+            ].join(', ');
+          }}
+          onMouseUp={e => {
+            const el = e.currentTarget;
+            el.style.transform = 'translateY(-5px)';
+            el.style.boxShadow = [
+              'inset 0 1px 0 rgba(255,255,255,0.25)',
+              'inset 0 -5px 0 rgba(0,0,0,0.4)',
+              '0 11px 0 #2e0a66',
+              '0 16px 28px rgba(109,40,217,0.6)',
+              '0 4px 10px rgba(0,0,0,0.5)',
+            ].join(', ');
+          }}
+        >
+          {/* Animated attention glow ring */}
+          <span
+            className="absolute inset-0 rounded-2xl pointer-events-none"
+            style={{
+              boxShadow: '0 0 0 0 rgba(167,139,250,0.6)',
+              animation: 'surveyPulse 2.2s ease-out infinite',
+            }}
+          />
+          <style>{`
+            @keyframes surveyPulse {
+              0%   { box-shadow: 0 0 0 0   rgba(167,139,250,0.55); }
+              70%  { box-shadow: 0 0 0 10px rgba(167,139,250,0);   }
+              100% { box-shadow: 0 0 0 0   rgba(167,139,250,0);   }
+            }
+          `}</style>
+
+          {/* Directional top-left light (3D surface illusion) */}
+          <div
+            className="absolute top-0 left-0 w-2/3 h-1/2 rounded-tl-2xl pointer-events-none"
+            style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.18) 0%, transparent 70%)' }}
+          />
+          {/* Right-side shadow for depth */}
+          <div
+            className="absolute top-0 right-0 w-1/4 h-full pointer-events-none"
+            style={{ background: 'linear-gradient(270deg, rgba(0,0,0,0.15) 0%, transparent 100%)' }}
+          />
+
+          {/* Content */}
+          <div className="relative flex items-center gap-3">
+            <div
+              className="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
+              style={{
+                background: 'linear-gradient(145deg, rgba(255,255,255,0.25), rgba(255,255,255,0.1))',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -2px 0 rgba(0,0,0,0.25), 0 3px 8px rgba(0,0,0,0.3)',
+              }}
+            >
+              📊
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-white" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.4)' }}>
+                {patients.filter(p => (p as any).dischargeSurvey).length}
+              </div>
+              <div className="text-purple-100 text-sm font-semibold tracking-wide">Memnuniyet Anketi</div>
+            </div>
+          </div>
+
+          {/* Bottom hint bar */}
+          <div
+            className="relative mt-3 flex items-center justify-between"
+            style={{ borderTop: '1px solid rgba(255,255,255,0.13)', paddingTop: '8px' }}
+          >
+            <span className="text-purple-200/75 text-xs">Analizi Görüntüle →</span>
+            <span
+              className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold"
+              style={{
+                background: 'rgba(255,255,255,0.9)',
+                color: '#5b21b6',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.25), inset 0 -1px 0 rgba(0,0,0,0.1)',
+              }}
+            >
+              👆 Tıkla
+            </span>
+          </div>
+        </button>
       </div>
 
       {/* Treatment Completed Patients - Ready for Discharge */}
@@ -402,101 +531,98 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
               {filteredPatients.map((patient) => {
                 const needsMediaUpload = patient.optionalScans?.hasMediaGallery && (!patient.mediaFiles || patient.mediaFiles.length === 0);
                 return (
-                <tr key={patient.id} className={`transition-colors duration-200 ${
-                  needsMediaUpload 
-                    ? 'bg-pink-500/15 hover:bg-pink-500/25 border-l-4 border-l-pink-400' 
+                  <tr key={patient.id} className={`transition-colors duration-200 ${needsMediaUpload
+                    ? 'bg-pink-500/15 hover:bg-pink-500/25 border-l-4 border-l-pink-400'
                     : 'hover:bg-white/5'
-                }`}>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                        <span className="text-white font-semibold">
-                          {patient.fullName.split(' ').map(n => n[0]).join('')}
-                        </span>
-                      </div>
-                      <div>
-                        <div className="text-white font-semibold flex items-center gap-2">
-                          {patient.fullName}
-                          {needsMediaUpload && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-pink-500/30 border border-pink-400/50 rounded-full text-pink-200 text-xs font-medium animate-pulse" title="Fotoğraf/Video yüklenmesi gerekiyor">
-                              📷 Medya Bekleniyor
-                            </span>
-                          )}
+                    }`}>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
+                          <span className="text-white font-semibold">
+                            {patient.fullName.split(' ').map(n => n[0]).join('')}
+                          </span>
                         </div>
-                        <div className="text-white/60 text-sm">{calculateAge(patient.birthDate)} yaş, {patient.gender}</div>
+                        <div>
+                          <div className="text-white font-semibold flex items-center gap-2">
+                            {patient.fullName}
+                            {needsMediaUpload && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-pink-500/30 border border-pink-400/50 rounded-full text-pink-200 text-xs font-medium animate-pulse" title="Fotoğraf/Video yüklenmesi gerekiyor">
+                                📷 Medya Bekleniyor
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-white/60 text-sm">{calculateAge(patient.birthDate)} yaş, {patient.gender}</div>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-white">{patient.tcNo}</td>
-                  <td className="px-6 py-4 text-white">{patient.phone}</td>
-                  <td className="px-6 py-4 text-white">{patient.email}</td>
-                  <td className="px-6 py-4 text-white">
-                    {(patient as any).residenceCity 
-                      ? `${(patient as any).country || 'Türkiye'} / ${(patient as any).residenceCity}` 
-                      : (patient as any).registrationDate 
-                        ? formatDate((patient as any).registrationDate) 
-                        : '-'}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                      patient.status === 'passive'
+                    </td>
+                    <td className="px-6 py-4 text-white">{patient.tcNo}</td>
+                    <td className="px-6 py-4 text-white">{patient.phone}</td>
+                    <td className="px-6 py-4 text-white">{patient.email}</td>
+                    <td className="px-6 py-4 text-white">
+                      {(patient as any).residenceCity
+                        ? `${(patient as any).country || 'Türkiye'} / ${(patient as any).residenceCity}`
+                        : (patient as any).registrationDate
+                          ? formatDate((patient as any).registrationDate)
+                          : '-'}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${patient.status === 'passive'
                         ? 'bg-gray-500/20 text-gray-300'
                         : 'bg-green-500/20 text-green-300'
-                    }`}>
-                      {patient.status === 'passive' ? 'Pasif' : 'Aktif'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => {
-                          setSelectedPatientForDetails(patient);
-                          setIsDetailsModalOpen(true);
-                        }}
-                        className="p-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-blue-300 hover:text-blue-200 transition-all duration-200"
-                      >
-                        👁️
-                      </button>
-                      <button
-                        onClick={() => {
-                          setSelectedPatientForHistory(patient);
-                          setIsPastHistoryModalOpen(true);
-                        }}
-                        className="p-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-lg text-purple-300 hover:text-purple-200 transition-all duration-200"
-                        title="Geçmiş Kayıt Ekle"
-                      >
-                        📜
-                      </button>
-                      <button
-                        onClick={() => {
-                          setSelectedPatient(patient);
-                          setIsEditModalOpen(true);
-                        }}
-                        className="p-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg text-green-300 hover:text-green-200 transition-all duration-200"
-                      >
-                        ✏️
-                      </button>
-                      <button
-                        onClick={() => togglePatientStatus(patient)}
-                        className={`p-2 rounded-lg transition-all duration-200 ${
-                          patient.status === 'passive'
+                        }`}>
+                        {patient.status === 'passive' ? 'Pasif' : 'Aktif'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setSelectedPatientForDetails(patient);
+                            setIsDetailsModalOpen(true);
+                          }}
+                          className="p-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-blue-300 hover:text-blue-200 transition-all duration-200"
+                        >
+                          👁️
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedPatientForHistory(patient);
+                            setIsPastHistoryModalOpen(true);
+                          }}
+                          className="p-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-lg text-purple-300 hover:text-purple-200 transition-all duration-200"
+                          title="Geçmiş Kayıt Ekle"
+                        >
+                          📜
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedPatient(patient);
+                            setIsEditModalOpen(true);
+                          }}
+                          className="p-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg text-green-300 hover:text-green-200 transition-all duration-200"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          onClick={() => togglePatientStatus(patient)}
+                          className={`p-2 rounded-lg transition-all duration-200 ${patient.status === 'passive'
                             ? 'bg-gray-500/20 hover:bg-gray-500/30 border border-gray-500/30 text-gray-300 hover:text-gray-200'
                             : 'bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 text-green-300 hover:text-green-200'
-                        }`}
-                        title={patient.status === 'passive' ? 'Aktif Yap' : 'Pasif Yap'}
-                      >
-                        {patient.status === 'passive' ? '🔴' : '🟢'}
-                      </button>
-                      <button
-                        onClick={() => handleDeletePatient(patient)}
-                        className="p-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-all duration-200"
-                        title="Hastayı Sil"
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                            }`}
+                          title={patient.status === 'passive' ? 'Aktif Yap' : 'Pasif Yap'}
+                        >
+                          {patient.status === 'passive' ? '🔴' : '🟢'}
+                        </button>
+                        <button
+                          onClick={() => handleDeletePatient(patient)}
+                          className="p-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-all duration-200"
+                          title="Hastayı Sil"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
                 );
               })}
             </tbody>
@@ -566,6 +692,13 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
         }}
         patient={selectedPatientForSurvey}
         onSurveyCompleted={handleSurveyCompleted}
+      />
+
+      {/* Survey Analytics Modal */}
+      <SurveyAnalyticsModal
+        isOpen={isSurveyAnalyticsOpen}
+        onClose={() => setIsSurveyAnalyticsOpen(false)}
+        clinicId={doctorProfile?.clinicId}
       />
     </div>
   );
