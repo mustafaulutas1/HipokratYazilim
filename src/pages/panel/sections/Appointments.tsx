@@ -7,9 +7,10 @@ import AppointmentDetailsModal from '../components/AppointmentDetailsModal';
 
 interface AppointmentsProps {
   doctorProfile?: any;
+  onSectionChange?: (section: string) => void;
 }
 
-const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
+const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionChange }) => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
   const [appointments, setAppointments] = useState<any[]>([]);
@@ -1040,7 +1041,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
           // refresh appointments after status update
           (async () => {
             if (!doctorProfile?.clinicId) return;
-            
+
             // Fetch with only clinicId to avoid composite index, then filter by date
             const qDay = query(
               collection(db, 'appointments'),
@@ -1053,6 +1054,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
             setAppointments(list);
           })();
         }}
+        onNavigate={onSectionChange}
       />
     </div>
   );

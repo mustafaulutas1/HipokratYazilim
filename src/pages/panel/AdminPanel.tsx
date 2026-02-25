@@ -205,7 +205,7 @@ export default function AdminPanel() {
       case 'patients':
         return <Patients doctorProfile={doctorProfile} />;
       case 'appointments':
-        return <Appointments doctorProfile={doctorProfile} />;
+        return <Appointments doctorProfile={doctorProfile} onSectionChange={handleSectionChange} />;
       case 'anamnez':
         return <Anamnez doctorProfile={doctorProfile} />;
       case 'settings':

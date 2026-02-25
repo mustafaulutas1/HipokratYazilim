@@ -9,9 +9,10 @@ interface AppointmentDetailsModalProps {
   appointment: any | null;
   onCancelled?: () => void;
   onStatusUpdated?: () => void;
+  onNavigate?: (section: string) => void;
 }
 
-const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpen, onClose, appointment, onCancelled, onStatusUpdated }) => {
+const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpen, onClose, appointment, onCancelled, onStatusUpdated, onNavigate }) => {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
@@ -162,25 +163,31 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
             
             if (patientDoc.exists()) {
               await updateDoc(patientRef, {
-                status: 'treatment_continue',
+                status: 'anamnez_completed',
+                isAnamnezCompleted: true,
                 appointmentType: 'tedavi',
+                anamrezCompletedAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
               });
-              console.log('✅ Patient status updated to treatment_continue');
-              toast.success('Hasta tedavi ekranına yönlendirildi!');
+              console.log('✅ Patient status updated to anamnez_completed (tedavi)');
+              toast.success('Hasta Asistan Ekranına yönlendirildi!');
+              onNavigate?.('assistant-panel');
             } else {
               // Patient doesn't exist, create with minimal data
               await setDoc(patientRef, {
                 fullName: appointment.patientName || 'Hasta',
                 phone: appointment.patientPhone || '',
                 clinicId: appointment.clinicId || 'default-clinic',
-                status: 'treatment_continue',
+                status: 'anamnez_completed',
+                isAnamnezCompleted: true,
                 appointmentType: 'tedavi',
+                anamrezCompletedAt: new Date().toISOString(),
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
               });
-              console.log('✅ New patient document created with treatment_continue status');
-              toast.success('Hasta tedavi ekranına yönlendirildi!');
+              console.log('✅ New patient document created with anamnez_completed status (tedavi)');
+              toast.success('Hasta Asistan Ekranına yönlendirildi!');
+              onNavigate?.('assistant-panel');
             }
           } catch (err) {
             console.error('Error updating patient for treatment:', err);
