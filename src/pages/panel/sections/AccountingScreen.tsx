@@ -276,6 +276,16 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
     return () => unsubscribe();
   }, [doctorProfile?.clinicId]);
 
+  // Auto-calculate remaining debt when partial payment is enabled
+  useEffect(() => {
+    if (!isPartialPayment) return;
+
+    const paidTotal = paymentMethods.reduce((sum, m) => sum + (parseFloat(String(m.amount)) || 0), 0);
+    const dueTotal = parseFloat(payableAmount) || 0;
+    const remaining = Math.max(0, dueTotal - paidTotal);
+    setRemainingDebtAmount(remaining.toFixed(2));
+  }, [isPartialPayment, paymentMethods, payableAmount]);
+
   // Keep primary payment method amount synced with payableAmount when it changes
   useEffect(() => {
     if (paymentMethods.length > 0) {
