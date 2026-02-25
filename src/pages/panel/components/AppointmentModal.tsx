@@ -221,11 +221,11 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
   }, [startTime, selectedTypeObj]);
 
   const withinWorkHours = useMemo(() => {
-    if (!endTime) return true; // tip seçilmeden uyarı göstermeyelim
     const startOk = timeToMinutes(startTime) >= timeToMinutes(WORK_START);
-    const endOk = timeToMinutes(endTime) <= timeToMinutes(WORK_END);
-    return startOk && endOk;
-  }, [startTime, endTime]);
+    const startNotAfterEnd = timeToMinutes(startTime) <= timeToMinutes(WORK_END);
+    return startOk && startNotAfterEnd;
+  }, [startTime]);
+
 
   // Başlangıç dakikasının dolu olup olmadığını kontrol et (segment başı engelleme)
   /*
@@ -769,14 +769,6 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
                     <span className="text-xs font-medium text-gray-600">Bitiş Saati:</span>
                     <span className="text-xs font-bold text-gray-800">{endTime ?? '-'}</span>
                   </div>
-                  {!withinWorkHours && (
-                    <div className="p-2 bg-red-50 border border-red-200 rounded-lg">
-                      <div className="flex items-center gap-2 text-red-600">
-                        <span>⚠️</span>
-                        <span className="text-xs font-medium">Mesai dışı seçim. 08:45-19:00 aralığında seçin.</span>
-                      </div>
-                    </div>
-                  )}
                   {minSelectableTimeToday && (
                     <div className="p-2 bg-blue-50 border border-blue-200 rounded-lg">
                       <div className="flex items-center gap-2 text-blue-600">

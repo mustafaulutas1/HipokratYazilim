@@ -922,7 +922,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile }) => {
                 {calendarPatientFilter ? 'Aradığınız kriterlere uygun randevu bulunamadı' : 'Randevu bulunamadı'}
               </div>
             ) : (
-              filteredAppointments.slice(0, viewMode === 'day' ? 5 : 10).map((appointment) => (
+              filteredAppointments.map((appointment) => (
               <div
                 key={appointment.id}
                 className="bg-white/5 rounded-xl p-4 cursor-pointer hover:bg-white/10 transition-colors"
