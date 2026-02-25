@@ -1295,13 +1295,6 @@ const TreatmentRequestResponseModal: React.FC<TreatmentRequestResponseModalProps
               </div>
             )}
 
-            {/* Protocol Description */}
-            {applicationDescription && (
-              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-xs font-semibold text-blue-500 uppercase tracking-wide mb-1">Protokol Açıklaması</p>
-                <p className="text-sm text-blue-900">{applicationDescription}</p>
-              </div>
-            )}
           </div>
 
           {/* Previous Response (if already responded) */}
