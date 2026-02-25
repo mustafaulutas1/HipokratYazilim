@@ -18,6 +18,7 @@ interface MultiPaymentMethodSelectorProps {
   disabled?: boolean;
   showValidation?: boolean;
   allowedMethods?: string[];
+  originalAmount?: number;
 }
 
 const DEFAULT_PAYMENT_METHODS: PaymentMethodOption[] = [
@@ -60,6 +61,7 @@ const MultiPaymentMethodSelector: React.FC<MultiPaymentMethodSelectorProps> = ({
   disabled = false,
   showValidation = true,
   allowedMethods,
+  originalAmount,
 }) => {
   const [selectedMethods, setSelectedMethods] = useState<Set<string>>(new Set());
 
@@ -183,7 +185,7 @@ const MultiPaymentMethodSelector: React.FC<MultiPaymentMethodSelectorProps> = ({
           <label className="block text-sm font-medium text-gray-700">
             Tutar Dağılımı
           </label>
-          {value.map((entry) => {
+          {value.map((entry, idx) => {
             const methodInfo = paymentMethods.find(m => m.value === entry.method) ||
                              { value: entry.method, label: entry.method, icon: '💰' };
             return (
@@ -191,6 +193,13 @@ const MultiPaymentMethodSelector: React.FC<MultiPaymentMethodSelectorProps> = ({
                 <div className="flex items-center gap-2 min-w-[140px]">
                   <span className="text-lg">{methodInfo.icon}</span>
                   <span className="font-medium text-gray-800">{methodInfo.label}</span>
+                      {/* Show original vs payable for primary method when provided */}
+                      {idx === 0 && typeof originalAmount !== 'undefined' && originalAmount > 0 && originalAmount !== totalAmount && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          <span className="line-through mr-2">{originalAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                          <span className="font-medium text-gray-800">{entry.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                        </div>
+                      )}
                 </div>
                 <div className="flex-1 flex items-center gap-2">
                   <input
@@ -245,7 +254,14 @@ const MultiPaymentMethodSelector: React.FC<MultiPaymentMethodSelectorProps> = ({
           <div className="flex justify-between items-center text-sm">
             <span className="text-gray-600">Ödeme Tutarı:</span>
             <span className="font-medium text-gray-900">
-              {totalAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+              {typeof originalAmount !== 'undefined' && originalAmount > 0 && originalAmount !== totalAmount ? (
+                <span>
+                  <span className="line-through mr-2 text-gray-500">{originalAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                  <span>{totalAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                </span>
+              ) : (
+                <span>{totalAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+              )}
             </span>
           </div>
           <div className="flex justify-between items-center text-sm mt-1">
