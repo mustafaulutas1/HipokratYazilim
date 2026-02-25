@@ -210,6 +210,7 @@ const AdditionalTreatmentRequestModal: React.FC<AdditionalTreatmentRequestModalP
         applicationId: selectedApplicationId,
         applicationName: selectedApplication?.name || '',
         applicationPrice: selectedApplication?.price || 0,
+        applicationDescription: selectedApplication?.description || '',
         treatmentDescription: selectedApplication?.name || '',
         treatmentReason: treatmentReason.trim() || null,
         
@@ -377,6 +378,28 @@ const AdditionalTreatmentRequestModal: React.FC<AdditionalTreatmentRequestModalP
               className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 resize-none"
             />
           </div>
+
+          {/* Protocol Description & Price */}
+          {selectedApplicationId && (() => {
+            const app = applications.find(a => a.id === selectedApplicationId);
+            if (!app) return null;
+            return (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
+                {app.description && (
+                  <div>
+                    <p className="text-xs font-semibold text-blue-500 uppercase tracking-wide mb-1">Protokol Açıklaması</p>
+                    <p className="text-sm text-blue-900">{app.description}</p>
+                  </div>
+                )}
+                {app.price > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-blue-500 uppercase tracking-wide mb-1">Tedavi Ücreti</p>
+                    <p className="text-lg font-bold text-blue-900">{app.price.toLocaleString('tr-TR')} TL</p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Info Box */}
           <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">

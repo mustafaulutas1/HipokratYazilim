@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, doc, updateDoc, addDoc, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, addDoc, orderBy, limit, getDoc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { useAuth } from '../../../context/AuthContext';
 import AnamrezViewModal from './AnamrezViewModal';
@@ -104,6 +104,7 @@ interface AdditionalTreatmentRequest {
   applicationId?: string;
   applicationName?: string;
   applicationPrice?: number;
+  applicationDescription?: string;
   treatmentDescription: string;
   treatmentReason?: string;
   clinicId: string;
@@ -1171,6 +1172,18 @@ const TreatmentRequestResponseModal: React.FC<TreatmentRequestResponseModalProps
 }) => {
   const [responseNote, setResponseNote] = useState('');
   const [sending, setSending] = useState(false);
+  const [applicationDescription, setApplicationDescription] = useState<string>(request.applicationDescription || '');
+
+  useEffect(() => {
+    if (request.applicationDescription) {
+      setApplicationDescription(request.applicationDescription);
+      return;
+    }
+    if (!request.applicationId) return;
+    getDoc(doc(db, 'medicalApplications', request.applicationId)).then(snap => {
+      if (snap.exists()) setApplicationDescription(snap.data().description || '');
+    });
+  }, [request.applicationId, request.applicationDescription]);
 
   const handleRespond = async (status: 'approved' | 'rejected') => {
     setSending(true);
@@ -1279,6 +1292,14 @@ const TreatmentRequestResponseModal: React.FC<TreatmentRequestResponseModalProps
                 <div className="p-3 bg-white border border-gray-200 rounded-lg">
                   <p className="text-gray-700 text-sm">{request.treatmentReason}</p>
                 </div>
+              </div>
+            )}
+
+            {/* Protocol Description */}
+            {applicationDescription && (
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs font-semibold text-blue-500 uppercase tracking-wide mb-1">Protokol Açıklaması</p>
+                <p className="text-sm text-blue-900">{applicationDescription}</p>
               </div>
             )}
           </div>
