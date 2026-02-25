@@ -223,58 +223,43 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
       if (treatmentApplied) {
         // Check if some treatments were not applied (unselected)
         if (hasUnselectedTreatments) {
-          // Partial treatment - some treatments were not applied
-          updateData.status = 'treatment_not_applied'; // Goes to refund queue
+          // Partial treatment - send to Muhasebe for payment of applied treatments
+          updateData.status = 'treatment_decided';
+          updateData.paymentCompleted = false;
           updateData.treatmentCompletedAt = new Date().toISOString();
-          updateData.treatmentApplied = true; // Some treatments were applied
+          updateData.treatmentApplied = true;
           updateData.treatmentPartiallyApplied = true;
           updateData.appliedTreatments = selectedTreatments;
           updateData.unselectedTreatments = unselectedTreatments;
           updateData.unselectedTreatmentReason = unselectedTreatmentReason.trim() || 'Hasta tarafından reddedildi';
-          updateData.requiresRefund = true;
-          updateData.refundReason = `Uygulanmayan tedaviler: ${unselectedTreatments.join(', ')}`;
+          updateData.postTreatmentPayment = true;
           if (treatmentNotes.trim()) {
             updateData.treatmentNotes = treatmentNotes.trim();
           }
         } else {
-          // All treatments applied
-          // Check if this is a Tedavi appointment (patient hasn't paid yet)
-          if (selectedPatient.appointmentType === 'tedavi' && !selectedPatient.paymentCompleted) {
-            // Tedavi appointment: send to Muhasebe for payment
-            updateData.status = 'treatment_decided';
-            updateData.paymentCompleted = false;
-            updateData.treatmentCompletedAt = new Date().toISOString();
-            updateData.treatmentApplied = true;
-            updateData.treatmentPartiallyApplied = false;
-            updateData.appliedTreatments = selectedTreatments;
-            updateData.unselectedTreatments = [];
-            updateData.postTreatmentPayment = true; // Flag to indicate payment is after treatment
-            if (treatmentNotes.trim()) {
-              updateData.treatmentNotes = treatmentNotes.trim();
-            }
-          } else {
-            // Normal flow (kontrol): treatment is complete
-            updateData.status = 'treatment_completed';
-            updateData.treatmentCompletedAt = new Date().toISOString();
-            updateData.treatmentApplied = true;
-            updateData.treatmentPartiallyApplied = false;
-            updateData.appliedTreatments = selectedTreatments;
-            updateData.unselectedTreatments = [];
-            if (treatmentNotes.trim()) {
-              updateData.treatmentNotes = treatmentNotes.trim();
-            }
+          // All treatments applied - send to Muhasebe for payment
+          updateData.status = 'treatment_decided';
+          updateData.paymentCompleted = false;
+          updateData.treatmentCompletedAt = new Date().toISOString();
+          updateData.treatmentApplied = true;
+          updateData.treatmentPartiallyApplied = false;
+          updateData.appliedTreatments = selectedTreatments;
+          updateData.unselectedTreatments = [];
+          updateData.postTreatmentPayment = true;
+          if (treatmentNotes.trim()) {
+            updateData.treatmentNotes = treatmentNotes.trim();
           }
         }
       } else {
-        // No treatment applied at all
-        updateData.status = 'treatment_not_applied';
+        // No treatment applied at all - send to Muhasebe for cancellation/zero payment
+        updateData.status = 'treatment_decided';
+        updateData.paymentCompleted = false;
         updateData.treatmentApplied = false;
         updateData.treatmentPartiallyApplied = false;
         updateData.treatmentNotAppliedReason = notAppliedReason.trim();
         updateData.appliedTreatments = [];
         updateData.unselectedTreatments = allTreatments;
-        updateData.requiresRefund = true;
-        updateData.refundReason = `Tüm tedaviler uygulanmadı: ${notAppliedReason.trim()}`;
+        updateData.postTreatmentPayment = true;
         if (treatmentNotes.trim()) {
           updateData.treatmentNotes = treatmentNotes.trim();
         }

@@ -498,7 +498,7 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
       const shouldGoToPharmacy = hasMedicationsInProtocol(treatmentOptions);
 
       await updateDoc(patientRef, {
-        status: 'treatment_decided',
+        status: 'treatment_continue',
         // Only set pharmacyStatus to 'waiting' if there are medications in the protocol
         ...(shouldGoToPharmacy && { pharmacyStatus: 'waiting' }),
         treatmentStartedAt: new Date().toISOString(),
@@ -514,7 +514,7 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
         }),
         updatedAt: new Date().toISOString()
       });
-      
+
       if (treatmentOptions.routineProgram?.enabled) {
         await addDoc(collection(db, 'routine_programs'), {
           patientId: patient.id,
@@ -534,9 +534,9 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
       }
 
       if (shouldGoToPharmacy) {
-        console.log(`✅ Treatment decided for patient: ${patient.fullName} - Sent to both Muhasebe and Eczane`);
+        console.log(`✅ Tedavi başlatıldı: ${patient.fullName} - Tedavi Ekranı ve Eczane'ye gönderildi`);
       } else {
-        console.log(`✅ Treatment decided for patient: ${patient.fullName} - Sent to Muhasebe only (no medications in protocol)`);
+        console.log(`✅ Tedavi başlatıldı: ${patient.fullName} - Tedavi Ekranı'na gönderildi`);
       }
     } catch (error) {
       console.error('❌ Error starting treatment:', error);
