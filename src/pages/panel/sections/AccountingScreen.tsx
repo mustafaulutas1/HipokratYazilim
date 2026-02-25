@@ -276,6 +276,25 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
   const handleProcessPayment = async () => {
     if (!selectedPatient || !paymentAmount) return;
 
+    // Validate discount
+    if (isDiscountActive && !originalAmount) {
+      alert('⚠️ Lütfen indirimi uygulamadan önce ödeme tutarını girin!');
+      return;
+    }
+
+    if (isDiscountActive && !discountPercent && !discountFixedAmount) {
+      alert('⚠️ İndirim seçtiniz fakat yüzde veya tutarını seçmemişsiniz!\n\nLütfen bir indirim oranı veya tutarı seçin.');
+      return;
+    }
+
+    if (isDiscountActive) {
+      const discountValue = discountType === 'yuzde' ? parseFloat(discountPercent) : parseFloat(discountFixedAmount);
+      if (isNaN(discountValue) || discountValue <= 0) {
+        alert('⚠️ Geçerli bir indirim değeri giriniz!');
+        return;
+      }
+    }
+
     try {
       setLoading(true);
       const patientRef = doc(db, 'patients', selectedPatient.id);
@@ -284,7 +303,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       const allApplications = selectedPatient.treatmentOptions?.selectedMainApplications || [];
       const removedApplications = allApplications.filter((app: string) => !selectedApplications.includes(app));
       
-      // Get current payment amount
+      // Get current payment amount (this should already have discount applied)
       const currentPayment = parseFloat(paymentAmount);
       
       // Calculate previous debt to potentially add to payment
@@ -1264,6 +1283,18 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                         const allApplications = patient.treatmentOptions?.selectedMainApplications || [];
                         setSelectedApplications([...allApplications]);
                         setIncludeMuayene(true);
+                        // Reset all payment and discount states
+                        setPaymentAmount('');
+                        setPaymentMethod('nakit');
+                        setPaymentMethods([{ method: 'nakit', amount: 0 }]);
+                        setDiscountPercent('');
+                        setDiscountFixedAmount('');
+                        setDiscountType('yuzde');
+                        setIsDiscountActive(false);
+                        setOriginalAmount('');
+                        setIncludeDebtInPayment(true);
+                        setIsPartialPayment(false);
+                        setRemainingDebtAmount('');
                         setIsPaymentModalOpen(true);
                       }}
                       className="px-4 py-2 bg-green-500/20 border border-green-400 rounded-xl text-green-200 hover:bg-green-500/30 transition-all duration-200 flex items-center gap-2"
@@ -1611,31 +1642,39 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Ödeme Tutarı (TL)
                 </label>
-                <input
-                  type="number"
-                  value={paymentAmount}
-                  onChange={(e) => {
-                    const newAmount = e.target.value;
-                    setPaymentAmount(newAmount);
-                    
-                    // Otomatik olarak ödeme yöntemi tutarını güncelle
-                    if (paymentMethods.length > 0) {
-                      const numAmount = parseFloat(newAmount) || 0;
-                      setPaymentMethods([{
-                        method: paymentMethods[0].method,
-                        amount: numAmount
-                      }]);
-                    }
-                    
-                    if (!isDiscountActive) {
-                      setOriginalAmount(newAmount);
-                    }
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="500"
-                  min="0"
-                  step="0.01"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    value={paymentAmount}
+                    onChange={(e) => {
+                      const newAmount = e.target.value;
+                      setPaymentAmount(newAmount);
+                      
+                      // Otomatik olarak ödeme yöntemi tutarını güncelle
+                      if (paymentMethods.length > 0) {
+                        const numAmount = parseFloat(newAmount) || 0;
+                        setPaymentMethods([{
+                          method: paymentMethods[0].method,
+                          amount: numAmount
+                        }]);
+                      }
+                      
+                      if (!isDiscountActive) {
+                        setOriginalAmount(newAmount);
+                      }
+                    }}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="500"
+                    min="0"
+                    step="0.01"
+                  />
+                  {isDiscountActive && originalAmount && (
+                    <div className="px-3 py-2 bg-red-50 border border-red-300 rounded-lg flex items-center gap-1 text-xs text-red-700 font-medium whitespace-nowrap">
+                      <span>📍 Orijinal:</span>
+                      <span>{parseFloat(originalAmount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Discount Section */}
@@ -1650,6 +1689,10 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                     onClick={() => {
                       if (isDiscountActive) {
                         // Disable discount - restore original amount
+                        if (!originalAmount || parseFloat(originalAmount) <= 0) {
+                          alert('⚠️ İndirim iptal edilemiyor. Lütfen baştan ödeme tutarını giriniz.');
+                          return;
+                        }
                         setIsDiscountActive(false);
                         setPaymentAmount(originalAmount);
                         setDiscountPercent('');
@@ -1657,8 +1700,14 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                         setDiscountType('yuzde');
                       } else {
                         // Enable discount
+                        if (!paymentAmount || parseFloat(paymentAmount) <= 0) {
+                          alert('⚠️ Lütfen önce ödeme tutarını giriniz.');
+                          return;
+                        }
                         setIsDiscountActive(true);
                         setOriginalAmount(paymentAmount);
+                        setDiscountPercent('');
+                        setDiscountFixedAmount('');
                       }
                     }}
                     className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
@@ -1730,6 +1779,10 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                                 if (!isNaN(discountValue) && !isNaN(original) && discountValue >= 0 && discountValue <= 100) {
                                   const discountedAmount = original - (original * discountValue / 100);
                                   setPaymentAmount(discountedAmount.toFixed(2));
+                                } else if (discountValue > 100) {
+                                  alert('⚠️ İndirim oranı %100 den fazla olamaz!');
+                                  setDiscountPercent('100');
+                                  setPaymentAmount((0).toFixed(2));
                                 }
                               }
                             }}
@@ -1739,7 +1792,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                             max="100"
                           />
                         </div>
-                        <div className="flex gap-1 pt-5">
+                        <div className="flex gap-1 pt-5 flex-wrap">
                           {[5, 10, 15, 20, 25].map((percent) => (
                             <button
                               key={percent}
@@ -1783,9 +1836,15 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                               if (amount && originalAmount) {
                                 const discountValue = parseFloat(amount);
                                 const original = parseFloat(originalAmount);
-                                if (!isNaN(discountValue) && !isNaN(original) && discountValue >= 0 && discountValue <= original) {
-                                  const discountedAmount = original - discountValue;
-                                  setPaymentAmount(discountedAmount.toFixed(2));
+                                if (!isNaN(discountValue) && !isNaN(original) && discountValue >= 0) {
+                                  if (discountValue > original) {
+                                    alert(`⚠️ İndirim tutarı orijinal tutardan (${original.toLocaleString('tr-TR')} TL) fazla olamaz!`);
+                                    setDiscountFixedAmount(original.toString());
+                                    setPaymentAmount((0).toFixed(2));
+                                  } else {
+                                    const discountedAmount = original - discountValue;
+                                    setPaymentAmount(discountedAmount.toFixed(2));
+                                  }
                                 }
                               }
                             }}
@@ -1795,12 +1854,19 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                             step="0.01"
                           />
                         </div>
-                        <div className="flex gap-1 pt-5">
+                        <div className="flex gap-1 pt-5 flex-wrap">
                           {[50, 100, 200, 500].map((amount) => (
                             <button
                               key={amount}
                               type="button"
                               onClick={() => {
+                                if (originalAmount) {
+                                  const original = parseFloat(originalAmount);
+                                  if (amount > original) {
+                                    alert(`⚠️ İndirim tutarı orijinal tutardan (${original.toLocaleString('tr-TR')} TL) fazla olamaz!`);
+                                    return;
+                                  }
+                                }
                                 setDiscountFixedAmount(amount.toString());
                                 if (originalAmount) {
                                   const original = parseFloat(originalAmount);
@@ -1974,6 +2040,8 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   setSelectedApplications([]);
                   setIncludeMuayene(true);
                   setDiscountPercent('');
+                  setDiscountFixedAmount('');
+                  setDiscountType('yuzde');
                   setIsDiscountActive(false);
                   setOriginalAmount('');
                   setIncludeDebtInPayment(true);
@@ -1986,8 +2054,19 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
               </button>
               <button
                 onClick={handleProcessPayment}
-                disabled={loading || !paymentAmount || parseFloat(paymentAmount) <= 0 || (selectedPatient?.treatmentOptions?.selectedMainApplications?.length > 0 && selectedApplications.length === 0)}
+                disabled={
+                  loading || 
+                  !paymentAmount || 
+                  parseFloat(paymentAmount) <= 0 || 
+                  (selectedPatient?.treatmentOptions?.selectedMainApplications?.length > 0 && selectedApplications.length === 0) ||
+                  (isDiscountActive && (!discountPercent && !discountFixedAmount))
+                }
                 className="px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-lg font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                title={
+                  isDiscountActive && (!discountPercent && !discountFixedAmount)
+                    ? 'İndirim seçtiniz. Lütfen indirim oranı veya tutarını seçiniz.'
+                    : ''
+                }
               >
                 {loading ? (
                   <>
