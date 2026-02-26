@@ -9,7 +9,7 @@ interface AppointmentDetailsModalProps {
   appointment: any | null;
   onCancelled?: () => void;
   onStatusUpdated?: () => void;
-  onNavigate?: (section: string) => void;
+  onNavigate?: (section: 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel') => void;
 }
 
 const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpen, onClose, appointment, onCancelled, onStatusUpdated, onNavigate }) => {

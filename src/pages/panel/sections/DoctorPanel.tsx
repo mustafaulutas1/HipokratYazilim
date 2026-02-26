@@ -1167,7 +1167,7 @@ const TreatmentRequestResponseModal: React.FC<TreatmentRequestResponseModalProps
 }) => {
   const [responseNote, setResponseNote] = useState('');
   const [sending, setSending] = useState(false);
-  const [applicationDescription, setApplicationDescription] = useState<string>(request.applicationDescription || '');
+  const [_applicationDescription, setApplicationDescription] = useState<string>(request.applicationDescription || '');
 
   useEffect(() => {
     if (request.applicationDescription) {

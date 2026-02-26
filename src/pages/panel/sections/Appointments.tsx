@@ -5,9 +5,11 @@ import AppointmentModal from '../components/AppointmentModal';
 import AppointmentTypeManager from '../components/AppointmentTypeManager';
 import AppointmentDetailsModal from '../components/AppointmentDetailsModal';
 
+type PanelSection = 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
+
 interface AppointmentsProps {
   doctorProfile?: any;
-  onSectionChange?: (section: string) => void;
+  onSectionChange?: (section: PanelSection) => void;
 }
 
 const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionChange }) => {
