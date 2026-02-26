@@ -7,12 +7,6 @@ export interface Permission {
 
 export const AVAILABLE_PERMISSIONS: Permission[] = [
   {
-    id: 'dashboard',
-    name: 'Dashboard',
-    description: 'Ana sayfa ve genel istatistikler',
-    icon: '📊'
-  },
-  {
     id: 'patients',
     name: 'Hastalar',
     description: 'Hasta listesi ve yönetimi',
@@ -87,15 +81,15 @@ export const AVAILABLE_PERMISSIONS: Permission[] = [
 ];
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
-  admin: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'prescriptions', 'assistant-panel', 'doctor-panel', 'treatment-panel'],
+  admin: ['patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'prescriptions', 'assistant-panel', 'doctor-panel', 'treatment-panel'],
   doctor: ['patients', 'appointments', 'anamnez', 'treatment-protocols', 'assistant-panel', 'doctor-panel'],
-  nurse: ['dashboard', 'patients', 'appointments', 'anamnez'],
-  assistant: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'accounting', 'pharmacy', 'prescriptions', 'assistant-panel', 'doctor-panel', 'treatment-panel'],
+  nurse: ['patients', 'appointments', 'anamnez'],
+  assistant: ['patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'accounting', 'pharmacy', 'prescriptions', 'assistant-panel', 'doctor-panel', 'treatment-panel'],
   desk: ['patients', 'appointments'],
   anamnez: ['anamnez', 'patients'],
-  accounting: ['dashboard', 'patients', 'accounting'],
-  pharmacy: ['dashboard', 'patients', 'pharmacy', 'prescriptions'],
-  treatment: ['dashboard', 'patients', 'appointments', 'treatment-protocols', 'anamnez', 'treatment-panel'],
+  accounting: ['patients', 'accounting'],
+  pharmacy: ['patients', 'pharmacy', 'prescriptions'],
+  treatment: ['patients', 'appointments', 'treatment-protocols', 'anamnez', 'treatment-panel'],
   'call-center': ['patients', 'appointments']
 };
 
@@ -125,7 +119,7 @@ export const getUserPermissions = (userRole: string, customPermissions?: string[
   if (userRole === 'desk' && !DEFAULT_ROLE_PERMISSIONS[userRole]) {
     return ['patients', 'appointments'];
   }
-  return DEFAULT_ROLE_PERMISSIONS[userRole] || ['dashboard'];
+  return DEFAULT_ROLE_PERMISSIONS[userRole] || ['patients'];
 };
 
 // This function will be updated to work with dynamic roles from Firestore
@@ -140,5 +134,5 @@ export const getUserPermissionsFromRole = async (userRole: string, customPermiss
   if (userRole === 'desk' && !DEFAULT_ROLE_PERMISSIONS[userRole]) {
     return ['patients', 'appointments'];
   }
-  return DEFAULT_ROLE_PERMISSIONS[userRole] || ['dashboard'];
+  return DEFAULT_ROLE_PERMISSIONS[userRole] || ['patients'];
 };

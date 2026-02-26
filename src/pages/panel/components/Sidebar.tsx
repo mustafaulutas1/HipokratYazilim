@@ -4,7 +4,7 @@ import { rtmLogo } from '../../../assets';
 import { getRoleDisplayName } from '../../../constants/permissions';
 import { useUserPermissions } from '../../../hooks/useUserPermissions';
 
-type PanelSection = 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
+type PanelSection = 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
 
 interface SidebarProps {
   currentSection: PanelSection | null;
@@ -96,12 +96,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
   };
 
   const menuItems = [
-    {
-      id: 'dashboard',
-      label: 'Anasayfa',
-      icon: '📊',
-      description: 'Genel bakış ve istatistikler'
-    },
     {
       id: 'patients',
       label: 'Hastalar',
@@ -214,18 +208,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
             menuItems
               .filter(item => {
                 const userRole = doctorProfile?.role || doctorProfile?.userType || 'doctor';
-                
-                // Hide dashboard (Anasayfa) for specific roles - only admin can see it
-                const hiddenDashboardRoles = ['accounting', 'pharmacy', 'assistant', 'doctor', 'nurse', 'desk', 'anamnez', 'treatment', 'call-center'];
-                if (hiddenDashboardRoles.includes(userRole) && item.id === 'dashboard') {
-                  return false;
-                }
-                
+
                 // Hide settings (Ayarlar) for all roles except admin
                 if (userRole !== 'admin' && item.id === 'settings') {
                   return false;
                 }
-                
+
                 return userPermissions.includes(item.id);
               })
               .map((item) => (

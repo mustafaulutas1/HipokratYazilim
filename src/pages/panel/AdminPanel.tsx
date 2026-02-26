@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { db } from '../../firebase/config';
 import { doc, getDoc } from 'firebase/firestore';
 import Sidebar from './components/Sidebar';
-import Dashboard from './sections/Dashboard';
 import Patients from './sections/Patients';
 import Appointments from './sections/Appointments';
 import Settings from './sections/Settings';
@@ -19,7 +18,7 @@ import Pharmacy from './sections/Pharmacy';
 import { getUserPermissions } from '../../constants/permissions';
 import { loggingService } from '../../services/loggingService';
 
-type PanelSection = 'dashboard' | 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
+type PanelSection = 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
 
 interface DoctorProfile {
   fullName: string;
@@ -46,7 +45,6 @@ export default function AdminPanel() {
     if (!user || !doctorProfile) return;
     
     const sectionNames: Record<string, string> = {
-      'dashboard': 'Anasayfa',
       'patients': 'Hastalar',
       'appointments': 'Randevular',
       'anamnez': 'Anamnez Ekranı',
@@ -143,9 +141,7 @@ export default function AdminPanel() {
         // Set initial section to first permission (permissions are ordered by priority)
         setCurrentSection(userPermissions[0] as PanelSection);
       } else {
-        // Fallback: For desk role, default to 'patients', otherwise 'dashboard'
-        const defaultSection = userRole === 'desk' ? 'patients' : 'dashboard';
-        setCurrentSection(defaultSection as PanelSection);
+        setCurrentSection('patients');
       }
     }
   }, [doctorProfile, panelLoading, currentSection]);
@@ -200,8 +196,6 @@ export default function AdminPanel() {
     }
 
     switch (currentSection) {
-      case 'dashboard':
-        return <Dashboard doctorProfile={doctorProfile} />;
       case 'patients':
         return <Patients doctorProfile={doctorProfile} />;
       case 'appointments':
@@ -225,7 +219,7 @@ export default function AdminPanel() {
       case 'pharmacy':
         return <Pharmacy doctorProfile={doctorProfile} />;
       default:
-        return <Dashboard doctorProfile={doctorProfile} />;
+        return null;
     }
   };
 
@@ -271,7 +265,6 @@ export default function AdminPanel() {
                 </div>
                 <div>
                   <h1 className="text-xl font-bold text-white">
-                    {currentSection === 'dashboard' && 'Dashboard'}
                     {currentSection === 'patients' && 'Hastalar'}
                     {currentSection === 'appointments' && 'Randevular'}
                     {currentSection === 'anamnez' && 'Anamnez Ekranı'}
