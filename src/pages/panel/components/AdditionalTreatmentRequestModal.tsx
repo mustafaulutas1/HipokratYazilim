@@ -344,7 +344,7 @@ const AdditionalTreatmentRequestModal: React.FC<AdditionalTreatmentRequestModalP
                   <option value="">Uygulama seçin...</option>
                   {applications.map((app) => (
                     <option key={app.id} value={app.id}>
-                      {app.name} {app.price > 0 && `(${app.price.toLocaleString('tr-TR')} TL)`}
+                      {app.name}
                     </option>
                   ))}
                 </select>

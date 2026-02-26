@@ -894,11 +894,6 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
                         <p className="text-white/80 text-sm leading-relaxed">
                           {request.treatmentDescription}
                         </p>
-                        {request.applicationPrice !== undefined && request.applicationPrice > 0 && (
-                          <span className="ml-2 px-2 py-1 bg-purple-500/30 text-purple-200 text-xs font-medium rounded-lg">
-                            {request.applicationPrice.toLocaleString('tr-TR')} TL
-                          </span>
-                        )}
                       </div>
                     </div>
 
@@ -1274,14 +1269,7 @@ const TreatmentRequestResponseModal: React.FC<TreatmentRequestResponseModalProps
             <div className="mb-4">
               <p className="text-gray-600 text-sm font-medium mb-2">Talep Edilen Tedavi:</p>
               <div className="p-3 bg-white border border-gray-200 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <p className="text-gray-800 font-medium">{request.treatmentDescription}</p>
-                  {request.applicationPrice !== undefined && request.applicationPrice > 0 && (
-                    <span className="px-2 py-1 bg-purple-100 text-purple-700 text-sm font-medium rounded-lg">
-                      {request.applicationPrice.toLocaleString('tr-TR')} TL
-                    </span>
-                  )}
-                </div>
+                <p className="text-gray-800 font-medium">{request.treatmentDescription}</p>
               </div>
             </div>
 
