@@ -404,8 +404,8 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
               
               await updateDoc(patientRef, {
                 'treatmentOptions.selectedMainApplications': updatedApplications,
-                // Send patient to accounting for payment of additional treatment
-                status: 'treatment_decided',
+                // Send patient to treatment screen first, then accounting after treatment is applied
+                status: 'treatment_continue',
                 paymentCompleted: false,
                 // Track that this is for additional treatment
                 additionalTreatmentPending: true,
@@ -414,7 +414,7 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
                 updatedAt: new Date().toISOString()
               });
               
-              console.log(`✅ Added treatment "${request.treatmentDescription}" to patient ${request.patientName} - sent to accounting`);
+              console.log(`✅ Added treatment "${request.treatmentDescription}" to patient ${request.patientName} - sent to treatment screen`);
             }
           }
         } catch (patientError) {
@@ -927,13 +927,37 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
                       </div>
                     )}
 
-                    {/* Click hint */}
-                    <div className="mt-3 flex items-center justify-end">
-                      <span className="text-xs text-white/40 flex items-center gap-1">
-                        <span>👆</span>
-                        {request.status === 'pending' ? 'Yanıtlamak için tıklayın' : 'Detay için tıklayın'}
-                      </span>
-                    </div>
+                    {/* Quick action buttons for pending requests */}
+                    {request.status === 'pending' ? (
+                      <div className="mt-3 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleRespondToTreatmentRequest(request.id, 'rejected', ''); }}
+                          className="flex-1 px-3 py-1.5 bg-red-500/20 hover:bg-red-500/40 border border-red-500/40 rounded-lg text-red-300 hover:text-red-200 text-xs font-medium transition-all duration-200 flex items-center justify-center gap-1"
+                        >
+                          ❌ Reddet
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleRespondToTreatmentRequest(request.id, 'approved', ''); }}
+                          className="flex-1 px-3 py-1.5 bg-green-500/20 hover:bg-green-500/40 border border-green-500/40 rounded-lg text-green-300 hover:text-green-200 text-xs font-medium transition-all duration-200 flex items-center justify-center gap-1"
+                        >
+                          ✅ Onayla
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleOpenTreatmentRequestModal(request); }}
+                          className="px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-lg text-purple-300 hover:text-purple-200 text-xs transition-all duration-200"
+                          title="Not ekleyerek yanıtla"
+                        >
+                          📝
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mt-3 flex items-center justify-end">
+                        <span className="text-xs text-white/40 flex items-center gap-1">
+                          <span>👆</span>
+                          Detay için tıklayın
+                        </span>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
