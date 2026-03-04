@@ -348,19 +348,6 @@ const AdditionalTreatmentRequestModal: React.FC<AdditionalTreatmentRequestModalP
                     </option>
                   ))}
                 </select>
-                {selectedApplicationId && (
-                  <div className="mt-2 p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                    <p className="text-purple-800 text-sm">
-                      <span className="font-medium">Seçilen Uygulama:</span>{' '}
-                      {applications.find(a => a.id === selectedApplicationId)?.name}
-                    </p>
-                    {applications.find(a => a.id === selectedApplicationId)?.description && (
-                      <p className="text-purple-600 text-xs mt-1">
-                        {applications.find(a => a.id === selectedApplicationId)?.description}
-                      </p>
-                    )}
-                  </div>
-                )}
               </>
             )}
           </div>
