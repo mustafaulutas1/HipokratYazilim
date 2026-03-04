@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, updateDoc, doc, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
 import { utils, writeFile } from 'xlsx';
 import MultiPaymentMethodSelector, { formatPaymentMethods } from '../../../components/UI/MultiPaymentMethodSelector';
 import type { PaymentMethodEntry } from '../../../components/UI/MultiPaymentMethodSelector';
@@ -483,11 +481,40 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
 
     try {
       setLoading(true);
-      const batch = writeBatch(db);
-      const patientRef = doc(db, 'patients', selectedPatient.id);
       
       const paymentAmountNum = parseFloat(debtPaymentAmount);
       const currentDebt = selectedPatient.debtAmount || 0;
+      
+      // Validate required patient fields
+      if (!selectedPatient.tcNo) {
+        alert('⚠️ Hastanın TC No bilgisi eksik. Lütfen hasta bilgilerini kontrol edin.');
+        setLoading(false);
+        return;
+      }
+      
+      // Validate payment amount
+      if (paymentAmountNum <= 0) {
+        alert('⚠️ Lütfen geçerli bir ödeme tutarı girin!');
+        setLoading(false);
+        return;
+      }
+      
+      if (!isPartialPayment && paymentAmountNum > currentDebt) {
+        alert(`⚠️ Ödeme tutarı borç tutarından fazla olamaz!\n\nMevcut Borç: ${currentDebt.toLocaleString('tr-TR')} TL\nGiriş Tutarı: ${paymentAmountNum.toLocaleString('tr-TR')} TL\n\nKısmi ödeme yapmak istiyorsanız "Hasta borcun tamamını ödemiyor" seçeneğini işaretleyin.`);
+        setLoading(false);
+        return;
+      }
+      
+      // Validate payment methods
+      const validPaymentMethods = debtPaymentMethods.filter(m => m.amount > 0);
+      if (validPaymentMethods.length === 0) {
+        alert('⚠️ Lütfen ödeme yöntemi seçin!');
+        setLoading(false);
+        return;
+      }
+      
+      const batch = writeBatch(db);
+      const patientRef = doc(db, 'patients', selectedPatient.id);
       const remainingDebt = currentDebt - paymentAmountNum;
       
       // First, get all unpaid pharmacy debts for this patient
@@ -499,15 +526,19 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         where('isPaid', '==', false)
       );
       
-      const debtsSnapshot = await getDocs(debtsQuery);
-      const unpaidDebts: any[] = [];
-      
-      debtsSnapshot.forEach((docSnap) => {
-        unpaidDebts.push({
-          id: docSnap.id,
-          ...docSnap.data()
+      let unpaidDebts: any[] = [];
+      try {
+        const debtsSnapshot = await getDocs(debtsQuery);
+        debtsSnapshot.forEach((docSnap) => {
+          unpaidDebts.push({
+            id: docSnap.id,
+            ...docSnap.data()
+          });
         });
-      });
+      } catch (debtsError: any) {
+        // If pharmacy_debts collection doesn't exist, continue without pharmacy debt updates
+        console.log('ℹ️ No pharmacy debts collection or query failed:', debtsError.message);
+      }
       
       // Sort by date, oldest first
       unpaidDebts.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
@@ -549,7 +580,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         lastDebtPaymentDate: new Date().toISOString(),
         lastDebtPaymentMethod: debtPaymentMethod,
         // Multi-payment method support for debt payments
-        lastDebtPaymentMethods: debtPaymentMethods.filter(m => m.amount > 0),
+        lastDebtPaymentMethods: validPaymentMethods.length > 0 ? validPaymentMethods : [{ method: debtPaymentMethod, amount: paymentAmountNum }],
       };
       
       if (remainingDebt <= 0) {
@@ -560,11 +591,11 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         updateData.debtReason = null;
         updateData.debtFullyPaidAt = new Date().toISOString();
         updateData.debtFullyPaidAmount = currentDebt;
-      } else {
+      } else if (remainingDebt > 0) {
         // Partial debt payment
         updateData.hasDebt = true;
         updateData.debtAmount = Math.round(remainingDebt * 100) / 100;
-        updateData.debtReason = `Kısmi borç ödemesi yapıldı - Ödenen: ${paymentAmountNum.toLocaleString('tr-TR')} TL, Kalan: ${remainingDebt.toLocaleString('tr-TR')} TL`;
+        updateData.debtReason = `Kısmi borç ödemesi yapıldı - Ödenen: ${paymentAmountNum.toLocaleString('tr-TR')} TL, Kalan: ${Math.round(remainingDebt * 100) / 100} TL`;
       }
       
       batch.update(patientRef, updateData);
@@ -574,10 +605,10 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
 
       if (remainingDebt <= 0) {
         console.log(`✅ Debt fully paid for patient: ${selectedPatient.fullName}`);
-        alert(`Borç tamamen kapatıldı! Ödenen tutar: ${paymentAmountNum.toLocaleString('tr-TR')} TL`);
+        alert(`✅ Borç tamamen kapatıldı! Ödenen tutar: ${paymentAmountNum.toLocaleString('tr-TR')} TL`);
       } else {
         console.log(`✅ Partial debt payment for patient: ${selectedPatient.fullName}, Remaining: ${remainingDebt.toLocaleString('tr-TR')} TL`);
-        alert(`Kısmi borç ödemesi alındı! Kalan borç: ${remainingDebt.toLocaleString('tr-TR')} TL`);
+        alert(`✅ Kısmi borç ödemesi alındı! Kalan borç: ${Math.round(remainingDebt * 100) / 100} TL`);
       }
       
       // Refresh data
@@ -590,9 +621,11 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       // Refetch data
       window.location.reload();
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Error processing debt payment:', error);
-      alert('Borç ödemesi işlenirken bir hata oluştu. Lütfen tekrar deneyin.');
+      console.error('Error message:', error.message);
+      console.error('Error code:', error.code);
+      alert(`❌ Borç ödemesi işlenirken bir hata oluştu.\n\nHata: ${error.message || 'Bilinmeyen hata'}\n\nLütfen yöneticiyle iletişim kurun.`);
     } finally {
       setLoading(false);
     }
@@ -635,17 +668,21 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         ...doc.data()
       } as PaymentPatient));
 
-      // Ödemeleri filtrele
+      // Ödemeleri filtrele – paymentDate yoksa updatedAt veya createdAt'e geri dön
       const periodPayments = allClinicPatients.filter((patient: PaymentPatient) => {
-        if (!patient.paymentCompleted || !patient.paymentDate) return false;
-        const paymentDate = new Date(patient.paymentDate);
+        if (!patient.paymentCompleted) return false;
+        const dateStr = patient.paymentDate || patient.updatedAt || patient.createdAt;
+        if (!dateStr) return false;
+        const paymentDate = new Date(dateStr);
         return paymentDate >= startDate && paymentDate <= now;
       });
 
-      // İadeleri filtrele
+      // İadeleri filtrele – refundDate yoksa updatedAt veya createdAt'e geri dön
       const periodRefunds = allClinicPatients.filter((patient: PaymentPatient) => {
-        if (!patient.refundProcessed || !patient.refundDate) return false;
-        const refundDate = new Date(patient.refundDate);
+        if (!patient.refundProcessed) return false;
+        const dateStr = patient.refundDate || patient.updatedAt || patient.createdAt;
+        if (!dateStr) return false;
+        const refundDate = new Date(dateStr);
         return refundDate >= startDate && refundDate <= now;
       });
 
@@ -655,8 +692,14 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       const netRevenue = totalPayments - totalRefunds;
 
       setReportData({
-        payments: periodPayments.sort((a, b) => new Date(b.paymentDate || '').getTime() - new Date(a.paymentDate || '').getTime()),
-        refunds: periodRefunds.sort((a, b) => new Date(b.refundDate || '').getTime() - new Date(a.refundDate || '').getTime()),
+        payments: periodPayments.sort((a, b) =>
+          new Date(b.paymentDate || b.updatedAt || b.createdAt || '').getTime() -
+          new Date(a.paymentDate || a.updatedAt || a.createdAt || '').getTime()
+        ),
+        refunds: periodRefunds.sort((a, b) =>
+          new Date(b.refundDate || b.updatedAt || b.createdAt || '').getTime() -
+          new Date(a.refundDate || a.updatedAt || a.createdAt || '').getTime()
+        ),
         periodStats: {
           totalPayments,
           totalRefunds,
@@ -673,102 +716,205 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
     }
   };
 
-  const generatePDFReport = () => {
-    const doc = new jsPDF();
+  const generateExcelReport = () => {
     const periodText = reportPeriod === 'daily' ? 'Günlük' : reportPeriod === 'weekly' ? 'Haftalık' : 'Aylık';
     const currentDate = new Date().toLocaleDateString('tr-TR');
+    const workbook = utils.book_new();
+
+    // Stil özellikleri
+    const headerStyle = {
+      font: { bold: true, color: { rgb: 'FFFFFF' }, size: 12 },
+      fill: { fgColor: { rgb: '1F4E78' } },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
+    };
+
+    const titleStyle = {
+      font: { bold: true, size: 14, color: { rgb: '1F4E78' } },
+      alignment: { horizontal: 'left', vertical: 'center' }
+    };
+
+    const dataStyle = {
+      alignment: { horizontal: 'left', vertical: 'center' },
+      border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
+    };
+
+    const numberStyle = {
+      numFmt: '#,##0.00',
+      alignment: { horizontal: 'right', vertical: 'center' },
+      border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
+    };
+
+    // Özet sayfası
+    const summaryData = [
+      [`${periodText} Muhasebe Raporu - ${currentDate}`, '', ''],
+      ['', '', ''],
+      ['Rapor Dönemi', periodText, ''],
+      ['Rapor Tarihi', currentDate, ''],
+      ['', '', ''],
+      ['ÖZET İSTATİSTİKLER', '', ''],
+      ['Toplam Ödeme Sayısı', reportData.periodStats.paymentCount, ''],
+      ['Toplam Ödeme Tutarı', reportData.periodStats.totalPayments, 'TL'],
+      ['', '', ''],
+      ['Toplam İade Sayısı', reportData.periodStats.refundCount, ''],
+      ['Toplam İade Tutarı', reportData.periodStats.totalRefunds, 'TL'],
+      ['', '', ''],
+      ['Net Gelir', reportData.periodStats.netRevenue, 'TL'],
+    ];
+
+    const summarySheet = utils.aoa_to_sheet(summaryData);
+    summarySheet['A1'].s = titleStyle;
     
-    // Başlık
-    doc.setFontSize(20);
-    doc.text(`${periodText} Muhasebe Raporu`, 20, 20);
-    
-    doc.setFontSize(12);
-    doc.text(`Tarih: ${currentDate}`, 20, 30);
-    doc.text(`Klinik: ${doctorProfile?.fullName || 'Belirtilmemiş'}`, 20, 35);
-    
-    // İstatistikler
-    doc.setFontSize(14);
-    doc.text('Özet İstatistikler', 20, 50);
-    
-    doc.setFontSize(10);
-    doc.text(`Toplam Ödeme: ${formatCurrency(reportData.periodStats.totalPayments)}`, 20, 60);
-    doc.text(`Toplam İade: ${formatCurrency(reportData.periodStats.totalRefunds)}`, 20, 65);
-    doc.text(`Net Gelir: ${formatCurrency(reportData.periodStats.netRevenue)}`, 20, 70);
-    doc.text(`Ödeme Sayısı: ${reportData.periodStats.paymentCount}`, 20, 75);
-    doc.text(`İade Sayısı: ${reportData.periodStats.refundCount}`, 20, 80);
-    
-    // Ödemeler tablosu
+    // Başlık satırlarını stillendir
+    [3, 4, 6, 7, 8, 9, 10, 11, 12, 13].forEach(row => {
+      if (summarySheet[`A${row}`]) summarySheet[`A${row}`].s = { ...dataStyle, font: { bold: true } };
+      if (summarySheet[`B${row}`]) summarySheet[`B${row}`].s = numberStyle;
+    });
+
+    summarySheet['!cols'] = [{ wch: 25 }, { wch: 20 }, { wch: 10 }];
+    utils.book_append_sheet(workbook, summarySheet, 'Özet');
+
+    // Ödemeler sayfası
     if (reportData.payments.length > 0) {
-      doc.setFontSize(12);
-      doc.text('Ödemeler', 20, 95);
+      const paymentRows = reportData.payments.map(p => ({
+        'Hasta Adı': p.fullName,
+        'TC No': p.tcNo || '-',
+        'Telefon': p.phone || '-',
+        'Ödeme Tutarı (TL)': p.paymentAmount || 0,
+        'Ödeme Tarihi': p.paymentDate ? new Date(p.paymentDate).toLocaleDateString('tr-TR') : '-',
+        'Ödeme Saati': p.paymentDate ? new Date(p.paymentDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '-',
+        'Ödeme Yöntemi': p.paymentMethods && p.paymentMethods.length > 0
+          ? formatPaymentMethods(p.paymentMethods)
+          : getPaymentMethodLabel(p.paymentMethod || 'nakit'),
+      }));
       
-      const paymentTableData = reportData.payments.map(patient => [
-        patient.fullName,
-        patient.tcNo,
-        formatCurrency(patient.paymentAmount || 0),
-        formatDate(patient.paymentDate),
-        patient.paymentMethods && patient.paymentMethods.length > 0
-          ? formatPaymentMethods(patient.paymentMethods)
-          : getPaymentMethodLabel(patient.paymentMethod || 'nakit')
-      ]);
+      const paymentSheet = utils.json_to_sheet(paymentRows);
       
-      (doc as any).autoTable({
-        head: [['Hasta Adı', 'TC No', 'Tutar', 'Tarih', 'Yöntem']],
-        body: paymentTableData,
-        startY: 100,
-        styles: { fontSize: 8 }
+      // Başlık satırını stillendir
+      const headerRow = ['A1', 'B1', 'C1', 'D1', 'E1', 'F1', 'G1'];
+      headerRow.forEach(cell => {
+        if (paymentSheet[cell]) paymentSheet[cell].s = headerStyle;
       });
+
+      // Para tutarlarını formatla
+      for (let i = 2; i <= paymentRows.length + 1; i++) {
+        const cell = paymentSheet[`D${i}`];
+        if (cell) {
+          cell.s = numberStyle;
+          cell.z = '#,##0.00';
+        }
+      }
+
+      paymentSheet['!cols'] = [{ wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 18 }];
+      paymentSheet['!freeze'] = { xSplit: 0, ySplit: 1 };
+      utils.book_append_sheet(workbook, paymentSheet, 'Ödemeler');
     }
-    
-    // İadeler tablosu
+
+    // İadeler sayfası
     if (reportData.refunds.length > 0) {
-      const lastTableEnd = (doc as any).lastAutoTable.finalY || 100;
-      doc.setFontSize(12);
-      doc.text('İadeler', 20, lastTableEnd + 10);
+      const refundRows = reportData.refunds.map(p => ({
+        'Hasta Adı': p.fullName,
+        'TC No': p.tcNo || '-',
+        'Telefon': p.phone || '-',
+        'İade Tutarı (TL)': p.refundAmount || 0,
+        'İade Tarihi': p.refundDate ? new Date(p.refundDate).toLocaleDateString('tr-TR') : '-',
+        'İade Saati': p.refundDate ? new Date(p.refundDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '-',
+        'İade Yöntemi': p.refundMethods && p.refundMethods.length > 0
+          ? formatPaymentMethods(p.refundMethods)
+          : getPaymentMethodLabel(p.refundMethod || 'nakit'),
+      }));
       
-      const refundTableData = reportData.refunds.map(patient => [
-        patient.fullName,
-        patient.tcNo,
-        formatCurrency(patient.refundAmount || 0),
-        formatDate(patient.refundDate),
-        patient.refundMethods && patient.refundMethods.length > 0
-          ? formatPaymentMethods(patient.refundMethods)
-          : getPaymentMethodLabel(patient.refundMethod || 'nakit')
-      ]);
+      const refundSheet = utils.json_to_sheet(refundRows);
       
-      (doc as any).autoTable({
-        head: [['Hasta Adı', 'TC No', 'Tutar', 'Tarih', 'Yöntem']],
-        body: refundTableData,
-        startY: lastTableEnd + 15,
-        styles: { fontSize: 8 }
+      // Başlık satırını stillendir
+      const headerRow = ['A1', 'B1', 'C1', 'D1', 'E1', 'F1', 'G1'];
+      headerRow.forEach(cell => {
+        if (refundSheet[cell]) refundSheet[cell].s = headerStyle;
       });
+
+      // Para tutarlarını formatla
+      for (let i = 2; i <= refundRows.length + 1; i++) {
+        const cell = refundSheet[`D${i}`];
+        if (cell) {
+          cell.s = numberStyle;
+          cell.z = '#,##0.00';
+        }
+      }
+
+      refundSheet['!cols'] = [{ wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 18 }];
+      refundSheet['!freeze'] = { xSplit: 0, ySplit: 1 };
+      utils.book_append_sheet(workbook, refundSheet, 'İadeler');
     }
-    
-    // PDF'i indir
-    doc.save(`${periodText}_Muhasebe_Raporu_${currentDate.replace(/\//g, '-')}.pdf`);
+
+    writeFile(workbook, `${periodText}_Muhasebe_Raporu_${currentDate.replace(/\./g, '-')}.xlsx`);
   };
 
   // Excel export function for accounting data
   const exportToExcel = () => {
     const workbook = utils.book_new();
     
+    // Stil tanımları
+    const headerStyle = {
+      font: { bold: true, color: { rgb: 'FFFFFF' }, size: 11 },
+      fill: { fgColor: { rgb: '1F4E78' } },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
+    };
+
+    const titleStyle = {
+      font: { bold: true, size: 14, color: { rgb: 'FFFFFF' } },
+      fill: { fgColor: { rgb: '203864' } },
+      alignment: { horizontal: 'center', vertical: 'center' }
+    };
+
+    const labelStyle = {
+      font: { bold: true, size: 11, color: { rgb: '1F4E78' } },
+      alignment: { horizontal: 'left', vertical: 'center' }
+    };
+
+    const dataStyle = {
+      alignment: { horizontal: 'left', vertical: 'center' },
+      border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
+    };
+
+    const numberStyle = {
+      numFmt: '#,##0.00',
+      alignment: { horizontal: 'right', vertical: 'center' },
+      border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
+    };
+
     // Özet sayfası
     const summaryData = [
-      ['MUHASEBE RAPORU - ÖZET'],
-      [''],
-      ['Rapor Tarihi', new Date().toLocaleDateString('tr-TR')],
-      [''],
-      ['İSTATİSTİKLER'],
-      ['Bekleyen Ödeme Sayısı', stats.totalPendingPayments],
-      ['Bugünkü Ödeme Sayısı', stats.todayPayments],
-      ['Toplam Gelir', formatCurrency(stats.totalRevenue)],
-      ['Bekleyen Tutar', formatCurrency(stats.pendingAmount)],
-      ['Toplam İade', formatCurrency(stats.totalRefunds)],
-      ['İade Bekleyen', stats.notAppliedTreatments],
-      ['Toplam Borçlu Hasta', stats.totalDebtPatients],
-      ['Toplam Borç Tutarı', formatCurrency(stats.totalDebtAmount)]
+      ['MUHASEBE RAPORU - ÖZET', '', ''],
+      ['', '', ''],
+      ['Rapor Tarihi', new Date().toLocaleDateString('tr-TR'), ''],
+      ['', '', ''],
+      ['İSTATİSTİKLER', '', ''],
+      ['Bekleyen Ödeme Sayısı', stats.totalPendingPayments, 'Adet'],
+      ['Bugünkü Ödeme Sayısı', stats.todayPayments, 'Adet'],
+      ['Toplam Gelir', stats.totalRevenue, 'TL'],
+      ['Bekleyen Tutar', stats.pendingAmount, 'TL'],
+      ['Toplam İade', stats.totalRefunds, 'TL'],
+      ['İade Bekleyen Sayısı', stats.notAppliedTreatments, 'Adet'],
+      ['', '', ''],
+      ['BORÇ BİLGİLERİ', '', ''],
+      ['Toplam Borçlu Hasta', stats.totalDebtPatients, 'Kişi'],
+      ['Toplam Borç Tutarı', stats.totalDebtAmount, 'TL'],
     ];
+    
     const summarySheet = utils.aoa_to_sheet(summaryData);
+    
+    // Başlık hücrelerini stillendir
+    summarySheet['A1'].s = titleStyle;
+    summarySheet['!merge'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }];
+    
+    // Label ve veri hücrelerini stillendir
+    for (let i = 2; i <= summaryData.length; i++) {
+      if (summarySheet[`A${i}`]) summarySheet[`A${i}`].s = labelStyle;
+      if (summarySheet[`B${i}`] && ![3, 4, 12].includes(i)) summarySheet[`B${i}`].s = numberStyle;
+    }
+
+    summarySheet['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 12 }];
     utils.book_append_sheet(workbook, summarySheet, 'Özet');
 
     // Bekleyen Ödemeler sayfası
@@ -777,11 +923,29 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         'Hasta Adı': p.fullName,
         'TC No': p.tcNo,
         'Telefon': p.phone,
-        'Tedavi Tarihi': formatDate(p.treatmentStartedAt),
+        'Tedavi Tarihi': p.treatmentStartedAt ? new Date(p.treatmentStartedAt).toLocaleDateString('tr-TR') : '-',
         'Doktor': p.assignedDoctorName || 'Belirtilmemiş',
-        'Borç Durumu': p.hasDebt && p.debtAmount ? `${p.debtAmount.toLocaleString('tr-TR')} TL` : 'Yok'
+        'Borç Durumu': p.hasDebt && p.debtAmount ? p.debtAmount : 0,
       }));
+      
       const pendingSheet = utils.json_to_sheet(pendingData);
+      
+      // Başlık stillendir
+      ['A1', 'B1', 'C1', 'D1', 'E1', 'F1'].forEach(cell => {
+        if (pendingSheet[cell]) pendingSheet[cell].s = headerStyle;
+      });
+
+      // Sayı sütunlarını formatla
+      for (let i = 2; i <= pendingData.length + 1; i++) {
+        const cell = pendingSheet[`F${i}`];
+        if (cell) {
+          cell.s = numberStyle;
+          cell.z = '#,##0.00';
+        }
+      }
+
+      pendingSheet['!cols'] = [{ wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 15 }];
+      pendingSheet['!freeze'] = { xSplit: 0, ySplit: 1 };
       utils.book_append_sheet(workbook, pendingSheet, 'Bekleyen Ödemeler');
     }
 
@@ -792,13 +956,36 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         'TC No': p.tcNo,
         'Telefon': p.phone,
         'Ödeme Tutarı': p.paymentAmount || 0,
-        'Ödeme Tarihi': formatDate(p.paymentDate),
+        'Ödeme Tarihi': p.paymentDate ? new Date(p.paymentDate).toLocaleDateString('tr-TR') : '-',
         'Ödeme Yöntemi': p.paymentMethods && p.paymentMethods.length > 0
           ? formatPaymentMethods(p.paymentMethods)
           : getPaymentMethodLabel(p.paymentMethod || 'nakit'),
-        'Borç Durumu': p.hasDebt && p.debtAmount ? `${p.debtAmount.toLocaleString('tr-TR')} TL` : 'Yok'
+        'Borç Durumu': p.hasDebt && p.debtAmount ? p.debtAmount : 0,
       }));
+      
       const paidSheet = utils.json_to_sheet(paidData);
+      
+      // Başlık stillendir
+      ['A1', 'B1', 'C1', 'D1', 'E1', 'F1', 'G1'].forEach(cell => {
+        if (paidSheet[cell]) paidSheet[cell].s = headerStyle;
+      });
+
+      // Sayı sütunlarını formatla
+      for (let i = 2; i <= paidData.length + 1; i++) {
+        const d_cell = paidSheet[`D${i}`];
+        const g_cell = paidSheet[`G${i}`];
+        if (d_cell) {
+          d_cell.s = numberStyle;
+          d_cell.z = '#,##0.00';
+        }
+        if (g_cell) {
+          g_cell.s = numberStyle;
+          g_cell.z = '#,##0.00';
+        }
+      }
+
+      paidSheet['!cols'] = [{ wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 15 }];
+      paidSheet['!freeze'] = { xSplit: 0, ySplit: 1 };
       utils.book_append_sheet(workbook, paidSheet, 'Tamamlanan Ödemeler');
     }
 
@@ -809,11 +996,29 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         'TC No': p.tcNo,
         'Telefon': p.phone,
         'Ödeme Tutarı': p.paymentAmount || 0,
-        'Ödeme Tarihi': formatDate(p.paymentDate),
+        'Ödeme Tarihi': p.paymentDate ? new Date(p.paymentDate).toLocaleDateString('tr-TR') : '-',
         'İade Nedeni': p.treatmentNotAppliedReason || p.unselectedTreatmentReason || 'Belirtilmemiş',
         'Kısmi Tedavi': p.treatmentPartiallyApplied ? 'Evet' : 'Hayır'
       }));
+      
       const refundSheet = utils.json_to_sheet(refundData);
+      
+      // Başlık stillendir
+      ['A1', 'B1', 'C1', 'D1', 'E1', 'F1', 'G1'].forEach(cell => {
+        if (refundSheet[cell]) refundSheet[cell].s = headerStyle;
+      });
+
+      // Sayı sütunlarını formatla
+      for (let i = 2; i <= refundData.length + 1; i++) {
+        const cell = refundSheet[`D${i}`];
+        if (cell) {
+          cell.s = numberStyle;
+          cell.z = '#,##0.00';
+        }
+      }
+
+      refundSheet['!cols'] = [{ wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 12 }];
+      refundSheet['!freeze'] = { xSplit: 0, ySplit: 1 };
       utils.book_append_sheet(workbook, refundSheet, 'İade Bekleyenler');
     }
 
@@ -824,10 +1029,28 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         'TC No': p.tcNo,
         'Telefon': p.phone,
         'Borç Tutarı': p.debtAmount || 0,
-        'Borç Tarihi': formatDate(p.debtDate),
+        'Borç Tarihi': p.debtDate ? new Date(p.debtDate).toLocaleDateString('tr-TR') : '-',
         'Borç Sebebi': p.debtReason || 'Belirtilmemiş'
       }));
+      
       const debtSheet = utils.json_to_sheet(debtData);
+      
+      // Başlık stillendir
+      ['A1', 'B1', 'C1', 'D1', 'E1', 'F1'].forEach(cell => {
+        if (debtSheet[cell]) debtSheet[cell].s = headerStyle;
+      });
+
+      // Sayı sütunlarını formatla
+      for (let i = 2; i <= debtData.length + 1; i++) {
+        const cell = debtSheet[`D${i}`];
+        if (cell) {
+          cell.s = numberStyle;
+          cell.z = '#,##0.00';
+        }
+      }
+
+      debtSheet['!cols'] = [{ wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 25 }];
+      debtSheet['!freeze'] = { xSplit: 0, ySplit: 1 };
       utils.book_append_sheet(workbook, debtSheet, 'Borçlu Hastalar');
     }
 
@@ -2672,11 +2895,11 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                 Kapat
               </button>
               <button
-                onClick={generatePDFReport}
+                onClick={generateExcelReport}
                 disabled={reportData.payments.length === 0 && reportData.refunds.length === 0}
-                className="px-4 py-2 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-lg font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                📄 PDF Dönüştür
+                📥 Excel İndir
               </button>
             </div>
           </div>
