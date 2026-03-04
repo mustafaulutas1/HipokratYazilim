@@ -22,6 +22,8 @@ interface SavedProtocol {
 
   phases: {
     remember?: TreatmentPhase;
+    regenerations?: TreatmentPhase[];
+    // Legacy fields – kept for backward compatibility reading old Firestore docs
     regeneration1?: TreatmentPhase;
     regeneration2?: TreatmentPhase;
     regeneration3?: TreatmentPhase;
@@ -105,6 +107,42 @@ interface TreatmentModalProps {
   patient: Patient | null;
   onStartTreatment: (patient: Patient, treatmentOptions: TreatmentOptions) => void;
 }
+
+// ─── Pure helpers (no React state) ──────────────────────────────────────────
+
+/** Returns the regenerations array from a protocol, falling back to legacy fields. */
+const getRegenerations = (phases: SavedProtocol['phases']): TreatmentPhase[] => {
+  if (phases.regenerations && phases.regenerations.length > 0) return phases.regenerations;
+  const regs: TreatmentPhase[] = [];
+  if (phases.regeneration1) regs.push(phases.regeneration1);
+  if (phases.regeneration2) regs.push(phases.regeneration2);
+  if (phases.regeneration3) regs.push(phases.regeneration3);
+  if (phases.regeneration4) regs.push(phases.regeneration4);
+  return regs;
+};
+
+/** Converts old regeneration1-4 fields to the new regenerations array. */
+const normalizeProtocol = (protocol: SavedProtocol): SavedProtocol => {
+  if (protocol.phases.regenerations !== undefined) return protocol;
+  return {
+    ...protocol,
+    phases: { ...protocol.phases, regenerations: getRegenerations(protocol.phases) }
+  };
+};
+
+/** Color palette for regeneration phase cards – cycles for phases beyond 8. */
+const REGEN_COLORS = [
+  { bg: 'bg-orange-50', border: 'border-orange-200', circle: 'bg-orange-500', label: 'text-orange-700', dashed: 'border-orange-300', lightCircle: 'bg-orange-200', lightLabel: 'text-orange-600', btn: 'bg-orange-500 hover:bg-orange-600' },
+  { bg: 'bg-yellow-50', border: 'border-yellow-200', circle: 'bg-yellow-500', label: 'text-yellow-700', dashed: 'border-yellow-300', lightCircle: 'bg-yellow-200', lightLabel: 'text-yellow-600', btn: 'bg-yellow-500 hover:bg-yellow-600' },
+  { bg: 'bg-green-50', border: 'border-green-200', circle: 'bg-green-500', label: 'text-green-700', dashed: 'border-green-300', lightCircle: 'bg-green-200', lightLabel: 'text-green-600', btn: 'bg-green-500 hover:bg-green-600' },
+  { bg: 'bg-blue-50', border: 'border-blue-200', circle: 'bg-blue-500', label: 'text-blue-700', dashed: 'border-blue-300', lightCircle: 'bg-blue-200', lightLabel: 'text-blue-600', btn: 'bg-blue-500 hover:bg-blue-600' },
+  { bg: 'bg-purple-50', border: 'border-purple-200', circle: 'bg-purple-500', label: 'text-purple-700', dashed: 'border-purple-300', lightCircle: 'bg-purple-200', lightLabel: 'text-purple-600', btn: 'bg-purple-500 hover:bg-purple-600' },
+  { bg: 'bg-indigo-50', border: 'border-indigo-200', circle: 'bg-indigo-500', label: 'text-indigo-700', dashed: 'border-indigo-300', lightCircle: 'bg-indigo-200', lightLabel: 'text-indigo-600', btn: 'bg-indigo-500 hover:bg-indigo-600' },
+  { bg: 'bg-pink-50', border: 'border-pink-200', circle: 'bg-pink-500', label: 'text-pink-700', dashed: 'border-pink-300', lightCircle: 'bg-pink-200', lightLabel: 'text-pink-600', btn: 'bg-pink-500 hover:bg-pink-600' },
+  { bg: 'bg-teal-50', border: 'border-teal-200', circle: 'bg-teal-500', label: 'text-teal-700', dashed: 'border-teal-300', lightCircle: 'bg-teal-200', lightLabel: 'text-teal-600', btn: 'bg-teal-500 hover:bg-teal-600' },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 const TreatmentModal: React.FC<TreatmentModalProps> = ({
   isOpen,
@@ -287,7 +325,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
         priority: p.priority
       })));
       
-      setSavedProtocols(protocols);
+      setSavedProtocols(protocols.map(normalizeProtocol));
       console.log('✅ fetchSavedProtocols: State updated with protocols');
       console.log('═══════════════════════════════════════════════════════════');
     } catch (error) {
@@ -364,42 +402,14 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
       });
     }
 
-    if (protocol.phases.regeneration1) {
+    getRegenerations(protocol.phases).forEach((reg, idx) => {
       sequence.push({
-        phase: '1 Regeneration',
-        treatment: protocol.phases.regeneration1.treatment,
-        dosage: protocol.phases.regeneration1.dosage,
+        phase: `${idx + 1} Regeneration`,
+        treatment: reg.treatment,
+        dosage: reg.dosage,
         order: order++
       });
-    }
-
-    if (protocol.phases.regeneration2) {
-      sequence.push({
-        phase: '2 Regeneration',
-        treatment: protocol.phases.regeneration2.treatment,
-        dosage: protocol.phases.regeneration2.dosage,
-        order: order++
-      });
-    }
-
-    // Add optional regeneration phases if they exist
-    if (protocol.phases.regeneration3) {
-      sequence.push({
-        phase: '3 Regeneration',
-        treatment: protocol.phases.regeneration3.treatment,
-        dosage: protocol.phases.regeneration3.dosage,
-        order: order++
-      });
-    }
-
-    if (protocol.phases.regeneration4) {
-      sequence.push({
-        phase: '4 Regeneration',
-        treatment: protocol.phases.regeneration4.treatment,
-        dosage: protocol.phases.regeneration4.dosage,
-        order: order++
-      });
-    }
+    });
 
     // Add main treatments
     protocol.phases.mainTreatments.forEach((mainTreatment) => {
@@ -841,140 +851,42 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
     });
   };
 
-  // Add 1 Regeneration phase
-  const handleAddRegeneration1 = () => {
+  // Add next regeneration phase (unlimited)
+  const handleAddRegeneration = () => {
     if (!editedProtocol) return;
-    
-    // Prevent adding Reg 1 if Remember doesn't exist
     if (!editedProtocol.phases.remember) {
-      alert('1. Rejenerasyon fazını eklemek için önce Remember fazını eklemelisiniz.');
+      alert('Rejenerasyon fazı eklemek için önce Remember fazını eklemelisiniz.');
       return;
     }
-
+    const current = editedProtocol.phases.regenerations || [];
     setEditedProtocol({
       ...editedProtocol,
-      phases: {
-        ...editedProtocol.phases,
-        regeneration1: { treatment: '', dosage: '' }
-      }
+      phases: { ...editedProtocol.phases, regenerations: [...current, { treatment: '', dosage: '' }] }
     });
   };
 
-  // Remove 1 Regeneration phase
-  const handleRemoveRegeneration1 = () => {
+  // Remove regeneration phase by index (only the last one)
+  const handleRemoveRegeneration = (index: number) => {
     if (!editedProtocol) return;
-    
-    // Prevent removing Reg 1 if Reg 2 exists
-    if (editedProtocol.phases.regeneration2) {
-      alert('1. Rejenerasyon fazını kaldırmak için önce 2. Rejenerasyon fazını kaldırmalısınız.');
+    const current = editedProtocol.phases.regenerations || [];
+    if (index !== current.length - 1) {
+      alert('Yalnızca son rejenerasyon fazını kaldırabilirsiniz.');
       return;
     }
-
-    const { regeneration1, ...restPhases } = editedProtocol.phases;
     setEditedProtocol({
       ...editedProtocol,
-      phases: restPhases
+      phases: { ...editedProtocol.phases, regenerations: current.slice(0, -1) }
     });
   };
 
-  // Add 2 Regeneration phase
-  const handleAddRegeneration2 = () => {
+  // Update a field of a specific regeneration phase
+  const handleUpdateRegeneration = (index: number, field: 'treatment' | 'dosage', value: string) => {
     if (!editedProtocol) return;
-
-    // Prevent adding Reg 2 if Reg 1 doesn't exist
-    if (!editedProtocol.phases.regeneration1) {
-      alert('2. Rejenerasyon fazını eklemek için önce 1. Rejenerasyon fazını eklemelisiniz.');
-      return;
-    }
-
+    const current = [...(editedProtocol.phases.regenerations || [])];
+    current[index] = { ...current[index], [field]: field === 'treatment' ? value.toUpperCase() : value };
     setEditedProtocol({
       ...editedProtocol,
-      phases: {
-        ...editedProtocol.phases,
-        regeneration2: { treatment: '', dosage: '' }
-      }
-    });
-  };
-
-  // Remove 2 Regeneration phase
-  const handleRemoveRegeneration2 = () => {
-    if (!editedProtocol) return;
-
-    // Prevent removing Reg 2 if Reg 3 exists
-    if (editedProtocol.phases.regeneration3) {
-      alert('2. Rejenerasyon fazını kaldırmak için önce 3. Rejenerasyon fazını kaldırmalısınız.');
-      return;
-    }
-
-    const { regeneration2, ...restPhases } = editedProtocol.phases;
-    setEditedProtocol({
-      ...editedProtocol,
-      phases: restPhases
-    });
-  };
-
-  // Add 3 Regeneration phase
-  const handleAdd3Regeneration = () => {
-    if (!editedProtocol) return;
-
-    // Prevent adding Reg 3 if Reg 2 doesn't exist
-    if (!editedProtocol.phases.regeneration2) {
-      alert('3. Rejenerasyon fazını eklemek için önce 2. Rejenerasyon fazını eklemelisiniz.');
-      return;
-    }
-
-    setEditedProtocol({
-      ...editedProtocol,
-      phases: {
-        ...editedProtocol.phases,
-        regeneration3: { treatment: '', dosage: '' }
-      }
-    });
-  };
-
-  // Remove 3 Regeneration phase
-  const handleRemove3Regeneration = () => {
-    if (!editedProtocol) return;
-
-    // Prevent removing phase 3 if phase 4 exists
-    if (editedProtocol.phases.regeneration4) {
-      alert('3. Rejenerasyon fazını kaldırmak için önce 4. Rejenerasyon fazını kaldırmalısınız.');
-      return;
-    }
-
-    const { regeneration3, ...restPhases } = editedProtocol.phases;
-    setEditedProtocol({
-      ...editedProtocol,
-      phases: restPhases
-    });
-  };
-
-  // Add 4 Regeneration phase
-  const handleAdd4Regeneration = () => {
-    if (!editedProtocol) return;
-
-    // Prevent adding phase 4 if phase 3 doesn't exist
-    if (!editedProtocol.phases.regeneration3) {
-      alert('4. Rejenerasyon fazını eklemek için önce 3. Rejenerasyon fazını eklemelisiniz.');
-      return;
-    }
-
-    setEditedProtocol({
-      ...editedProtocol,
-      phases: {
-        ...editedProtocol.phases,
-        regeneration4: { treatment: 'SDS-X', dosage: '3X1 T' }
-      }
-    });
-  };
-
-  // Remove 4 Regeneration phase
-  const handleRemove4Regeneration = () => {
-    if (!editedProtocol) return;
-    const { regeneration4, ...restPhases } = editedProtocol.phases;
-    setEditedProtocol({
-      ...editedProtocol,
-      phases: restPhases
+      phases: { ...editedProtocol.phases, regenerations: current }
     });
   };
 
@@ -988,8 +900,11 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
       // Update patient record directly with customized protocol
       const patientRef = doc(db, 'patients', patient.id);
 
+      // Strip legacy regeneration1-4 fields; save only the regenerations array
+      const { regeneration1, regeneration2, regeneration3, regeneration4, ...cleanPhases } = editedProtocol.phases;
       const customizedProtocolData = {
         ...editedProtocol,
+        phases: { ...cleanPhases, regenerations: editedProtocol.phases.regenerations || [] },
         patientId: patient.id,
         patientName: patient.fullName,
         originalProtocolId: editedProtocol.originalProtocolId,
@@ -1444,26 +1359,11 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                               R: {protocol.phases.remember.treatment}
                                             </span>
                                           )}
-                                          {protocol.phases.regeneration1 && (
-                                            <span className="text-xs px-2 py-1 bg-orange-100 text-orange-700 rounded">
-                                              1: {protocol.phases.regeneration1.treatment}
+                                          {getRegenerations(protocol.phases).map((reg, idx) => (
+                                            <span key={idx} className="text-xs px-2 py-1 bg-orange-100 text-orange-700 rounded">
+                                              {idx + 1}: {reg.treatment}
                                             </span>
-                                          )}
-                                          {protocol.phases.regeneration2 && (
-                                            <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-700 rounded">
-                                              2: {protocol.phases.regeneration2.treatment}
-                                            </span>
-                                          )}
-                                          {protocol.phases.regeneration3 && (
-                                            <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded">
-                                              3: {protocol.phases.regeneration3.treatment}
-                                            </span>
-                                          )}
-                                          {protocol.phases.regeneration4 && (
-                                            <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">
-                                              4: {protocol.phases.regeneration4.treatment}
-                                            </span>
-                                          )}
+                                          ))}
                                         </div>
                                         
                                         {/* Main Treatments Selection */}
@@ -1606,17 +1506,16 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                               <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                                 💊 Tedavi Fazları (Düzenlenebilir)
                               </h4>
-                              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-                                {/* Editable Remember */}
+                              {/* Dynamic Regeneration Cards – unlimited */}
+                              <div className="flex flex-wrap gap-4 mb-6">
+                                {/* Remember */}
                                 {editedProtocol.phases.remember ? (
-                                  <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 relative">
+                                  <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 relative min-w-[180px]">
                                     <button
                                       onClick={handleRemoveRemember}
                                       className="absolute top-2 right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs transition-all"
                                       title="Remember fazını kaldır"
-                                    >
-                                      ×
-                                    </button>
+                                    >×</button>
                                     <div className="flex items-center gap-2 mb-3">
                                       <div className="w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center text-sm font-bold">R</div>
                                       <h5 className="font-bold text-red-700">Remember</h5>
@@ -1624,298 +1523,73 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                     <input
                                       type="text"
                                       value={editedProtocol.phases.remember.treatment}
-                                      onChange={(e) => setEditedProtocol({
-                                        ...editedProtocol,
-                                        phases: {
-                                          ...editedProtocol.phases,
-                                          remember: { ...editedProtocol.phases.remember!, treatment: e.target.value.toUpperCase() }
-                                        }
-                                      })}
+                                      onChange={(e) => setEditedProtocol({ ...editedProtocol, phases: { ...editedProtocol.phases, remember: { ...editedProtocol.phases.remember!, treatment: e.target.value.toUpperCase() } } })}
                                       className="w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2 uppercase"
                                       placeholder="Tedavi adı"
                                     />
                                     <input
                                       type="text"
                                       value={editedProtocol.phases.remember.dosage}
-                                      onChange={(e) => setEditedProtocol({
-                                        ...editedProtocol,
-                                        phases: {
-                                          ...editedProtocol.phases,
-                                          remember: { ...editedProtocol.phases.remember!, dosage: e.target.value }
-                                        }
-                                      })}
+                                      onChange={(e) => setEditedProtocol({ ...editedProtocol, phases: { ...editedProtocol.phases, remember: { ...editedProtocol.phases.remember!, dosage: e.target.value } } })}
                                       className="w-full border border-gray-300 rounded px-2 py-1 text-xs text-gray-600"
                                       placeholder="Doz"
                                     />
                                   </div>
                                 ) : (
-                                  <div className="bg-red-50 border-2 border-dashed border-red-300 rounded-xl p-4 flex flex-col items-center justify-center text-center min-h-[120px]">
+                                  <div className="bg-red-50 border-2 border-dashed border-red-300 rounded-xl p-4 flex flex-col items-center justify-center text-center min-w-[180px] min-h-[120px]">
                                     <div className="w-8 h-8 bg-red-200 text-red-600 rounded-full flex items-center justify-center text-sm font-bold mb-2">R</div>
                                     <h5 className="font-bold text-red-600 mb-2">Remember</h5>
-                                    <button
-                                      onClick={handleAddRemember}
-                                      className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium transition-all flex items-center gap-1"
-                                    >
-                                      + Ekle
-                                    </button>
+                                    <button onClick={handleAddRemember} className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium transition-all flex items-center gap-1">+ Ekle</button>
                                   </div>
                                 )}
 
-                                {/* Editable 1 Regeneration */}
-                                {editedProtocol.phases.regeneration1 ? (
-                                  <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-4 relative">
-                                    <button
-                                      onClick={handleRemoveRegeneration1}
-                                      className="absolute top-2 right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs transition-all"
-                                      title="1 Regeneration fazını kaldır"
-                                    >
-                                      ×
-                                    </button>
-                                    <div className="flex items-center gap-2 mb-3">
-                                      <div className="w-8 h-8 bg-orange-500 text-white rounded-full flex items-center justify-center text-sm font-bold">1</div>
-                                      <h5 className="font-bold text-orange-700">1 Regeneration</h5>
-                                    </div>
-                                    <input
-                                      type="text"
-                                      value={editedProtocol.phases.regeneration1.treatment}
-                                      onChange={(e) => setEditedProtocol({
-                                        ...editedProtocol,
-                                        phases: {
-                                          ...editedProtocol.phases,
-                                          regeneration1: { ...editedProtocol.phases.regeneration1!, treatment: e.target.value.toUpperCase() }
-                                        }
-                                      })}
-                                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2 uppercase"
-                                      placeholder="Tedavi adı"
-                                    />
-                                    <input
-                                      type="text"
-                                      value={editedProtocol.phases.regeneration1.dosage}
-                                      onChange={(e) => setEditedProtocol({
-                                        ...editedProtocol,
-                                        phases: {
-                                          ...editedProtocol.phases,
-                                          regeneration1: { ...editedProtocol.phases.regeneration1!, dosage: e.target.value }
-                                        }
-                                      })}
-                                      className="w-full border border-gray-300 rounded px-2 py-1 text-xs text-gray-600"
-                                      placeholder="Doz"
-                                    />
-                                  </div>
-                                ) : (
-                                  <div className="bg-orange-50 border-2 border-dashed border-orange-300 rounded-xl p-4 flex flex-col items-center justify-center text-center min-h-[120px]">
-                                    <div className="w-8 h-8 bg-orange-200 text-orange-600 rounded-full flex items-center justify-center text-sm font-bold mb-2">1</div>
-                                    <h5 className="font-bold text-orange-600 mb-2">1 Regeneration</h5>
-                                    
-                                    {!editedProtocol.phases.remember ? (
-                                      <div className="text-xs text-orange-400 font-medium italic">
-                                        Önce Remember ekleyin
+                                {/* Existing regeneration phases */}
+                                {(editedProtocol.phases.regenerations || []).map((reg, index) => {
+                                  const color = REGEN_COLORS[index % REGEN_COLORS.length];
+                                  const isLast = index === (editedProtocol.phases.regenerations?.length ?? 0) - 1;
+                                  return (
+                                    <div key={index} className={`${color.bg} border-2 ${color.border} rounded-xl p-4 relative min-w-[180px]`}>
+                                      {isLast && (
+                                        <button
+                                          onClick={() => handleRemoveRegeneration(index)}
+                                          className="absolute top-2 right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs transition-all"
+                                          title={`${index + 1}. Rejenerasyon fazını kaldır`}
+                                        >×</button>
+                                      )}
+                                      <div className="flex items-center gap-2 mb-3">
+                                        <div className={`w-8 h-8 ${color.circle} text-white rounded-full flex items-center justify-center text-sm font-bold`}>{index + 1}</div>
+                                        <h5 className={`font-bold ${color.label}`}>{index + 1} Regeneration</h5>
                                       </div>
-                                    ) : (
-                                      <button
-                                        onClick={handleAddRegeneration1}
-                                        className="px-3 py-1 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-xs font-medium transition-all flex items-center gap-1"
-                                      >
-                                        + Ekle
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
+                                      <input
+                                        type="text"
+                                        value={reg.treatment}
+                                        onChange={(e) => handleUpdateRegeneration(index, 'treatment', e.target.value)}
+                                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2 uppercase"
+                                        placeholder="Tedavi adı"
+                                      />
+                                      <input
+                                        type="text"
+                                        value={reg.dosage}
+                                        onChange={(e) => handleUpdateRegeneration(index, 'dosage', e.target.value)}
+                                        className="w-full border border-gray-300 rounded px-2 py-1 text-xs text-gray-600"
+                                        placeholder="Doz"
+                                      />
+                                    </div>
+                                  );
+                                })}
 
-                                {/* Editable 2 Regeneration */}
-                                {editedProtocol.phases.regeneration2 ? (
-                                  <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-4 relative">
-                                    <button
-                                      onClick={handleRemoveRegeneration2}
-                                      className="absolute top-2 right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs transition-all"
-                                      title="2 Regeneration fazını kaldır"
-                                    >
-                                      ×
-                                    </button>
-                                    <div className="flex items-center gap-2 mb-3">
-                                      <div className="w-8 h-8 bg-yellow-500 text-white rounded-full flex items-center justify-center text-sm font-bold">2</div>
-                                      <h5 className="font-bold text-yellow-700">2 Regeneration</h5>
+                                {/* Add next regeneration button (only visible when Remember exists) */}
+                                {editedProtocol.phases.remember && (() => {
+                                  const nextIndex = (editedProtocol.phases.regenerations?.length || 0);
+                                  const color = REGEN_COLORS[nextIndex % REGEN_COLORS.length];
+                                  return (
+                                    <div className={`${color.bg} border-2 border-dashed ${color.dashed} rounded-xl p-4 flex flex-col items-center justify-center text-center min-w-[180px] min-h-[120px]`}>
+                                      <div className={`w-8 h-8 ${color.lightCircle} ${color.lightLabel} rounded-full flex items-center justify-center text-sm font-bold mb-2`}>{nextIndex + 1}</div>
+                                      <h5 className={`font-bold ${color.lightLabel} mb-2`}>{nextIndex + 1} Regeneration</h5>
+                                      <button onClick={handleAddRegeneration} className={`px-3 py-1 ${color.btn} text-white rounded-lg text-xs font-medium transition-all flex items-center gap-1`}>+ Ekle</button>
                                     </div>
-                                    <input
-                                      type="text"
-                                      value={editedProtocol.phases.regeneration2.treatment}
-                                      onChange={(e) => setEditedProtocol({
-                                        ...editedProtocol,
-                                        phases: {
-                                          ...editedProtocol.phases,
-                                          regeneration2: { ...editedProtocol.phases.regeneration2!, treatment: e.target.value.toUpperCase() }
-                                        }
-                                      })}
-                                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2 uppercase"
-                                      placeholder="Tedavi adı"
-                                    />
-                                    <input
-                                      type="text"
-                                      value={editedProtocol.phases.regeneration2.dosage}
-                                      onChange={(e) => setEditedProtocol({
-                                        ...editedProtocol,
-                                        phases: {
-                                          ...editedProtocol.phases,
-                                          regeneration2: { ...editedProtocol.phases.regeneration2!, dosage: e.target.value }
-                                        }
-                                      })}
-                                      className="w-full border border-gray-300 rounded px-2 py-1 text-xs text-gray-600"
-                                      placeholder="Doz"
-                                    />
-                                  </div>
-                                ) : (
-                                  <div className="bg-yellow-50 border-2 border-dashed border-yellow-300 rounded-xl p-4 flex flex-col items-center justify-center text-center min-h-[120px]">
-                                    <div className="w-8 h-8 bg-yellow-200 text-yellow-600 rounded-full flex items-center justify-center text-sm font-bold mb-2">2</div>
-                                    <h5 className="font-bold text-yellow-600 mb-2">2 Regeneration</h5>
-                                    
-                                    {!editedProtocol.phases.regeneration1 ? (
-                                      <div className="text-xs text-yellow-400 font-medium italic">
-                                        Önce 1. fazı ekleyin
-                                      </div>
-                                    ) : (
-                                      <button
-                                        onClick={handleAddRegeneration2}
-                                        className="px-3 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-xs font-medium transition-all flex items-center gap-1"
-                                      >
-                                        + Ekle
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Optional 3 Regeneration */}
-                                {editedProtocol.phases.regeneration3 ? (
-                                  <div className="bg-green-50 border-2 border-green-200 rounded-xl p-4 relative">
-                                    <button
-                                      onClick={handleRemove3Regeneration}
-                                      className="absolute top-2 right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs transition-all"
-                                      title="3 Regeneration fazını kaldır"
-                                    >
-                                      ×
-                                    </button>
-                                    <div className="flex items-center gap-2 mb-3">
-                                      <div className="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center text-sm font-bold">3</div>
-                                      <h5 className="font-bold text-green-700">3 Regeneration</h5>
-                                    </div>
-                                    <input
-                                      type="text"
-                                      value={editedProtocol.phases.regeneration3.treatment}
-                                      onChange={(e) => setEditedProtocol({
-                                        ...editedProtocol,
-                                        phases: {
-                                          ...editedProtocol.phases,
-                                          regeneration3: { 
-                                            treatment: e.target.value.toUpperCase(), 
-                                            dosage: editedProtocol.phases.regeneration3?.dosage || '' 
-                                          }
-                                        }
-                                      })}
-                                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2 uppercase"
-                                      placeholder="Tedavi adı"
-                                    />
-                                    <input
-                                      type="text"
-                                      value={editedProtocol.phases.regeneration3.dosage}
-                                      onChange={(e) => setEditedProtocol({
-                                        ...editedProtocol,
-                                        phases: {
-                                          ...editedProtocol.phases,
-                                          regeneration3: { 
-                                            treatment: editedProtocol.phases.regeneration3?.treatment || '',
-                                            dosage: e.target.value 
-                                          }
-                                        }
-                                      })}
-                                      className="w-full border border-gray-300 rounded px-2 py-1 text-xs text-gray-600"
-                                      placeholder="Doz"
-                                    />
-                                  </div>
-                                ) : (
-                                  <div className="bg-green-50 border-2 border-dashed border-green-300 rounded-xl p-4 flex flex-col items-center justify-center text-center min-h-[120px]">
-                                    <div className="w-8 h-8 bg-green-200 text-green-600 rounded-full flex items-center justify-center text-sm font-bold mb-2">3</div>
-                                    <h5 className="font-bold text-green-600 mb-2">3 Regeneration</h5>
-                                    
-                                    {!editedProtocol.phases.regeneration2 ? (
-                                      <div className="text-xs text-green-400 font-medium italic">
-                                        Önce 2. fazı ekleyin
-                                      </div>
-                                    ) : (
-                                      <button
-                                        onClick={handleAdd3Regeneration}
-                                        className="px-3 py-1 bg-green-500 hover:bg-green-600 text-white rounded-lg text-xs font-medium transition-all flex items-center gap-1"
-                                      >
-                                        + Ekle
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Optional 4 Regeneration */}
-                                {editedProtocol.phases.regeneration4 ? (
-                                  <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 relative">
-                                    <button
-                                      onClick={handleRemove4Regeneration}
-                                      className="absolute top-2 right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs transition-all"
-                                      title="4 Regeneration fazını kaldır"
-                                    >
-                                      ×
-                                    </button>
-                                    <div className="flex items-center gap-2 mb-3">
-                                      <div className="w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold">4</div>
-                                      <h5 className="font-bold text-blue-700">4 Regeneration</h5>
-                                    </div>
-                                    <input
-                                      type="text"
-                                      value={editedProtocol.phases.regeneration4.treatment}
-                                      onChange={(e) => setEditedProtocol({
-                                        ...editedProtocol,
-                                        phases: {
-                                          ...editedProtocol.phases,
-                                          regeneration4: { 
-                                            treatment: e.target.value.toUpperCase(),
-                                            dosage: editedProtocol.phases.regeneration4?.dosage || '' 
-                                          }
-                                        }
-                                      })}
-                                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2 uppercase"
-                                      placeholder="Tedavi adı"
-                                    />
-                                    <input
-                                      type="text"
-                                      value={editedProtocol.phases.regeneration4.dosage}
-                                      onChange={(e) => setEditedProtocol({
-                                        ...editedProtocol,
-                                        phases: {
-                                          ...editedProtocol.phases,
-                                          regeneration4: { 
-                                            treatment: editedProtocol.phases.regeneration4?.treatment || '',
-                                            dosage: e.target.value 
-                                          }
-                                        }
-                                      })}
-                                      className="w-full border border-gray-300 rounded px-2 py-1 text-xs text-gray-600"
-                                      placeholder="Doz"
-                                    />
-                                  </div>
-                                ) : (
-                                <div className="bg-blue-50 border-2 border-dashed border-blue-300 rounded-xl p-4 flex flex-col items-center justify-center text-center min-h-[120px]">
-                                    <div className="w-8 h-8 bg-blue-200 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold mb-2">4</div>
-                                    <h5 className="font-bold text-blue-600 mb-2">4 Regeneration</h5>
-                                    
-                                    {!editedProtocol.phases.regeneration3 ? (
-                                      <div className="text-xs text-blue-400 font-medium italic">
-                                        Önce 3. fazı ekleyin
-                                      </div>
-                                    ) : (
-                                      <button
-                                        onClick={handleAdd4Regeneration}
-                                        className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-medium transition-all flex items-center gap-1"
-                                      >
-                                        + Ekle
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
+                                  );
+                                })()}
                               </div>
 
                               {/* Editable Main Applications */}
@@ -2122,10 +1796,10 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                               <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                                 💊 Tedavi Fazları
                               </h4>
-                              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+                              <div className="flex flex-wrap gap-4 mb-6">
                                 {/* Remember */}
                                 {bestTreatment.phases.remember && (
-                                  <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4">
+                                  <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 min-w-[160px]">
                                     <div className="flex items-center gap-2 mb-3">
                                       <div className="w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center text-sm font-bold">R</div>
                                       <h5 className="font-bold text-red-700">Remember</h5>
@@ -2134,54 +1808,20 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                     <div className="text-sm text-gray-600 mt-1">{bestTreatment.phases.remember.dosage}</div>
                                   </div>
                                 )}
-
-                                {/* 1 Regeneration */}
-                                {bestTreatment.phases.regeneration1 && (
-                                  <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-4">
-                                    <div className="flex items-center gap-2 mb-3">
-                                      <div className="w-8 h-8 bg-orange-500 text-white rounded-full flex items-center justify-center text-sm font-bold">1</div>
-                                      <h5 className="font-bold text-orange-700">1 Regeneration</h5>
+                                {/* Dynamic Regeneration Phases */}
+                                {getRegenerations(bestTreatment.phases).map((reg, idx) => {
+                                  const color = REGEN_COLORS[idx % REGEN_COLORS.length];
+                                  return (
+                                    <div key={idx} className={`${color.bg} border-2 ${color.border} rounded-xl p-4 min-w-[160px]`}>
+                                      <div className="flex items-center gap-2 mb-3">
+                                        <div className={`w-8 h-8 ${color.circle} text-white rounded-full flex items-center justify-center text-sm font-bold`}>{idx + 1}</div>
+                                        <h5 className={`font-bold ${color.label}`}>{idx + 1} Regeneration</h5>
+                                      </div>
+                                      <div className="text-gray-800 font-semibold">{reg.treatment}</div>
+                                      <div className="text-sm text-gray-600 mt-1">{reg.dosage}</div>
                                     </div>
-                                    <div className="text-gray-800 font-semibold">{bestTreatment.phases.regeneration1.treatment}</div>
-                                    <div className="text-sm text-gray-600 mt-1">{bestTreatment.phases.regeneration1.dosage}</div>
-                                  </div>
-                                )}
-
-                                {/* 2 Regeneration */}
-                                {bestTreatment.phases.regeneration2 && (
-                                  <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-4">
-                                    <div className="flex items-center gap-2 mb-3">
-                                      <div className="w-8 h-8 bg-yellow-500 text-white rounded-full flex items-center justify-center text-sm font-bold">2</div>
-                                      <h5 className="font-bold text-yellow-700">2 Regeneration</h5>
-                                    </div>
-                                    <div className="text-gray-800 font-semibold">{bestTreatment.phases.regeneration2.treatment}</div>
-                                    <div className="text-sm text-gray-600 mt-1">{bestTreatment.phases.regeneration2.dosage}</div>
-                                  </div>
-                                )}
-
-                                {/* 3 Regeneration - Optional */}
-                                {bestTreatment.phases.regeneration3 && (
-                                  <div className="bg-green-50 border-2 border-green-200 rounded-xl p-4">
-                                    <div className="flex items-center gap-2 mb-3">
-                                      <div className="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center text-sm font-bold">3</div>
-                                      <h5 className="font-bold text-green-700">3 Regeneration</h5>
-                                    </div>
-                                    <div className="text-gray-800 font-semibold">{bestTreatment.phases.regeneration3.treatment}</div>
-                                    <div className="text-sm text-gray-600 mt-1">{bestTreatment.phases.regeneration3.dosage}</div>
-                                  </div>
-                                )}
-
-                                {/* 4 Regeneration - Optional */}
-                                {bestTreatment.phases.regeneration4 && (
-                                  <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
-                                    <div className="flex items-center gap-2 mb-3">
-                                      <div className="w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold">4</div>
-                                      <h5 className="font-bold text-blue-700">4 Regeneration</h5>
-                                    </div>
-                                    <div className="text-gray-800 font-semibold">{bestTreatment.phases.regeneration4.treatment}</div>
-                                    <div className="text-sm text-gray-600 mt-1">{bestTreatment.phases.regeneration4.dosage}</div>
-                                  </div>
-                                )}
+                                  );
+                                })}
                               </div>
                             </div>
 
