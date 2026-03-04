@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, updateDoc, doc, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { utils, writeFile } from 'xlsx';
+import ExcelJS from 'exceljs';
 import MultiPaymentMethodSelector, { formatPaymentMethods } from '../../../components/UI/MultiPaymentMethodSelector';
 import type { PaymentMethodEntry } from '../../../components/UI/MultiPaymentMethodSelector';
 
@@ -716,137 +717,267 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
     }
   };
 
-  const generateExcelReport = () => {
+  const generateExcelReport = async () => {
     const periodText = reportPeriod === 'daily' ? 'Günlük' : reportPeriod === 'weekly' ? 'Haftalık' : 'Aylık';
     const currentDate = new Date().toLocaleDateString('tr-TR');
-    const workbook = utils.book_new();
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'RTM Soft';
+    workbook.created = new Date();
 
-    // Stil özellikleri
-    const headerStyle = {
-      font: { bold: true, color: { rgb: 'FFFFFF' }, size: 12 },
-      fill: { fgColor: { rgb: '1F4E78' } },
-      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-      border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
+    // Ortak stil yardımcıları
+    const HEADER_BG = '1F4E78';
+    const ACCENT_BG = 'D6E4F0';
+    const ALT_ROW_BG = 'F0F4F8';
+    const GREEN_BG = '1A7A4A';
+    const RED_BG = 'C0392B';
+
+    const applyBorder = (cell: ExcelJS.Cell) => {
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFB0BEC5' } },
+        left: { style: 'thin', color: { argb: 'FFB0BEC5' } },
+        bottom: { style: 'thin', color: { argb: 'FFB0BEC5' } },
+        right: { style: 'thin', color: { argb: 'FFB0BEC5' } },
+      };
     };
 
-    const titleStyle = {
-      font: { bold: true, size: 14, color: { rgb: '1F4E78' } },
-      alignment: { horizontal: 'left', vertical: 'center' }
+    const styleHeaderCell = (cell: ExcelJS.Cell, bgHex = HEADER_BG) => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11, name: 'Calibri' };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${bgHex}` } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      applyBorder(cell);
     };
 
-    const dataStyle = {
-      alignment: { horizontal: 'left', vertical: 'center' },
-      border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
+    const styleDataCell = (cell: ExcelJS.Cell, align: ExcelJS.Alignment['horizontal'] = 'left', altRow = false) => {
+      cell.font = { size: 10, name: 'Calibri' };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: altRow ? `FF${ALT_ROW_BG}` : 'FFFFFFFF' } };
+      cell.alignment = { horizontal: align, vertical: 'middle' };
+      applyBorder(cell);
     };
 
-    const numberStyle = {
-      numFmt: '#,##0.00',
-      alignment: { horizontal: 'right', vertical: 'center' },
-      border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
-    };
-
-    // Özet sayfası
-    const summaryData = [
-      [`${periodText} Muhasebe Raporu - ${currentDate}`, '', ''],
-      ['', '', ''],
-      ['Rapor Dönemi', periodText, ''],
-      ['Rapor Tarihi', currentDate, ''],
-      ['', '', ''],
-      ['ÖZET İSTATİSTİKLER', '', ''],
-      ['Toplam Ödeme Sayısı', reportData.periodStats.paymentCount, ''],
-      ['Toplam Ödeme Tutarı', reportData.periodStats.totalPayments, 'TL'],
-      ['', '', ''],
-      ['Toplam İade Sayısı', reportData.periodStats.refundCount, ''],
-      ['Toplam İade Tutarı', reportData.periodStats.totalRefunds, 'TL'],
-      ['', '', ''],
-      ['Net Gelir', reportData.periodStats.netRevenue, 'TL'],
+    // ── ÖZET SAYFASI ─────────────────────────────────────────────────────────
+    const summarySheet = workbook.addWorksheet('Özet', { views: [{ showGridLines: false }] });
+    summarySheet.columns = [
+      { width: 30 },
+      { width: 22 },
+      { width: 12 },
     ];
 
-    const summarySheet = utils.aoa_to_sheet(summaryData);
-    summarySheet['A1'].s = titleStyle;
-    
-    // Başlık satırlarını stillendir
-    [3, 4, 6, 7, 8, 9, 10, 11, 12, 13].forEach(row => {
-      if (summarySheet[`A${row}`]) summarySheet[`A${row}`].s = { ...dataStyle, font: { bold: true } };
-      if (summarySheet[`B${row}`]) summarySheet[`B${row}`].s = numberStyle;
+    // Başlık satırı
+    summarySheet.mergeCells('A1:C1');
+    const titleCell = summarySheet.getCell('A1');
+    titleCell.value = `RTM Soft — ${periodText} Muhasebe Raporu`;
+    titleCell.font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' }, name: 'Calibri' };
+    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${HEADER_BG}` } };
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    summarySheet.getRow(1).height = 36;
+
+    // Bilgi satırları
+    const infoRows: [string, string][] = [
+      ['Rapor Dönemi', periodText],
+      ['Rapor Tarihi', currentDate],
+    ];
+    infoRows.forEach(([label, value], i) => {
+      const row = summarySheet.getRow(i + 2);
+      row.height = 22;
+      const a = row.getCell(1);
+      const b = row.getCell(2);
+      a.value = label;
+      b.value = value;
+      a.font = { bold: true, size: 10, name: 'Calibri' };
+      b.font = { size: 10, name: 'Calibri' };
+      a.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${ACCENT_BG}` } };
+      b.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${ACCENT_BG}` } };
+      a.alignment = { vertical: 'middle' };
+      b.alignment = { vertical: 'middle' };
+      applyBorder(a); applyBorder(b);
     });
 
-    summarySheet['!cols'] = [{ wch: 25 }, { wch: 20 }, { wch: 10 }];
-    utils.book_append_sheet(workbook, summarySheet, 'Özet');
+    // Boş satır
+    summarySheet.getRow(4).height = 10;
 
-    // Ödemeler sayfası
+    // Özet başlık
+    summarySheet.mergeCells('A5:C5');
+    const statsTitle = summarySheet.getCell('A5');
+    statsTitle.value = 'ÖZET İSTATİSTİKLER';
+    statsTitle.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' }, name: 'Calibri' };
+    statsTitle.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${HEADER_BG}` } };
+    statsTitle.alignment = { horizontal: 'center', vertical: 'middle' };
+    summarySheet.getRow(5).height = 26;
+
+    // İstatistik verileri
+    const stats: [string, number | string, string, string][] = [
+      ['Toplam Ödeme Sayısı', reportData.periodStats.paymentCount, 'adet', GREEN_BG],
+      ['Toplam Ödeme Tutarı', reportData.periodStats.totalPayments, 'TL', GREEN_BG],
+      ['Toplam İade Sayısı', reportData.periodStats.refundCount, 'adet', RED_BG],
+      ['Toplam İade Tutarı', reportData.periodStats.totalRefunds, 'TL', RED_BG],
+      ['Net Gelir', reportData.periodStats.netRevenue, 'TL', HEADER_BG],
+    ];
+
+    stats.forEach(([label, value, unit, bg], i) => {
+      const rowNum = i + 6;
+      const row = summarySheet.getRow(rowNum);
+      row.height = 24;
+      const a = row.getCell(1);
+      const b = row.getCell(2);
+      const c = row.getCell(3);
+      a.value = label;
+      b.value = typeof value === 'number' ? value : Number(value) || 0;
+      c.value = unit;
+
+      a.font = { bold: true, size: 10, name: 'Calibri' };
+      b.font = { bold: true, size: 11, color: { argb: `FF${bg}` }, name: 'Calibri' };
+      c.font = { size: 10, color: { argb: 'FF555555' }, name: 'Calibri' };
+
+      const rowBg = i % 2 === 0 ? 'FFFFFFFF' : `FF${ALT_ROW_BG}`;
+      [a, b, c].forEach(cell => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+        cell.alignment = { vertical: 'middle' };
+        applyBorder(cell);
+      });
+      b.alignment = { horizontal: 'right', vertical: 'middle' };
+      if (unit === 'TL') b.numFmt = '#,##0.00 ₺';
+      c.alignment = { horizontal: 'left', vertical: 'middle' };
+    });
+
+    // ── ÖDEMELER SAYFASI ─────────────────────────────────────────────────────
     if (reportData.payments.length > 0) {
-      const paymentRows = reportData.payments.map(p => ({
-        'Hasta Adı': p.fullName,
-        'TC No': p.tcNo || '-',
-        'Telefon': p.phone || '-',
-        'Ödeme Tutarı (TL)': p.paymentAmount || 0,
-        'Ödeme Tarihi': p.paymentDate ? new Date(p.paymentDate).toLocaleDateString('tr-TR') : '-',
-        'Ödeme Saati': p.paymentDate ? new Date(p.paymentDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '-',
-        'Ödeme Yöntemi': p.paymentMethods && p.paymentMethods.length > 0
-          ? formatPaymentMethods(p.paymentMethods)
-          : getPaymentMethodLabel(p.paymentMethod || 'nakit'),
-      }));
-      
-      const paymentSheet = utils.json_to_sheet(paymentRows);
-      
-      // Başlık satırını stillendir
-      const headerRow = ['A1', 'B1', 'C1', 'D1', 'E1', 'F1', 'G1'];
-      headerRow.forEach(cell => {
-        if (paymentSheet[cell]) paymentSheet[cell].s = headerStyle;
+      const paySheet = workbook.addWorksheet('Ödemeler', { views: [{ showGridLines: false, state: 'frozen', ySplit: 2 }] });
+      paySheet.columns = [
+        { key: 'name', width: 24 },
+        { key: 'tc', width: 16 },
+        { key: 'phone', width: 16 },
+        { key: 'amount', width: 18 },
+        { key: 'date', width: 14 },
+        { key: 'time', width: 12 },
+        { key: 'method', width: 20 },
+      ];
+
+      // Sayfa başlığı
+      paySheet.mergeCells('A1:G1');
+      const ph = paySheet.getCell('A1');
+      ph.value = `Ödemeler — ${periodText} (${currentDate})`;
+      ph.font = { bold: true, size: 13, color: { argb: 'FFFFFFFF' }, name: 'Calibri' };
+      ph.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${GREEN_BG}` } };
+      ph.alignment = { horizontal: 'center', vertical: 'middle' };
+      paySheet.getRow(1).height = 30;
+
+      // Kolon başlıkları
+      const payHeaders = ['Hasta Adı', 'TC No', 'Telefon', 'Ödeme Tutarı (TL)', 'Tarih', 'Saat', 'Ödeme Yöntemi'];
+      const hRow2 = paySheet.getRow(2);
+      hRow2.height = 22;
+      payHeaders.forEach((h, i) => {
+        const cell = hRow2.getCell(i + 1);
+        cell.value = h;
+        styleHeaderCell(cell, GREEN_BG);
       });
 
-      // Para tutarlarını formatla
-      for (let i = 2; i <= paymentRows.length + 1; i++) {
-        const cell = paymentSheet[`D${i}`];
-        if (cell) {
-          cell.s = numberStyle;
-          cell.z = '#,##0.00';
-        }
-      }
+      // Veri satırları
+      reportData.payments.forEach((p, idx) => {
+        const row = paySheet.addRow([
+          p.fullName,
+          p.tcNo || '-',
+          p.phone || '-',
+          p.paymentAmount || 0,
+          p.paymentDate ? new Date(p.paymentDate).toLocaleDateString('tr-TR') : '-',
+          p.paymentDate ? new Date(p.paymentDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '-',
+          p.paymentMethods && p.paymentMethods.length > 0
+            ? formatPaymentMethods(p.paymentMethods)
+            : getPaymentMethodLabel(p.paymentMethod || 'nakit'),
+        ]);
+        row.height = 20;
+        const alt = idx % 2 === 1;
+        row.eachCell((cell, colNum) => {
+          styleDataCell(cell, colNum === 4 ? 'right' : 'left', alt);
+          if (colNum === 4) cell.numFmt = '#,##0.00 ₺';
+        });
+      });
 
-      paymentSheet['!cols'] = [{ wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 18 }];
-      paymentSheet['!freeze'] = { xSplit: 0, ySplit: 1 };
-      utils.book_append_sheet(workbook, paymentSheet, 'Ödemeler');
+      // Toplam satırı
+      const totalRow = paySheet.addRow(['TOPLAM', '', '', reportData.periodStats.totalPayments, '', '', '']);
+      totalRow.height = 24;
+      totalRow.eachCell((cell, colNum) => {
+        cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' }, name: 'Calibri' };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${GREEN_BG}` } };
+        cell.alignment = { horizontal: colNum === 4 ? 'right' : 'left', vertical: 'middle' };
+        applyBorder(cell);
+        if (colNum === 4) cell.numFmt = '#,##0.00 ₺';
+      });
     }
 
-    // İadeler sayfası
+    // ── İADELER SAYFASI ──────────────────────────────────────────────────────
     if (reportData.refunds.length > 0) {
-      const refundRows = reportData.refunds.map(p => ({
-        'Hasta Adı': p.fullName,
-        'TC No': p.tcNo || '-',
-        'Telefon': p.phone || '-',
-        'İade Tutarı (TL)': p.refundAmount || 0,
-        'İade Tarihi': p.refundDate ? new Date(p.refundDate).toLocaleDateString('tr-TR') : '-',
-        'İade Saati': p.refundDate ? new Date(p.refundDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '-',
-        'İade Yöntemi': p.refundMethods && p.refundMethods.length > 0
-          ? formatPaymentMethods(p.refundMethods)
-          : getPaymentMethodLabel(p.refundMethod || 'nakit'),
-      }));
-      
-      const refundSheet = utils.json_to_sheet(refundRows);
-      
-      // Başlık satırını stillendir
-      const headerRow = ['A1', 'B1', 'C1', 'D1', 'E1', 'F1', 'G1'];
-      headerRow.forEach(cell => {
-        if (refundSheet[cell]) refundSheet[cell].s = headerStyle;
+      const refSheet = workbook.addWorksheet('İadeler', { views: [{ showGridLines: false, state: 'frozen', ySplit: 2 }] });
+      refSheet.columns = [
+        { key: 'name', width: 24 },
+        { key: 'tc', width: 16 },
+        { key: 'phone', width: 16 },
+        { key: 'amount', width: 18 },
+        { key: 'date', width: 14 },
+        { key: 'time', width: 12 },
+        { key: 'method', width: 20 },
+      ];
+
+      // Sayfa başlığı
+      refSheet.mergeCells('A1:G1');
+      const rh = refSheet.getCell('A1');
+      rh.value = `İadeler — ${periodText} (${currentDate})`;
+      rh.font = { bold: true, size: 13, color: { argb: 'FFFFFFFF' }, name: 'Calibri' };
+      rh.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${RED_BG}` } };
+      rh.alignment = { horizontal: 'center', vertical: 'middle' };
+      refSheet.getRow(1).height = 30;
+
+      // Kolon başlıkları
+      const refHeaders = ['Hasta Adı', 'TC No', 'Telefon', 'İade Tutarı (TL)', 'Tarih', 'Saat', 'İade Yöntemi'];
+      const rHRow2 = refSheet.getRow(2);
+      rHRow2.height = 22;
+      refHeaders.forEach((h, i) => {
+        const cell = rHRow2.getCell(i + 1);
+        cell.value = h;
+        styleHeaderCell(cell, RED_BG);
       });
 
-      // Para tutarlarını formatla
-      for (let i = 2; i <= refundRows.length + 1; i++) {
-        const cell = refundSheet[`D${i}`];
-        if (cell) {
-          cell.s = numberStyle;
-          cell.z = '#,##0.00';
-        }
-      }
+      // Veri satırları
+      reportData.refunds.forEach((p, idx) => {
+        const row = refSheet.addRow([
+          p.fullName,
+          p.tcNo || '-',
+          p.phone || '-',
+          p.refundAmount || 0,
+          p.refundDate ? new Date(p.refundDate).toLocaleDateString('tr-TR') : '-',
+          p.refundDate ? new Date(p.refundDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '-',
+          p.refundMethods && p.refundMethods.length > 0
+            ? formatPaymentMethods(p.refundMethods)
+            : getPaymentMethodLabel(p.refundMethod || 'nakit'),
+        ]);
+        row.height = 20;
+        const alt = idx % 2 === 1;
+        row.eachCell((cell, colNum) => {
+          styleDataCell(cell, colNum === 4 ? 'right' : 'left', alt);
+          if (colNum === 4) cell.numFmt = '#,##0.00 ₺';
+        });
+      });
 
-      refundSheet['!cols'] = [{ wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 18 }];
-      refundSheet['!freeze'] = { xSplit: 0, ySplit: 1 };
-      utils.book_append_sheet(workbook, refundSheet, 'İadeler');
+      // Toplam satırı
+      const totalRow = refSheet.addRow(['TOPLAM', '', '', reportData.periodStats.totalRefunds, '', '', '']);
+      totalRow.height = 24;
+      totalRow.eachCell((cell, colNum) => {
+        cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' }, name: 'Calibri' };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${RED_BG}` } };
+        cell.alignment = { horizontal: colNum === 4 ? 'right' : 'left', vertical: 'middle' };
+        applyBorder(cell);
+        if (colNum === 4) cell.numFmt = '#,##0.00 ₺';
+      });
     }
 
-    writeFile(workbook, `${periodText}_Muhasebe_Raporu_${currentDate.replace(/\./g, '-')}.xlsx`);
+    // Dosyayı buffer'a yaz ve indir
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${periodText}_Muhasebe_Raporu_${currentDate.replace(/\./g, '-')}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   // Excel export function for accounting data
