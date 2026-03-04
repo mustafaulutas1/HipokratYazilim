@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { useAuth } from '../../../context/AuthContext';
 
@@ -227,7 +227,16 @@ const AdditionalTreatmentRequestModal: React.FC<AdditionalTreatmentRequestModalP
       };
       
       await addDoc(collection(db, 'additionalTreatmentRequests'), requestData);
-      
+
+      // Hastayı doktorun listesine taşı (assigned_to_doctor) ki doktor ekranında görünsün
+      const patientRef = doc(db, 'patients', patientId);
+      await updateDoc(patientRef, {
+        status: 'assigned_to_doctor',
+        assignedDoctorId: selectedDoctorId,
+        additionalTreatmentPending: true,
+        updatedAt: new Date().toISOString()
+      });
+
       console.log('✅ Additional treatment request sent successfully');
       
       // Reset form

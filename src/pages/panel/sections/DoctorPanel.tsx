@@ -1014,14 +1014,29 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
                         📋 Anamnez Görüntüle
                       </button>
                       
-                      {patient.status === 'assigned_to_doctor' && (
-                        <button 
-                          onClick={() => handleOpenTreatmentModal(patient)}
-                          className="px-4 py-2 bg-blue-500/30 hover:bg-blue-500/40 border border-blue-500/50 rounded-xl text-blue-200 hover:text-white text-sm font-medium transition-all duration-200 flex items-center gap-2"
-                        >
-                          🏥 Tedaviye Başla
-                        </button>
-                      )}
+                      {patient.status === 'assigned_to_doctor' && (() => {
+                        const pendingEkTedavi = treatmentRequests.find(
+                          r => r.patientId === patient.id && r.status === 'pending'
+                        );
+                        if (pendingEkTedavi) {
+                          return (
+                            <button
+                              onClick={() => handleOpenTreatmentRequestModal(pendingEkTedavi)}
+                              className="px-4 py-2 bg-orange-500/30 hover:bg-orange-500/40 border border-orange-500/50 rounded-xl text-orange-200 hover:text-white text-sm font-medium transition-all duration-200 flex items-center gap-2"
+                            >
+                              💊 Ek Tedaviyi Onayla
+                            </button>
+                          );
+                        }
+                        return (
+                          <button
+                            onClick={() => handleOpenTreatmentModal(patient)}
+                            className="px-4 py-2 bg-blue-500/30 hover:bg-blue-500/40 border border-blue-500/50 rounded-xl text-blue-200 hover:text-white text-sm font-medium transition-all duration-200 flex items-center gap-2"
+                          >
+                            🏥 Tedaviye Başla
+                          </button>
+                        );
+                      })()}
                       
                       {patient.status === 'in_treatment' && (
                         <button 

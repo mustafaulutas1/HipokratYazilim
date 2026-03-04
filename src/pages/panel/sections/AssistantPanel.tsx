@@ -116,14 +116,11 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
     try {
       console.log('📊 AssistantPanel: Processing patients in clinic:', allClinicPatients.length);
       
-      // Filter for completed anamnez and either not assigned or ready for re-assignment
-      const completedPatients = allClinicPatients.filter(patient => 
-        patient.isAnamnezCompleted === true && 
+      // Filter for completed anamnez and waiting to be sent to doctor (not yet processed)
+      const completedPatients = allClinicPatients.filter(patient =>
+        patient.isAnamnezCompleted === true &&
         (
-          !patient.assignedDoctorId || 
           patient.status === 'anamnez_completed' ||
-          patient.status === 'treatment_completed' ||
-          patient.status === 'discharged' ||
           patient.status === 'new' ||
           !patient.status
         )
