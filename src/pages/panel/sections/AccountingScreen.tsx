@@ -932,7 +932,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         dataCell(r.getCell(4), p.paymentAmount || 0, { numFmt: '#,##0.00 ₺', align: 'right', alt });
         dataCell(r.getCell(5), p.paymentDate ? new Date(p.paymentDate).toLocaleDateString('tr-TR') : '-', { align: 'center', alt });
         dataCell(r.getCell(6), p.paymentDate ? new Date(p.paymentDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '-', { align: 'center', alt });
-        dataCell(r.getCell(7), p.paymentMethods?.length > 0 ? formatPaymentMethods(p.paymentMethods) : getPaymentMethodLabel(p.paymentMethod || 'nakit'), { alt });
+        dataCell(r.getCell(7), (p.paymentMethods?.length ?? 0) > 0 ? formatPaymentMethods(p.paymentMethods!) : getPaymentMethodLabel(p.paymentMethod || 'nakit'), { alt });
       });
 
       // Toplam satırı
@@ -982,7 +982,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         dataCell(r.getCell(4), p.refundAmount || 0, { numFmt: '#,##0.00 ₺', align: 'right', alt });
         dataCell(r.getCell(5), p.refundDate ? new Date(p.refundDate).toLocaleDateString('tr-TR') : '-', { align: 'center', alt });
         dataCell(r.getCell(6), p.refundDate ? new Date(p.refundDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '-', { align: 'center', alt });
-        dataCell(r.getCell(7), p.refundMethods?.length > 0 ? formatPaymentMethods(p.refundMethods) : getPaymentMethodLabel(p.refundMethod || 'nakit'), { alt });
+        dataCell(r.getCell(7), (p.refundMethods?.length ?? 0) > 0 ? formatPaymentMethods(p.refundMethods!) : getPaymentMethodLabel(p.refundMethod || 'nakit'), { alt });
       });
 
       const tr = RS.addRow([]);
@@ -1030,11 +1030,6 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
     const labelStyle = {
       font: { bold: true, size: 11, color: { rgb: '1F4E78' } },
       alignment: { horizontal: 'left', vertical: 'center' }
-    };
-
-    const dataStyle = {
-      alignment: { horizontal: 'left', vertical: 'center' },
-      border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
     };
 
     const numberStyle = {
