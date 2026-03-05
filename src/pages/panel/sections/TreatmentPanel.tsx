@@ -27,6 +27,7 @@ interface TreatmentPatient {
   assignedDoctorName?: string;
   assignedAt?: string;
   status?: string;
+  additionalTreatmentPending?: boolean;
   createdAt: string;
   treatmentStartedAt?: string;
   treatmentOptions?: {
@@ -510,10 +511,14 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
                         setUnselectedTreatmentReason('');
                         setIsTreatmentModalOpen(true);
                       }}
-                      className="px-4 py-2 bg-green-500/20 border border-green-400 rounded-xl text-green-200 hover:bg-green-500/30 transition-all duration-200 flex items-center gap-2"
+                      className={`px-4 py-2 border rounded-xl transition-all duration-200 flex items-center gap-2 ${
+                        patient.additionalTreatmentPending
+                          ? 'bg-orange-500/20 border-orange-400 text-orange-200 hover:bg-orange-500/30'
+                          : 'bg-green-500/20 border-green-400 text-green-200 hover:bg-green-500/30'
+                      }`}
                     >
-                      <span className="text-lg">🏥</span>
-                      Tedavi Uygula
+                      <span className="text-lg">{patient.additionalTreatmentPending ? '💊' : '🏥'}</span>
+                      {patient.additionalTreatmentPending ? 'Ek Tedaviye Başla' : 'Tedavi Uygula'}
                     </button>
                     <button
                       onClick={() => handleMarkAsEmergency(patient)}

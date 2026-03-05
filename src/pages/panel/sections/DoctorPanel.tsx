@@ -31,6 +31,8 @@ interface AssignedPatient {
   assignedAt?: string;
   status?: string;
   updatedAt?: string;
+  // Additional treatment flag
+  additionalTreatmentPending?: boolean;
   // Payment fields
   paymentCompleted?: boolean;
   paymentAmount?: number;
@@ -1015,13 +1017,15 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
                       </button>
                       
                       {patient.status === 'assigned_to_doctor' && (() => {
-                        const pendingEkTedavi = treatmentRequests.find(
-                          r => r.patientId === patient.id && r.status === 'pending'
-                        );
-                        if (pendingEkTedavi) {
+                        if (patient.additionalTreatmentPending === true) {
+                          const pendingEkTedavi = treatmentRequests.find(
+                            r => r.patientId === patient.id && r.status === 'pending'
+                          );
                           return (
                             <button
-                              onClick={() => handleOpenTreatmentRequestModal(pendingEkTedavi)}
+                              onClick={() => pendingEkTedavi
+                                ? handleOpenTreatmentRequestModal(pendingEkTedavi)
+                                : undefined}
                               className="px-4 py-2 bg-orange-500/30 hover:bg-orange-500/40 border border-orange-500/50 rounded-xl text-orange-200 hover:text-white text-sm font-medium transition-all duration-200 flex items-center gap-2"
                             >
                               💊 Ek Tedaviyi Onayla
