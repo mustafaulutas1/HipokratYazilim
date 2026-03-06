@@ -88,8 +88,8 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
         }
       });
       
-      // Manual sort by creation date (newest first)
-      applications.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      // Sort alphabetically by name
+      applications.sort((a, b) => a.name.localeCompare(b.name, 'tr'));
       
       console.log('✅ ApplicationManagement: Refetched applications:', applications.length);
       console.log('   - Clinic-specific:', clinicApplicationNames.size);
