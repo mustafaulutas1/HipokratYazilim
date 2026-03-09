@@ -169,6 +169,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
   const [editedProtocol, setEditedProtocol] = useState<SavedProtocol | null>(null);
   const [selectedMainApplications, setSelectedMainApplications] = useState<string[]>([]);
   const [selectedApplicationsBySystem, setSelectedApplicationsBySystem] = useState<{[key: string]: string[]}>({});
+  const [selectedProtocolBySystem, setSelectedProtocolBySystem] = useState<{[key: string]: string}>({});
   const [createRoutineProgram, setCreateRoutineProgram] = useState(false);
   const [routineTotalSessions, setRoutineTotalSessions] = useState<number>(8);
   const [routineFrequency, setRoutineFrequency] = useState<string>('Haftalık');
@@ -176,6 +177,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
   const [routineAnamnezRequired, setRoutineAnamnezRequired] = useState(false);
   const [routineAnamnezTemplates, setRoutineAnamnezTemplates] = useState<string[]>([]);
   const [medicationOptions, setMedicationOptions] = useState<string[]>([]);
+  const [applicationOptions, setApplicationOptions] = useState<string[]>([]);
 
   console.log('🎬 TreatmentModal: Current state', {
     savedProtocolsCount: savedProtocols.length,
@@ -213,6 +215,38 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
     fetchMedicationOptions();
   }, [patient?.clinicId]);
 
+  useEffect(() => {
+    const fetchApplicationOptions = async () => {
+      if (!patient?.clinicId) return;
+      try {
+        const applicationsSnapshot = await getDocs(collection(db, 'medicalApplications'));
+        const clinicNames = new Set<string>();
+        const options: string[] = [];
+
+        applicationsSnapshot.forEach((doc) => {
+          const data = doc.data();
+          if (data?.clinicId === patient.clinicId && typeof data?.name === 'string') {
+            options.push(data.name);
+            clinicNames.add(data.name);
+          }
+        });
+
+        applicationsSnapshot.forEach((doc) => {
+          const data = doc.data();
+          if (data?.clinicId === 'STANDARD' && typeof data?.name === 'string' && !clinicNames.has(data.name)) {
+            options.push(data.name);
+          }
+        });
+
+        setApplicationOptions(Array.from(new Set(options)).sort((a, b) => a.localeCompare(b, 'tr')));
+      } catch (error) {
+        console.error('❌ TreatmentModal: Error fetching applications:', error);
+      }
+    };
+
+    fetchApplicationOptions();
+  }, [patient?.clinicId]);
+
   const renderMedicationSelect = (
     value: string,
     onChange: (nextValue: string) => void,
@@ -235,6 +269,360 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
           <option key={name} value={name}>{name}</option>
         ))}
       </select>
+    );
+  };
+
+  const renderApplicationSelect = (
+    value: string,
+    onChange: (nextValue: string) => void,
+    className: string,
+    placeholder = 'Uygulama seçin'
+  ) => {
+    const options = value && !applicationOptions.includes(value)
+      ? [value, ...applicationOptions]
+      : applicationOptions;
+
+    return (
+      <select
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
+        className={className}
+        disabled={options.length === 0}
+      >
+        <option value="">{options.length === 0 ? 'Uygulama bulunamadı' : placeholder}</option>
+        {options.map((name) => (
+          <option key={name} value={name}>{name}</option>
+        ))}
+      </select>
+    );
+  };
+
+  const getProtocolDisplayName = (protocol: SavedProtocol) => {
+    if (!protocol.isCustomized) return protocol.name;
+    return protocol.name.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  };
+
+  const getManualProtocols = (ageGroup: '2-7' | '8-14' | 'adult') => {
+    const customForPatient = savedProtocols.filter(
+      (protocol) => protocol.isCustomized && protocol.patientId === patient?.id && protocol.ageGroup === ageGroup
+    );
+
+    const customByOriginalId = new Set(
+      customForPatient
+        .map((protocol) => protocol.originalProtocolId)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    );
+
+    const baseProtocols = savedProtocols.filter(
+      (protocol) =>
+        protocol.ageGroup === ageGroup &&
+        !protocol.isCustomized &&
+        !customByOriginalId.has(protocol.id)
+    );
+
+    return [...baseProtocols, ...customForPatient];
+  };
+
+  const renderEditingUI = () => {
+    if (!editedProtocol) return null;
+
+    return (
+      <div className="mb-8">
+        {/* Editing Header */}
+        <div className="bg-gradient-to-r from-orange-600 to-red-600 text-white rounded-t-2xl p-6">
+          <div className="text-center">
+            <h3 className="text-2xl font-bold mb-2 flex items-center justify-center gap-2">
+              ✏️ Protokol Düzenleniyor - {patient?.fullName}
+            </h3>
+            <p className="text-white/90 text-lg font-medium mb-4">
+              <input
+                type="text"
+                value={editedProtocol.name}
+                onChange={(e) => setEditedProtocol({ ...editedProtocol, name: e.target.value })}
+                className="bg-white/20 text-white placeholder-white/70 border border-white/30 rounded-lg px-4 py-2 w-full max-w-md text-center"
+                placeholder="Protokol adı"
+              />
+            </p>
+            <div className="flex items-center justify-center gap-6 text-sm">
+              <span className="px-4 py-2 bg-white/20 text-white rounded-full font-medium">
+                👤 {editedProtocol.ageGroup === 'adult' ? 'Yetişkin' : `${editedProtocol.ageGroup} Yaş`}
+              </span>
+              <span className="px-4 py-2 bg-white/20 text-white rounded-full font-medium">
+                ⚡ Öncelik: {editedProtocol.priority}
+              </span>
+              <input
+                type="text"
+                value={editedProtocol.frequency}
+                onChange={(e) => setEditedProtocol({ ...editedProtocol, frequency: e.target.value })}
+                className="bg-white/20 text-white placeholder-white/70 border border-white/30 rounded-full px-4 py-2 text-sm font-medium text-center w-32"
+                placeholder="Frekans"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Editable Treatment Phases */}
+        <div className="bg-white border-x border-gray-200 p-6">
+          <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+            💊 Tedavi Fazları (Düzenlenebilir)
+          </h4>
+          <div className="mb-4">
+            <button
+              type="button"
+              onClick={handleAddRegeneration}
+              disabled={!editedProtocol?.phases?.remember}
+              className="px-3 py-2 bg-orange-100 hover:bg-orange-200 border border-orange-200 text-orange-700 rounded-lg text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              + İlaç Ekle
+            </button>
+          </div>
+          {/* Dynamic Regeneration Cards – unlimited */}
+          <div className="flex flex-wrap gap-4 mb-6" style={{ overflowAnchor: 'none' }}>
+            {/* Remember */}
+            {editedProtocol.phases.remember ? (
+              <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 relative min-w-[180px]">
+                <button
+                  onClick={handleRemoveRemember}
+                  className="absolute top-2 right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs transition-all"
+                  title="Remember fazını kaldır"
+                >×</button>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center text-sm font-bold">R</div>
+                  <h5 className="font-bold text-red-700">Remember</h5>
+                </div>
+                {renderMedicationSelect(
+                  editedProtocol.phases.remember.treatment,
+                  (value) => setEditedProtocol({
+                    ...editedProtocol,
+                    phases: {
+                      ...editedProtocol.phases,
+                      remember: { ...editedProtocol.phases.remember!, treatment: value }
+                    }
+                  }),
+                  'w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2',
+                  'İlaç seçin'
+                )}
+                <input
+                  type="text"
+                  value={editedProtocol.phases.remember.dosage}
+                  onChange={(e) => setEditedProtocol({ ...editedProtocol, phases: { ...editedProtocol.phases, remember: { ...editedProtocol.phases.remember!, dosage: e.target.value } } })}
+                  className="w-full border border-gray-300 rounded px-2 py-1 text-xs text-gray-600"
+                  placeholder="Doz"
+                />
+              </div>
+            ) : (
+              <div className="bg-red-50 border-2 border-dashed border-red-300 rounded-xl p-4 flex flex-col items-center justify-center text-center min-w-[180px] min-h-[120px]">
+                <div className="w-8 h-8 bg-red-200 text-red-600 rounded-full flex items-center justify-center text-sm font-bold mb-2">R</div>
+                <h5 className="font-bold text-red-600 mb-2">Remember</h5>
+                <button onClick={handleAddRemember} className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium transition-all flex items-center gap-1">+ Ekle</button>
+              </div>
+            )}
+
+            {/* Existing regeneration phases */}
+            {(editedProtocol.phases.regenerations || []).map((reg, index) => {
+              const color = REGEN_COLORS[index % REGEN_COLORS.length];
+              const isLast = index === (editedProtocol.phases.regenerations?.length ?? 0) - 1;
+              return (
+                <div key={index} className={`${color.bg} border-2 ${color.border} rounded-xl p-4 relative min-w-[180px]`}>
+                  {isLast && (
+                    <button
+                      onClick={() => handleRemoveRegeneration(index)}
+                      className="absolute top-2 right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs transition-all"
+                      title={`${index + 1}. Rejenerasyon fazını kaldır`}
+                    >×</button>
+                  )}
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className={`w-8 h-8 ${color.circle} text-white rounded-full flex items-center justify-center text-sm font-bold`}>{index + 1}</div>
+                    <h5 className={`font-bold ${color.label}`}>{index + 1} Regeneration</h5>
+                  </div>
+                  {renderMedicationSelect(
+                    reg.treatment,
+                    (value) => handleUpdateRegeneration(index, 'treatment', value),
+                    'w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2',
+                    'İlaç seçin'
+                  )}
+                  <input
+                    type="text"
+                    value={reg.dosage}
+                    onChange={(e) => handleUpdateRegeneration(index, 'dosage', e.target.value)}
+                    className="w-full border border-gray-300 rounded px-2 py-1 text-xs text-gray-600"
+                    placeholder="Doz"
+                  />
+                </div>
+              );
+            })}
+
+            {/* Add next regeneration button (only visible when Remember exists) */}
+            {editedProtocol.phases.remember && (() => {
+              const nextIndex = (editedProtocol.phases.regenerations?.length || 0);
+              const color = REGEN_COLORS[nextIndex % REGEN_COLORS.length];
+              return (
+                <div className={`${color.bg} border-2 border-dashed ${color.dashed} rounded-xl p-4 flex flex-col items-center justify-center text-center min-w-[180px] min-h-[120px]`}>
+                  <div className={`w-8 h-8 ${color.lightCircle} ${color.lightLabel} rounded-full flex items-center justify-center text-sm font-bold mb-2`}>{nextIndex + 1}</div>
+                  <h5 className={`font-bold ${color.lightLabel} mb-2`}>{nextIndex + 1} Regeneration</h5>
+                  <button onClick={handleAddRegeneration} className={`px-3 py-1 ${color.btn} text-white rounded-lg text-xs font-medium transition-all flex items-center gap-1`}>+ Ekle</button>
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Editable Main Applications */}
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <h4 className="text-lg font-bold text-gray-900 mb-2 flex items-center gap-2">
+              🏥 Ana Uygulamalar (Düzenlenebilir)
+            </h4>
+            <p className="text-sm text-gray-600 mb-4">
+              Ana uygulamaları düzenleyebilir, ekleyebilir veya silebilirsiniz
+            </p>
+            <div className="space-y-3">
+              {editedProtocol?.phases?.mainTreatments?.map((mainTreatment, mtIndex) => (
+                <div key={mtIndex} className="p-4 bg-purple-50 border border-purple-200 rounded-lg space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h5 className="text-sm font-semibold text-purple-800">Ana Uygulama #{mtIndex + 1}</h5>
+                    <button
+                      onClick={() => {
+                        const updatedMainTreatments = editedProtocol.phases.mainTreatments.filter((_, index) => index !== mtIndex);
+                        setEditedProtocol({
+                          ...editedProtocol,
+                          phases: {
+                            ...editedProtocol.phases,
+                            mainTreatments: updatedMainTreatments
+                          }
+                        });
+                      }}
+                      className="w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs transition-all"
+                      title="Ana uygulamayı sil"
+                    >
+                      ×
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-gray-700">Uygulama Adı</label>
+                    {renderApplicationSelect(
+                      mainTreatment.treatment,
+                      (value) => {
+                        const updatedMainTreatments = [...editedProtocol.phases.mainTreatments];
+                        updatedMainTreatments[mtIndex] = {
+                          ...updatedMainTreatments[mtIndex],
+                          treatment: value
+                        };
+                        setEditedProtocol({
+                          ...editedProtocol,
+                          phases: {
+                            ...editedProtocol.phases,
+                            mainTreatments: updatedMainTreatments
+                          }
+                        });
+                      },
+                      'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-semibold focus:ring-2 focus:ring-purple-500 focus:border-transparent',
+                      'Uygulama seçin'
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-gray-700">Açıklama</label>
+                    <textarea
+                      value={mainTreatment.description || ''}
+                      onChange={(e) => {
+                        const updatedMainTreatments = [...editedProtocol.phases.mainTreatments];
+                        updatedMainTreatments[mtIndex] = {
+                          ...updatedMainTreatments[mtIndex],
+                          description: e.target.value
+                        };
+                        setEditedProtocol({
+                          ...editedProtocol,
+                          phases: {
+                            ...editedProtocol.phases,
+                            mainTreatments: updatedMainTreatments
+                          }
+                        });
+                      }}
+                      rows={3}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+                      placeholder="Ana uygulama açıklamasını girin (opsiyonel)"
+                    />
+                  </div>
+                </div>
+              ))}
+
+              {/* Add New Main Application Button */}
+              <button
+                onClick={() => {
+                  const newMainTreatment = {
+                    treatment: 'YENİ ANA UYGULAMA',
+                    description: ''
+                  };
+                  setEditedProtocol({
+                    ...editedProtocol,
+                    phases: {
+                      ...editedProtocol.phases,
+                      mainTreatments: [...editedProtocol.phases.mainTreatments, newMainTreatment]
+                    }
+                  });
+                }}
+                className="w-full px-4 py-3 bg-purple-100 hover:bg-purple-200 border-2 border-dashed border-purple-300 rounded-lg text-purple-700 font-medium transition-all duration-200 flex items-center justify-center gap-2"
+              >
+                + Yeni Ana Uygulama Ekle
+              </button>
+            </div>
+          </div>
+
+          {/* Editable Protocol Details */}
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+              📋 Protokol Detayları (Düzenlenebilir)
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-gray-50 rounded-xl p-4">
+                <label className="block text-sm text-gray-600 mb-2">Kontrol</label>
+                <input
+                  type="text"
+                  value={editedProtocol.control || '4 AYDA 1 KONTROL'}
+                  onChange={(e) => setEditedProtocol({ ...editedProtocol, control: e.target.value.toUpperCase() })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-semibold uppercase"
+                  placeholder="Örn: 4 AYDA 1 KONTROL"
+                />
+              </div>
+              <div className="bg-gray-50 rounded-xl p-4">
+                <label className="block text-sm text-gray-600 mb-2">Tanı Sistemi</label>
+                <div className="font-semibold text-gray-900 py-2">{editedProtocol.diagnosisSystem || ''}</div>
+              </div>
+              <div className="bg-gray-50 rounded-xl p-4">
+                <label className="block text-sm text-gray-600 mb-2">Oluşturan</label>
+                <div className="font-semibold text-gray-900 py-2">{editedProtocol.createdBy || 'System Admin'}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Edit Action Buttons */}
+          <div className="flex items-center justify-between pt-6 border-t border-gray-200">
+            <button
+              onClick={handleCancelEdit}
+              className="px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-xl font-medium transition-all duration-200"
+            >
+              ❌ İptal Et
+            </button>
+
+            <button
+              onClick={handleSaveCustomProtocol}
+              disabled={loading}
+              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl font-medium transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Kaydediliyor...
+                </>
+              ) : (
+                <>
+                  💾 Kaydet
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
     );
   };
 
@@ -779,6 +1167,9 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
       setSavedProtocols([]);
       setSelectedMainApplications([]);
       setSelectedApplicationsBySystem({});
+      setSelectedProtocolBySystem({});
+      setIsEditing(false);
+      setEditedProtocol(null);
     }
   }, [isOpen]);
 
@@ -854,16 +1245,21 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
 
   // Start editing a protocol for this patient
   const handleEditProtocol = (protocol: SavedProtocol) => {
+    const normalizedProtocol = normalizeProtocol(protocol);
     setEditedProtocol({
-      ...protocol,
+      ...normalizedProtocol,
       // Make it patient-specific
       id: `${protocol.id}_patient_${patient.id}`,
-      name: `${protocol.name} (${patient.fullName} için özelleştirildi)`,
+      name: getProtocolDisplayName(protocol),
       patientId: patient.id,
-      originalProtocolId: protocol.id,
+      originalProtocolId: protocol.originalProtocolId || protocol.id,
       customizedAt: new Date().toISOString(),
       customizedBy: 'Dr. ' // You can get this from user context
     });
+    setSelectedProtocolBySystem((prev) => ({
+      ...prev,
+      [protocol.diagnosisSystem]: protocol.id
+    }));
     setIsEditing(true);
   };
 
@@ -1039,7 +1435,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
       if (allTreatments.length === 0) {
         // Manual selection mode: find the protocol that contains the selected main applications
         const patientAgeGroup = patient ? getPatientAgeGroup(patient.birthDate) : 'adult';
-        const allAvailableProtocols = savedProtocols.filter(p => p.ageGroup === patientAgeGroup);
+        const allAvailableProtocols = getManualProtocols(patientAgeGroup as '2-7' | '8-14' | 'adult');
         
         // Find the protocol(s) that contain the selected main applications
         let matchingProtocol = allAvailableProtocols.find(protocol => 
@@ -1131,9 +1527,9 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-7xl max-h-[95vh] overflow-y-auto shadow-2xl border border-gray-200">
+      <div className="bg-white rounded-2xl w-full max-w-7xl max-h-[95vh] shadow-2xl border border-gray-200 flex flex-col">
         {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-gray-200 p-6 rounded-t-2xl">
+        <div className="bg-white border-b border-gray-200 p-6 rounded-t-2xl">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">
@@ -1152,8 +1548,12 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
           </div>
         </div>
 
-        {/* Content */}
-        <div className="p-6 space-y-6">
+        <div
+          className="flex-1 overflow-y-scroll"
+          style={{ scrollbarGutter: 'stable', overflowAnchor: 'none' }}
+        >
+          {/* Content */}
+          <div className="p-6 space-y-6" style={{ overflowAnchor: 'none' }}>
           {/* Patient Summary */}
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-6">
             <h3 className="text-gray-900 font-semibold mb-4 flex items-center gap-2">
@@ -1243,10 +1643,13 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                     const allTreatments = getTreatmentsForAllSystems();
 
                     if (!allTreatments || allTreatments.length === 0) {
-                      // Show all available protocols when no matching treatment is found
+                      if (isEditing && editedProtocol) {
+                        return renderEditingUI();
+                      }
+
                       const patientAgeGroup = patient ? getPatientAgeGroup(patient.birthDate) : 'adult';
-                      const allAvailableProtocols = savedProtocols.filter(p => p.ageGroup === patientAgeGroup);
-                      
+                      const allAvailableProtocols = getManualProtocols(patientAgeGroup as '2-7' | '8-14' | 'adult');
+
                       if (allAvailableProtocols.length === 0) {
                         return (
                           <div className="text-center py-8">
@@ -1258,13 +1661,12 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                               Bu yaş grubuna uygun tedavi protokolü sistemde kayıtlı değil.
                             </p>
                             <div className="text-sm text-gray-500">
-                              <p>Yaş Grubu: {patientAgeGroup === 'adult' ? 'Yetişkin' : patientAgeGroup + ' Yaş'}</p>
+                              <p>Yaş Grubu: {patientAgeGroup === 'adult' ? 'Yetişkin' : `${patientAgeGroup} Yaş`}</p>
                             </div>
                           </div>
                         );
                       }
-                      
-                      // Group protocols by diagnosis system
+
                       const protocolsBySystem: { [key: string]: SavedProtocol[] } = {};
                       allAvailableProtocols.forEach(protocol => {
                         if (!protocolsBySystem[protocol.diagnosisSystem]) {
@@ -1272,7 +1674,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                         }
                         protocolsBySystem[protocol.diagnosisSystem].push(protocol);
                       });
-                      
+
                       return (
                         <div className="space-y-6">
                           {/* Warning Banner */}
@@ -1284,31 +1686,20 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                   Hasta Anamnezine Uygun Tedavi Bulunamadı
                                 </h4>
                                 <p className="text-amber-700 text-sm">
-                                  Hasta değerlerine göre otomatik eşleşen bir tedavi protokolü bulunamadı. 
+                                  Hasta değerlerine göre otomatik eşleşen bir tedavi protokolü bulunamadı.
                                   Aşağıdaki mevcut tedavi seçeneklerinden manuel olarak seçim yapabilirsiniz.
                                 </p>
-                                <div className="mt-2 text-xs text-amber-600">
-                                  {anamrezData?.symptomRatings?.stres !== undefined && (
-                                    <span className="mr-3">Stres: {anamrezData.symptomRatings.stres}/10</span>
-                                  )}
-                                  {anamrezData?.toxicityAssessment?.hasToxicity !== undefined && (
-                                    <span className="mr-3">Toksisite: {anamrezData.toxicityAssessment.hasToxicity ? 'Yüksek' : 'Normal'}</span>
-                                  )}
-                                  {anamrezData?.selectedDiagnosisSystems?.length && anamrezData.selectedDiagnosisSystems.length > 0 && (
-                                    <span>Tanı: {anamrezData.selectedDiagnosisSystems.join(', ')}</span>
-                                  )}
-                                </div>
                               </div>
                             </div>
                           </div>
-                          
+
                           {/* Patient Info Summary */}
                           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                             <h5 className="font-medium text-blue-900 mb-2">Hasta Durumu & Tedavi Kriterleri</h5>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
                               <div>
                                 <span className="text-blue-700 font-medium">Yaş Grubu:</span>
-                                <span className="ml-2 text-blue-900">{patientAgeGroup === 'adult' ? 'Yetişkin' : patientAgeGroup + ' Yaş'}</span>
+                                <span className="ml-2 text-blue-900">{patientAgeGroup === 'adult' ? 'Yetişkin' : `${patientAgeGroup} Yaş`}</span>
                               </div>
                               <div>
                                 <span className="text-blue-700 font-medium">Tanı Sistemleri:</span>
@@ -1336,7 +1727,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                               </div>
                             </div>
                           </div>
-                          
+
                           {/* All Available Protocols by System */}
                           <div>
                             <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
@@ -1345,7 +1736,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                             <p className="text-sm text-gray-600 mb-4">
                               Tedaviye devam etmek için aşağıdaki protokollerden birini seçin ve ana uygulamalardan en az birini işaretleyin.
                             </p>
-                            
+
                             {Object.entries(protocolsBySystem).map(([systemName, protocols]) => (
                               <div key={systemName} className="mb-6">
                                 <h5 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
@@ -1353,8 +1744,18 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                   {systemName}
                                 </h5>
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                  {protocols.sort((a, b) => (b.priority || 0) - (a.priority || 0)).map((protocol) => {
-                                    // Build treatment sequence for this protocol
+                                  {(() => {
+                                    const sorted = [...protocols].sort((a, b) => (b.priority || 0) - (a.priority || 0));
+                                    const editedForSystem = editedProtocol && editedProtocol.diagnosisSystem === systemName
+                                      ? editedProtocol
+                                      : null;
+                                    const customizedForSystem = sorted.find((p) => p.isCustomized && p.patientId === patient?.id);
+                                    const topProtocol = editedForSystem
+                                      || customizedForSystem
+                                      || sorted[0];
+
+                                    return topProtocol ? [topProtocol] : [];
+                                  })().map((protocol) => {
                                     const treatmentSequence = buildTreatmentSequence(protocol);
                                     const protocolWithSequence = {
                                       ...protocol,
@@ -1369,23 +1770,38 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                         treatmentSequence: treatmentSequence
                                       }
                                     };
-                                    
+
                                     const systemSelections = selectedApplicationsBySystem[systemName] || [];
                                     const hasAnySelection = systemSelections.length > 0;
-                                    
+                                    const isSelected = selectedProtocolBySystem[systemName] === protocol.id;
+
                                     return (
                                       <div
                                         key={protocol.id}
+                                        onClick={() =>
+                                          setSelectedProtocolBySystem((prev) => {
+                                            const current = prev[systemName];
+                                            if (current === protocol.id) {
+                                              const { [systemName]: _, ...rest } = prev;
+                                              return rest;
+                                            }
+                                            return {
+                                              ...prev,
+                                              [systemName]: protocol.id
+                                            };
+                                          })
+                                        }
                                         className={`border-2 rounded-xl p-4 transition-all duration-200 ${
-                                          hasAnySelection
-                                            ? 'bg-green-50 border-green-300 shadow-md'
-                                            : 'bg-white border-gray-200 hover:border-blue-300'
+                                          isSelected
+                                            ? 'bg-blue-50 border-blue-600 ring-2 ring-blue-400 shadow-lg'
+                                            : hasAnySelection
+                                              ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-200 shadow-md'
+                                              : 'bg-white border-gray-200 hover:border-blue-300'
                                         }`}
                                       >
-                                        {/* Protocol Header */}
                                         <div className="flex items-center justify-between mb-3">
                                           <div>
-                                            <h6 className="font-bold text-gray-900">{protocol.name}</h6>
+                                            <h6 className="font-bold text-gray-900">{getProtocolDisplayName(protocol)}</h6>
                                             <div className="flex items-center gap-2 mt-1">
                                               <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">
                                                 Öncelik: {protocol.priority}
@@ -1393,6 +1809,11 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                               {protocol.frequency && (
                                                 <span className="text-xs px-2 py-1 bg-blue-100 text-blue-600 rounded-full">
                                                   {protocol.frequency}
+                                                </span>
+                                              )}
+                                              {isSelected && (
+                                                <span className="text-xs px-2 py-1 bg-blue-600 text-white rounded-full">
+                                                  Seçildi
                                                 </span>
                                               )}
                                             </div>
@@ -1404,8 +1825,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                             ✏️ Düzenle
                                           </button>
                                         </div>
-                                        
-                                        {/* Treatment Phases Summary */}
+
                                         <div className="flex flex-wrap gap-2 mb-3">
                                           {protocol.phases.remember && (
                                             <span className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded">
@@ -1418,8 +1838,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                             </span>
                                           ))}
                                         </div>
-                                        
-                                        {/* Main Treatments Selection */}
+
                                         <div className="border-t border-gray-200 pt-3">
                                           <p className="text-xs text-gray-600 mb-2 font-medium">Ana Uygulamalar (seçim yapın):</p>
                                           <div className="flex flex-wrap gap-2">
@@ -1441,35 +1860,6 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                             })}
                                           </div>
                                         </div>
-                                        
-                                        {/* Protocol Conditions Info */}
-                                        {(protocol.toxicityRequired || (protocol.symptomConditions && protocol.symptomConditions.length > 0)) && (
-                                          <div className="mt-3 pt-3 border-t border-gray-200">
-                                            <p className="text-xs text-gray-500 mb-1">Protokol Gereksinimleri:</p>
-                                            <div className="flex flex-wrap gap-1">
-                                              {protocol.toxicityRequired && (
-                                                <span className={`text-xs px-2 py-0.5 rounded ${
-                                                  anamrezData?.toxicityAssessment?.hasToxicity
-                                                    ? 'bg-green-100 text-green-700'
-                                                    : 'bg-red-100 text-red-700'
-                                                }`}>
-                                                  Toksisite {anamrezData?.toxicityAssessment?.hasToxicity ? '✓' : '✗'}
-                                                </span>
-                                              )}
-                                              {protocol.symptomConditions?.map((cond, idx) => {
-                                                const patientVal = anamrezData?.symptomRatings?.[cond.symptomKey] || 0;
-                                                const met = patientVal >= cond.threshold;
-                                                return (
-                                                  <span key={idx} className={`text-xs px-2 py-0.5 rounded ${
-                                                    met ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                                                  }`}>
-                                                    {cond.symptomLabel}: {patientVal}/{cond.threshold} {met ? '✓' : '✗'}
-                                                  </span>
-                                                );
-                                              })}
-                                            </div>
-                                          </div>
-                                        )}
                                       </div>
                                     );
                                   })}
@@ -1481,380 +1871,51 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                       );
                     }
 
+                    if (isEditing && editedProtocol) {
+                      return renderEditingUI();
+                    }
+
                     return (
                       <>
-                        {/* Patient Info Summary */}
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                          <h5 className="font-medium text-blue-900 mb-2">Hasta Durumu & Tedavi Kriterleri</h5>
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-                            <div>
-                              <span className="text-blue-700 font-medium">Yaş Grubu:</span>
-                              <span className="ml-2 text-blue-900">{getPatientAgeGroup(patient.birthDate)}</span>
-                            </div>
-                            <div>
-                              <span className="text-blue-700 font-medium">Tanı Sistemleri:</span>
-                              <span className="ml-2 text-blue-900">{anamrezData?.selectedDiagnosisSystems?.length || 0}</span>
-                            </div>
-                            <div>
-                              <span className="text-blue-700 font-medium">Stres Değeri:</span>
-                              <span className={`ml-2 font-medium ${
-                                (anamrezData?.symptomRatings?.stres || 0) >= 7
-                                  ? 'text-red-600'
-                                  : 'text-green-600'
-                              }`}>
-                                {anamrezData?.symptomRatings?.stres || 0}/10
-                              </span>
-                            </div>
-                            <div>
-                              <span className="text-blue-700 font-medium">Toksisite:</span>
-                              <span className={`ml-2 font-medium ${
-                                anamrezData?.toxicityAssessment?.hasToxicity
-                                  ? 'text-red-600'
-                                  : 'text-green-600'
-                              }`}>
-                                {anamrezData?.toxicityAssessment?.hasToxicity ? 'Yüksek' : 'Normal'}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Show editing interface or normal display */}
-                        {isEditing && editedProtocol ? (
-                          <div className="mb-8">
-                            {/* Editing Header */}
-                            <div className="bg-gradient-to-r from-orange-600 to-red-600 text-white rounded-t-2xl p-6">
+                        {allTreatments.map((bestTreatment, systemIndex) => (
+                          <div key={systemIndex} className="mb-8">
+                            {/* Protocol Header */}
+                            <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-t-2xl p-6">
                               <div className="text-center">
                                 <h3 className="text-2xl font-bold mb-2 flex items-center justify-center gap-2">
-                                  ✏️ Protokol Düzenleniyor - {patient.fullName}
+                                  📊 {bestTreatment.system} - {bestTreatment.isCustomized ? 'Özelleştirilmiş' : 'Seçilen'} Tedavi Protokolü
                                 </h3>
-                                <p className="text-white/90 text-lg font-medium mb-4">
-                                  <input
-                                    type="text"
-                                    value={editedProtocol.name}
-                                    onChange={(e) => setEditedProtocol({...editedProtocol, name: e.target.value})}
-                                    className="bg-white/20 text-white placeholder-white/70 border border-white/30 rounded-lg px-4 py-2 w-full max-w-md text-center"
-                                    placeholder="Protokol adı"
-                                  />
-                                </p>
+                                <div className="flex items-center justify-center gap-2 mb-4">
+                                  <p className="text-white/90 text-lg font-medium">{getProtocolDisplayName(bestTreatment)}</p>
+                                </div>
                                 <div className="flex items-center justify-center gap-6 text-sm">
                                   <span className="px-4 py-2 bg-white/20 text-white rounded-full font-medium">
-                                    👤 {editedProtocol.ageGroup === 'adult' ? 'Yetişkin' : `${editedProtocol.ageGroup} Yaş`}
+                                    👤 {bestTreatment.patientAgeGroup === 'adult' ? 'Yetişkin' : `${bestTreatment.patientAgeGroup} Yaş`}
                                   </span>
                                   <span className="px-4 py-2 bg-white/20 text-white rounded-full font-medium">
-                                    ⚡ Öncelik: {editedProtocol.priority}
+                                    ⚡ Öncelik: {bestTreatment.priority}
                                   </span>
-                                  <input
-                                    type="text"
-                                    value={editedProtocol.frequency}
-                                    onChange={(e) => setEditedProtocol({...editedProtocol, frequency: e.target.value})}
-                                    className="bg-white/20 text-white placeholder-white/70 border border-white/30 rounded-full px-4 py-2 text-sm font-medium text-center w-32"
-                                    placeholder="Frekans"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Editable Treatment Phases */}
-                            <div className="bg-white border-x border-gray-200 p-6">
-                              <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                                💊 Tedavi Fazları (Düzenlenebilir)
-                              </h4>
-                              {/* Dynamic Regeneration Cards – unlimited */}
-                              <div className="flex flex-wrap gap-4 mb-6">
-                                {/* Remember */}
-                                {editedProtocol.phases.remember ? (
-                                  <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 relative min-w-[180px]">
-                                    <button
-                                      onClick={handleRemoveRemember}
-                                      className="absolute top-2 right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs transition-all"
-                                      title="Remember fazını kaldır"
-                                    >×</button>
-                                    <div className="flex items-center gap-2 mb-3">
-                                      <div className="w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center text-sm font-bold">R</div>
-                                      <h5 className="font-bold text-red-700">Remember</h5>
-                                    </div>
-                                    {renderMedicationSelect(
-                                      editedProtocol.phases.remember.treatment,
-                                      (value) => setEditedProtocol({
-                                        ...editedProtocol,
-                                        phases: {
-                                          ...editedProtocol.phases,
-                                          remember: { ...editedProtocol.phases.remember!, treatment: value }
-                                        }
-                                      }),
-                                      'w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2',
-                                      'İlaç seçin'
-                                    )}
-                                    <input
-                                      type="text"
-                                      value={editedProtocol.phases.remember.dosage}
-                                      onChange={(e) => setEditedProtocol({ ...editedProtocol, phases: { ...editedProtocol.phases, remember: { ...editedProtocol.phases.remember!, dosage: e.target.value } } })}
-                                      className="w-full border border-gray-300 rounded px-2 py-1 text-xs text-gray-600"
-                                      placeholder="Doz"
-                                    />
-                                  </div>
-                                ) : (
-                                  <div className="bg-red-50 border-2 border-dashed border-red-300 rounded-xl p-4 flex flex-col items-center justify-center text-center min-w-[180px] min-h-[120px]">
-                                    <div className="w-8 h-8 bg-red-200 text-red-600 rounded-full flex items-center justify-center text-sm font-bold mb-2">R</div>
-                                    <h5 className="font-bold text-red-600 mb-2">Remember</h5>
-                                    <button onClick={handleAddRemember} className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium transition-all flex items-center gap-1">+ Ekle</button>
-                                  </div>
-                                )}
-
-                                {/* Existing regeneration phases */}
-                                {(editedProtocol.phases.regenerations || []).map((reg, index) => {
-                                  const color = REGEN_COLORS[index % REGEN_COLORS.length];
-                                  const isLast = index === (editedProtocol.phases.regenerations?.length ?? 0) - 1;
-                                  return (
-                                    <div key={index} className={`${color.bg} border-2 ${color.border} rounded-xl p-4 relative min-w-[180px]`}>
-                                      {isLast && (
-                                        <button
-                                          onClick={() => handleRemoveRegeneration(index)}
-                                          className="absolute top-2 right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs transition-all"
-                                          title={`${index + 1}. Rejenerasyon fazını kaldır`}
-                                        >×</button>
-                                      )}
-                                      <div className="flex items-center gap-2 mb-3">
-                                        <div className={`w-8 h-8 ${color.circle} text-white rounded-full flex items-center justify-center text-sm font-bold`}>{index + 1}</div>
-                                        <h5 className={`font-bold ${color.label}`}>{index + 1} Regeneration</h5>
-                                      </div>
-                                        {renderMedicationSelect(
-                                          reg.treatment,
-                                          (value) => handleUpdateRegeneration(index, 'treatment', value),
-                                          'w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2',
-                                          'İlaç seçin'
-                                        )}
-                                      <input
-                                        type="text"
-                                        value={reg.dosage}
-                                        onChange={(e) => handleUpdateRegeneration(index, 'dosage', e.target.value)}
-                                        className="w-full border border-gray-300 rounded px-2 py-1 text-xs text-gray-600"
-                                        placeholder="Doz"
-                                      />
-                                    </div>
-                                  );
-                                })}
-
-                                {/* Add next regeneration button (only visible when Remember exists) */}
-                                {editedProtocol.phases.remember && (() => {
-                                  const nextIndex = (editedProtocol.phases.regenerations?.length || 0);
-                                  const color = REGEN_COLORS[nextIndex % REGEN_COLORS.length];
-                                  return (
-                                    <div className={`${color.bg} border-2 border-dashed ${color.dashed} rounded-xl p-4 flex flex-col items-center justify-center text-center min-w-[180px] min-h-[120px]`}>
-                                      <div className={`w-8 h-8 ${color.lightCircle} ${color.lightLabel} rounded-full flex items-center justify-center text-sm font-bold mb-2`}>{nextIndex + 1}</div>
-                                      <h5 className={`font-bold ${color.lightLabel} mb-2`}>{nextIndex + 1} Regeneration</h5>
-                                      <button onClick={handleAddRegeneration} className={`px-3 py-1 ${color.btn} text-white rounded-lg text-xs font-medium transition-all flex items-center gap-1`}>+ Ekle</button>
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-
-                              {/* Editable Main Applications */}
-                              <div className="mt-6 pt-6 border-t border-gray-200">
-                                <h4 className="text-lg font-bold text-gray-900 mb-2 flex items-center gap-2">
-                                  🏥 Ana Uygulamalar (Düzenlenebilir)
-                                </h4>
-                                <p className="text-sm text-gray-600 mb-4">
-                                  Ana uygulamaları düzenleyebilir, ekleyebilir veya silebilirsiniz
-                                </p>
-                                <div className="space-y-3">
-                                  {editedProtocol?.phases?.mainTreatments?.map((mainTreatment, mtIndex) => (
-                                    <div key={mtIndex} className="p-4 bg-purple-50 border border-purple-200 rounded-lg space-y-3">
-                                      <div className="flex items-center justify-between">
-                                        <h5 className="text-sm font-semibold text-purple-800">Ana Uygulama #{mtIndex + 1}</h5>
-                                        <button
-                                          onClick={() => {
-                                            const updatedMainTreatments = editedProtocol.phases.mainTreatments.filter((_, index) => index !== mtIndex);
-                                            setEditedProtocol({
-                                              ...editedProtocol,
-                                              phases: {
-                                                ...editedProtocol.phases,
-                                                mainTreatments: updatedMainTreatments
-                                              }
-                                            });
-                                          }}
-                                          className="w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs transition-all"
-                                          title="Ana uygulamayı sil"
-                                        >
-                                          ×
-                                        </button>
-                                      </div>
-                                      
-                                      <div className="space-y-2">
-                                        <label className="block text-xs font-medium text-gray-700">Uygulama Adı</label>
-                                        <input
-                                          type="text"
-                                          value={mainTreatment.treatment}
-                                          onChange={(e) => {
-                                            const updatedMainTreatments = [...editedProtocol.phases.mainTreatments];
-                                            updatedMainTreatments[mtIndex] = {
-                                              ...updatedMainTreatments[mtIndex],
-                                              treatment: e.target.value.toUpperCase()
-                                            };
-                                            setEditedProtocol({
-                                              ...editedProtocol,
-                                              phases: {
-                                                ...editedProtocol.phases,
-                                                mainTreatments: updatedMainTreatments
-                                              }
-                                            });
-                                          }}
-                                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-semibold focus:ring-2 focus:ring-purple-500 focus:border-transparent uppercase"
-                                          placeholder="Ana uygulama adını girin"
-                                        />
-                                      </div>
-                                      
-                                      <div className="space-y-2">
-                                        <label className="block text-xs font-medium text-gray-700">Açıklama</label>
-                                        <textarea
-                                          value={mainTreatment.description || ''}
-                                          onChange={(e) => {
-                                            const updatedMainTreatments = [...editedProtocol.phases.mainTreatments];
-                                            updatedMainTreatments[mtIndex] = {
-                                              ...updatedMainTreatments[mtIndex],
-                                              description: e.target.value
-                                            };
-                                            setEditedProtocol({
-                                              ...editedProtocol,
-                                              phases: {
-                                                ...editedProtocol.phases,
-                                                mainTreatments: updatedMainTreatments
-                                              }
-                                            });
-                                          }}
-                                          rows={3}
-                                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
-                                          placeholder="Ana uygulama açıklamasını girin (opsiyonel)"
-                                        />
-                                      </div>
-                                    </div>
-                                  ))}
-                                  
-                                  {/* Add New Main Application Button */}
+                                  {bestTreatment.frequency && (
+                                    <span className="px-4 py-2 bg-white/20 text-white rounded-full font-medium">
+                                      📅 {bestTreatment.frequency}
+                                    </span>
+                                  )}
                                   <button
-                                    onClick={() => {
-                                      const newMainTreatment = {
-                                        treatment: 'YENİ ANA UYGULAMA',
-                                        description: ''
-                                      };
-                                      setEditedProtocol({
-                                        ...editedProtocol,
-                                        phases: {
-                                          ...editedProtocol.phases,
-                                          mainTreatments: [...editedProtocol.phases.mainTreatments, newMainTreatment]
-                                        }
-                                      });
-                                    }}
-                                    className="w-full px-4 py-3 bg-purple-100 hover:bg-purple-200 border-2 border-dashed border-purple-300 rounded-lg text-purple-700 font-medium transition-all duration-200 flex items-center justify-center gap-2"
+                                    onClick={() => handleEditProtocol(bestTreatment)}
+                                    className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-full font-medium transition-all duration-200 flex items-center gap-2"
                                   >
-                                    + Yeni Ana Uygulama Ekle
+                                    ✏️ Düzenle
                                   </button>
                                 </div>
                               </div>
-
-                              {/* Editable Protocol Details */}
-                              <div className="mt-6 pt-6 border-t border-gray-200">
-                                <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                                  📋 Protokol Detayları (Düzenlenebilir)
-                                </h4>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                  <div className="bg-gray-50 rounded-xl p-4">
-                                    <label className="block text-sm text-gray-600 mb-2">Kontrol</label>
-                                    <input
-                                      type="text"
-                                      value={editedProtocol.control || '4 AYDA 1 KONTROL'}
-                                      onChange={(e) => setEditedProtocol({...editedProtocol, control: e.target.value.toUpperCase()})}
-                                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-semibold uppercase"
-                                      placeholder="Örn: 4 AYDA 1 KONTROL"
-                                    />
-                                  </div>
-                                  <div className="bg-gray-50 rounded-xl p-4">
-                                    <label className="block text-sm text-gray-600 mb-2">Tanı Sistemi</label>
-                                    <div className="font-semibold text-gray-900 py-2">{editedProtocol.diagnosisSystem || ''}</div>
-                                  </div>
-                                  <div className="bg-gray-50 rounded-xl p-4">
-                                    <label className="block text-sm text-gray-600 mb-2">Oluşturan</label>
-                                    <div className="font-semibold text-gray-900 py-2">{editedProtocol.createdBy || 'System Admin'}</div>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Edit Action Buttons */}
-                              <div className="flex items-center justify-between pt-6 border-t border-gray-200">
-                                <button
-                                  onClick={handleCancelEdit}
-                                  className="px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-xl font-medium transition-all duration-200"
-                                >
-                                  ❌ İptal Et
-                                </button>
-
-                                <button
-                                  onClick={handleSaveCustomProtocol}
-                                  disabled={loading}
-                                  className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl font-medium transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                                >
-                                  {loading ? (
-                                    <>
-                                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                                      Kaydediliyor...
-                                    </>
-                                  ) : (
-                                    <>
-                                      💾 Kaydet
-                                    </>
-                                  )}
-                                </button>
-                              </div>
                             </div>
-                          </div>
-                        ) : (
-                          /* Normal Display Mode */
-                          <>
-                            {allTreatments.map((bestTreatment, systemIndex) => (
-                            <div key={systemIndex} className="mb-8">
-                              {/* Protocol Header */}
-                              <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-t-2xl p-6">
-                                <div className="text-center">
-                                  <h3 className="text-2xl font-bold mb-2 flex items-center justify-center gap-2">
-                                    📊 {bestTreatment.system} - {bestTreatment.isCustomized ? 'Özelleştirilmiş' : 'Seçilen'} Tedavi Protokolü
-                                  </h3>
-                                  <div className="flex items-center justify-center gap-2 mb-4">
-                                    <p className="text-white/90 text-lg font-medium">{bestTreatment.name}</p>
-                                    {bestTreatment.isCustomized && (
-                                      <span className="px-3 py-1 bg-orange-500/20 text-orange-300 rounded-full text-sm font-medium border border-orange-500/30">
-                                        ✏️ Özelleştirildi
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center justify-center gap-6 text-sm">
-                                    <span className="px-4 py-2 bg-white/20 text-white rounded-full font-medium">
-                                      👤 {bestTreatment.patientAgeGroup === 'adult' ? 'Yetişkin' : `${bestTreatment.patientAgeGroup} Yaş`}
-                                    </span>
-                                    <span className="px-4 py-2 bg-white/20 text-white rounded-full font-medium">
-                                      ⚡ Öncelik: {bestTreatment.priority}
-                                    </span>
-                                    {bestTreatment.frequency && (
-                                      <span className="px-4 py-2 bg-white/20 text-white rounded-full font-medium">
-                                        📅 {bestTreatment.frequency}
-                                      </span>
-                                    )}
-                                    <button
-                                      onClick={() => handleEditProtocol(bestTreatment)}
-                                      className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-full font-medium transition-all duration-200 flex items-center gap-2"
-                                    >
-                                      ✏️ Düzenle
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
 
                             {/* Treatment Phases Grid */}
                             <div className="bg-white border-x border-gray-200 p-6">
                               <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                                 💊 Tedavi Fazları
                               </h4>
-                              <div className="flex flex-wrap gap-4 mb-6">
-                                {/* Remember */}
+                              <div className="flex flex-wrap gap-4 mb-6" style={{ overflowAnchor: 'none' }}>
                                 {bestTreatment.phases.remember && (
                                   <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 min-w-[160px]">
                                     <div className="flex items-center gap-2 mb-3">
@@ -1865,7 +1926,6 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                     <div className="text-sm text-gray-600 mt-1">{bestTreatment.phases.remember.dosage}</div>
                                   </div>
                                 )}
-                                {/* Dynamic Regeneration Phases */}
                                 {getRegenerations(bestTreatment.phases).map((reg, idx) => {
                                   const color = REGEN_COLORS[idx % REGEN_COLORS.length];
                                   return (
@@ -1890,9 +1950,9 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                               <p className="text-sm text-gray-600 mb-4">
                                 {(() => {
                                   const allTreatments = getTreatmentsForAllSystems();
-                                  return allTreatments.length > 1 
+                                  return allTreatments.length > 1
                                     ? `${bestTreatment.system} hastalığı için en az bir ana uygulama seçmelisiniz`
-                                    : "Tedaviye başlamak için en az bir ana uygulama seçmelisiniz";
+                                    : 'Tedaviye başlamak için en az bir ana uygulama seçmelisiniz';
                                 })()}
                               </p>
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -1964,7 +2024,6 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                 </div>
                               </div>
 
-                              {/* Conditions */}
                               <div className="mb-6">
                                 <h5 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
                                   🎯 Seçim Kriterleri
@@ -2006,12 +2065,9 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                               </div>
                             </div>
 
-                            {/* End of Protocol Display */}
                             <div className="bg-white rounded-b-2xl"></div>
                           </div>
                         ))}
-                          </>
-                        )}
                       </>
                     );
                   })()}
@@ -2021,8 +2077,8 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
           </div>
         </div>
 
-        {/* Rutin Tedavi Programı */}
-        <div className="px-6 pb-2">
+          {/* Rutin Tedavi Programı */}
+          <div className="px-6 pb-2">
           <div className="border border-blue-200 rounded-xl p-4 bg-blue-50/50">
             <label className="flex items-center gap-3 cursor-pointer">
               <input
@@ -2111,10 +2167,11 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
               </>
             )}
           </div>
+          </div>
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-white border-t border-gray-200 p-6 rounded-b-2xl">
+        <div className="bg-white border-t border-gray-200 p-6 rounded-b-2xl">
           <div className="flex items-center justify-end gap-4">
             <button
               onClick={onClose}
