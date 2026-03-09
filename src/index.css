@@ -14,6 +14,22 @@
   scroll-behavior: smooth;
 }
 
+/* Prevent text I-beam cursor on non-editable elements */
+* {
+  cursor: default !important;
+  user-select: none !important;
+}
+
+a, button, [role="button"], .cursor-pointer, select,
+a *, button *, [role="button"] *, .cursor-pointer * {
+  cursor: pointer !important;
+}
+
+input, textarea, [contenteditable="true"] {
+  cursor: text !important;
+  user-select: text !important;
+}
+
 body {
   background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
   min-height: 100vh;

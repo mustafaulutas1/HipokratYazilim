@@ -16,6 +16,7 @@ interface AppointmentModalProps {
   initialTime?: string; // Format: "HH:MM"
   initialPatientId?: string;
   initialTypeId?: string;
+  routineProgramId?: string;
 }
 
 interface PatientDoc { id: string; fullName: string; }
@@ -32,7 +33,7 @@ function minutesToTime(mins: number) {
 }
 // generateTimes kaldırıldı (artık custom saat bileşeni var)
 
-const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, onAdded, doctorId, editedAppointment, doctorProfile, initialDate, initialTime, initialPatientId, initialTypeId }) => {
+const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, onAdded, doctorId, editedAppointment, doctorProfile, initialDate, initialTime, initialPatientId, initialTypeId, routineProgramId }) => {
   const [patients, setPatients] = useState<PatientDoc[]>([]);
   const [types] = useState<TypeDoc[]>([
     { id: 'kontrol', name: 'Kontrol', durationMinutes: 5 },
@@ -427,6 +428,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
             doctorId: doctorId || null,
             notes: notes || '',
             clinicId: doctorProfile?.clinicId || 'default-clinic',
+            ...(routineProgramId ? { routineProgramId } : {}),
           };
 
           if (useQuickReservation) {

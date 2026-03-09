@@ -155,12 +155,80 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
         console.log('📋 Appointment typeName:', appointment.typeName, '→ lowercase:', typeName);
 
         if (typeName.includes('tedavi')) {
+          // Check patient document for routine anamnez requirement (fast single-doc read)
+          let routineAnamnezRequired = false;
+          let routineAnamnezTemplate = '';
+          let foundRoutineProgramId = appointment.routineProgramId || '';
+          try {
+            const patientSnap = await getDoc(doc(db, 'patients', appointment.patientId));
+            if (patientSnap.exists()) {
+              const patientData = patientSnap.data();
+              if (patientData.routineAnamnezRequired === true) {
+                routineAnamnezRequired = true;
+                routineAnamnezTemplate = patientData.routineAnamnezTemplate || '';
+              }
+            }
+          } catch (err) {
+            console.error('Error fetching patient for routine anamnez check:', err);
+          }
+
+          if (routineAnamnezRequired) {
+            // Route to anamnez screen instead of skipping it
+            try {
+              const patientRef = doc(db, 'patients', appointment.patientId);
+              const patientDoc = await getDoc(patientRef);
+              if (patientDoc.exists()) {
+                await updateDoc(patientRef, {
+                  status: 'treatment_decided',
+                  appointmentType: 'tedavi',
+                  updatedAt: new Date().toISOString(),
+                });
+              } else {
+                await setDoc(patientRef, {
+                  fullName: appointment.patientName || 'Hasta',
+                  phone: appointment.patientPhone || '',
+                  clinicId: appointment.clinicId || 'default-clinic',
+                  status: 'treatment_decided',
+                  appointmentType: 'tedavi',
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                });
+              }
+
+              // Create anamnez record with routine program info
+              const existingAnamrezQuery = query(
+                collection(db, 'anamrezRecords'),
+                where('appointmentId', '==', appointment.id)
+              );
+              const existingSnapshot = await getDocs(existingAnamrezQuery);
+              if (existingSnapshot.empty) {
+                await addDoc(collection(db, 'anamrezRecords'), {
+                  appointmentId: appointment.id,
+                  appointmentDate: appointment.dateISO,
+                  patientId: appointment.patientId,
+                  patientName: appointment.patientName || '',
+                  clinicId: appointment.clinicId || '',
+                  status: 'pending',
+                  routineProgramId: foundRoutineProgramId,
+                  routineAnamnezTemplate,
+                  isRoutineAnamnez: true,
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                });
+              }
+              toast.success('Hasta Anamnez Ekranına yönlendirildi!');
+              onNavigate?.('anamnez');
+            } catch (err) {
+              console.error('Error routing to anamnez for routine program:', err);
+              toast.warning('Randevu onaylandı, ancak hasta anamnez ekranına yönlendirilemedi.');
+            }
+          } else {
           // Tedavi appointments go to Treatment first, then to Accounting after treatment
           try {
             const patientRef = doc(db, 'patients', appointment.patientId);
             const patientDoc = await getDoc(patientRef);
             console.log('📋 Patient document exists:', patientDoc.exists(), 'ID:', appointment.patientId);
-            
+
             if (patientDoc.exists()) {
               await updateDoc(patientRef, {
                 status: 'anamnez_completed',
@@ -192,6 +260,7 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
           } catch (err) {
             console.error('Error updating patient for treatment:', err);
             toast.warning('Randevu onaylandı, ancak hasta tedavi ekranına yönlendirilemedi.');
+          }
           }
         } else {
           // Kontrol / other types go through normal anamnez flow AND create accounting record

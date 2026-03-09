@@ -1012,6 +1012,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
         initialTime={selectedSlotTime}
         initialPatientId={preselectedPatientId}
         initialTypeId={preselectedTypeId}
+        routineProgramId={schedulingProgramId || undefined}
       />
       <AppointmentTypeManager
         isOpen={openTypeModal}

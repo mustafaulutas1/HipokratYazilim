@@ -87,6 +87,8 @@ interface TreatmentOptions {
     frequency: string;
     totalSessions: number;
     notes: string;
+    anamnezRequired?: boolean;
+    anamnezTemplate?: string;
   };
 }
 
@@ -171,6 +173,8 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
   const [routineTotalSessions, setRoutineTotalSessions] = useState<number>(8);
   const [routineFrequency, setRoutineFrequency] = useState<string>('Haftalık');
   const [routineNotes, setRoutineNotes] = useState<string>('');
+  const [routineAnamnezRequired, setRoutineAnamnezRequired] = useState(false);
+  const [routineAnamnezTemplate, setRoutineAnamnezTemplate] = useState<string>('Genel Kontrol');
   const [medicationOptions, setMedicationOptions] = useState<string[]>([]);
 
   console.log('🎬 TreatmentModal: Current state', {
@@ -1099,6 +1103,8 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
           frequency: routineFrequency,
           totalSessions: routineTotalSessions,
           notes: routineNotes,
+          anamnezRequired: routineAnamnezRequired,
+          anamnezTemplate: routineAnamnezRequired ? routineAnamnezTemplate : undefined,
         };
       }
 
@@ -2031,6 +2037,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
             </label>
 
             {createRoutineProgram && (
+              <>
               <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Sıklık</label>
@@ -2068,6 +2075,34 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                   />
                 </div>
               </div>
+
+              {/* Rutin Anamnez Talebi */}
+              <div className="mt-3 pt-3 border-t border-blue-200">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={routineAnamnezRequired}
+                    onChange={(e) => setRoutineAnamnezRequired(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                  />
+                  <span className="text-sm font-semibold text-gray-700">Her randevuda anamnez talep et</span>
+                </label>
+                {routineAnamnezRequired && (
+                  <div className="mt-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Talep Edilecek Anamnez Formu</label>
+                    <select
+                      value={routineAnamnezTemplate}
+                      onChange={(e) => setRoutineAnamnezTemplate(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                    >
+                      {['Genel Kontrol','Dermatolojik Sistem','Solunum Sistemi','Kas – İskelet Sistemi','Santral Sinir Sistemi','Gastrointestinal Sistem','Kardiyovasküler Sistem','Psikolojik Değerlendirme','Ürogenital Sistem Hastalıkları','Endokrin Sistem'].map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+              </>
             )}
           </div>
         </div>

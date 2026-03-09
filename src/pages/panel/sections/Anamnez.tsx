@@ -60,6 +60,10 @@ interface AnamrezRecord {
   // For past history records
   historyDate?: string;
   isPastHistory?: boolean;
+  // For routine anamnez
+  isRoutineAnamnez?: boolean;
+  routineAnamnezTemplate?: string;
+  routineProgramId?: string;
 }
 
 const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
@@ -416,6 +420,11 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                             <p className="text-white/60 text-xs">
                               Oluşturulma: {new Date(record.createdAt).toLocaleDateString('tr-TR')}
                             </p>
+                            {(record as any).isRoutineAnamnez && (record as any).routineAnamnezTemplate && (
+                              <p className="text-purple-300 text-xs font-medium mt-0.5">
+                                Rutin: {(record as any).routineAnamnezTemplate}
+                              </p>
+                            )}
                           </div>
                           <div className="text-right flex flex-col items-end gap-2">
                             <div className="px-2 py-1 bg-orange-500/20 text-orange-300 rounded-full text-xs">
@@ -761,6 +770,7 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
         onAnamrezCompleted={handleAnamrezCompleted}
         anamrezRecordId={selectedAnamrezRecord?.id}
         appointmentId={selectedAnamrezRecord?.appointmentId}
+        routineAnamnezTemplate={selectedAnamrezRecord?.isRoutineAnamnez ? selectedAnamrezRecord.routineAnamnezTemplate : undefined}
       />
 
       {/* Anamnez View Modal */}

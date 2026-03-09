@@ -33,6 +33,9 @@ interface AssignedPatient {
   updatedAt?: string;
   // Additional treatment flag
   additionalTreatmentPending?: boolean;
+  // Routine anamnez
+  routineAnamnezRequired?: boolean;
+  routineAnamnezTemplate?: string;
   // Payment fields
   paymentCompleted?: boolean;
   paymentAmount?: number;
@@ -530,7 +533,17 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
           status: 'active',
           treatmentProtocolName: treatmentOptions.protocolName || '',
           notes: treatmentOptions.routineProgram.notes || '',
+          anamnezRequired: treatmentOptions.routineProgram.anamnezRequired || false,
+          anamnezTemplate: treatmentOptions.routineProgram.anamnezTemplate || '',
           createdAt: new Date().toISOString(),
+        });
+
+        // Also store on patient document for fast lookup on appointment confirmation
+        const patientRef = doc(db, 'patients', patient.id);
+        await updateDoc(patientRef, {
+          routineAnamnezRequired: treatmentOptions.routineProgram.anamnezRequired || false,
+          routineAnamnezTemplate: treatmentOptions.routineProgram.anamnezTemplate || '',
+          updatedAt: new Date().toISOString(),
         });
         console.log(`📋 Routine program created for patient: ${patient.fullName}`);
       }
@@ -543,6 +556,20 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
     } catch (error) {
       console.error('❌ Error starting treatment:', error);
       alert('Tedaviye başlarken bir hata oluştu. Lütfen tekrar deneyin.');
+    }
+  };
+
+  const handleToggleRoutineAnamnez = async (patient: AssignedPatient, template: string) => {
+    const newValue = !patient.routineAnamnezRequired;
+    try {
+      await updateDoc(doc(db, 'patients', patient.id), {
+        routineAnamnezRequired: newValue,
+        routineAnamnezTemplate: newValue ? template : '',
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error('❌ Error toggling routine anamnez:', error);
+      alert('Rutin anamnez ayarı güncellenirken hata oluştu.');
     }
   };
 
@@ -1009,12 +1036,42 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
                     </div>
                     
                     <div className="flex flex-col gap-3">
-                      <button 
+                      <button
                         onClick={() => handleViewAnamnez(patient)}
                         className="px-4 py-2 bg-purple-500/30 hover:bg-purple-500/40 border border-purple-500/50 rounded-xl text-purple-200 hover:text-white text-sm font-medium transition-all duration-200 flex items-center gap-2"
                       >
                         📋 Anamnez Görüntüle
                       </button>
+
+                      {/* Rutin Anamnez Toggle */}
+                      <button
+                        onClick={() => handleToggleRoutineAnamnez(patient, patient.routineAnamnezTemplate || 'Genel Kontrol')}
+                        className={`px-4 py-2 border rounded-xl text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
+                          patient.routineAnamnezRequired
+                            ? 'bg-purple-600/40 hover:bg-purple-600/60 border-purple-400/60 text-purple-200 hover:text-white'
+                            : 'bg-white/5 hover:bg-white/10 border-white/20 text-white/60 hover:text-white'
+                        }`}
+                      >
+                        {patient.routineAnamnezRequired ? '🔔 Rutin Anamnez: Açık' : '🔕 Rutin Anamnez: Kapalı'}
+                      </button>
+
+                      {/* Template selector if routine anamnez is on */}
+                      {patient.routineAnamnezRequired && (
+                        <select
+                          value={patient.routineAnamnezTemplate || 'Genel Kontrol'}
+                          onChange={async (e) => {
+                            await updateDoc(doc(db, 'patients', patient.id), {
+                              routineAnamnezTemplate: e.target.value,
+                              updatedAt: new Date().toISOString(),
+                            });
+                          }}
+                          className="px-3 py-1.5 bg-white/10 border border-white/20 rounded-xl text-white text-xs focus:outline-none"
+                        >
+                          {['Genel Kontrol','Dermatolojik Sistem','Solunum Sistemi','Kas – İskelet Sistemi','Santral Sinir Sistemi','Gastrointestinal Sistem','Kardiyovasküler Sistem','Psikolojik Değerlendirme','Ürogenital Sistem Hastalıkları','Endokrin Sistem'].map(s => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                      )}
                       
                       {patient.status === 'assigned_to_doctor' && (() => {
                         if (patient.additionalTreatmentPending === true) {
