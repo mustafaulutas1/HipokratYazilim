@@ -47,7 +47,7 @@ interface AnamrezFormModalProps {
   appointmentId?: string;
   isPastHistory?: boolean;
   initialHistoryDate?: string;
-  routineAnamnezTemplate?: string;
+  routineAnamnezTemplates?: string[];
 }
 
 type SymptomKey =
@@ -348,7 +348,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   appointmentId,
   isPastHistory = false,
   initialHistoryDate = '',
-  routineAnamnezTemplate
+  routineAnamnezTemplates
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [historyDate, setHistoryDate] = useState(initialHistoryDate);
@@ -399,7 +399,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
   const [formData, setFormData] = useState({
     // Ana Şikayetler - Now array for multiple selections
-    selectedDiagnosisSystems: routineAnamnezTemplate ? [routineAnamnezTemplate] : [] as string[],
+    selectedDiagnosisSystems: routineAnamnezTemplates?.length ? [...routineAnamnezTemplates] : [] as string[],
     selectedIllnesses: {} as Record<string, string[]>,
 
     // Doktor Seçimi
@@ -1924,12 +1924,12 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                       Hastalık seçiniz *
                     </label>
 
-                    {routineAnamnezTemplate && (
+                    {routineAnamnezTemplates?.length > 0 && (
                       <div className="mb-3 p-3 bg-purple-50 border border-purple-200 rounded-lg">
                         <p className="text-sm text-purple-700 font-medium">
-                          🔒 Doktor tarafından talep edilen form: <strong>{routineAnamnezTemplate}</strong>
+                          🔒 Doktor tarafından talep edilen formlar: <strong>{routineAnamnezTemplates.join(', ')}</strong>
                         </p>
-                        <p className="text-xs text-purple-500 mt-1">Bu rutin anamnezde yalnızca talep edilen sistem doldurulabilir.</p>
+                        <p className="text-xs text-purple-500 mt-1">Bu rutin anamnezde yalnızca talep edilen sistemler doldurulabilir.</p>
                       </div>
                     )}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -1940,12 +1940,12 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                             id={system}
                             checked={formData.selectedDiagnosisSystems.includes(system)}
                             onChange={(e) => handleDiagnosisSystemChange(system, e.target.checked)}
-                            disabled={!!routineAnamnezTemplate && system !== routineAnamnezTemplate}
+                            disabled={routineAnamnezTemplates?.length > 0 && !routineAnamnezTemplates.includes(system)}
                             className="w-4 h-4 text-red-600 bg-white border-gray-300 rounded focus:ring-red-500 focus:ring-2 disabled:opacity-40"
                           />
                           <label
                             htmlFor={system}
-                            className={`ml-2 text-sm font-medium cursor-pointer ${routineAnamnezTemplate && system !== routineAnamnezTemplate ? 'text-gray-400' : 'text-gray-700'}`}
+                            className={`ml-2 text-sm font-medium cursor-pointer ${routineAnamnezTemplates?.length > 0 && !routineAnamnezTemplates.includes(system) ? 'text-gray-400' : 'text-gray-700'}`}
                           >
                             {system}
                           </label>

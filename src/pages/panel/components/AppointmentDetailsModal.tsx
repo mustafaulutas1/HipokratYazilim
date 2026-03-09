@@ -157,7 +157,7 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
         if (typeName.includes('tedavi')) {
           // Check patient document for routine anamnez requirement (fast single-doc read)
           let routineAnamnezRequired = false;
-          let routineAnamnezTemplate = '';
+          let routineAnamnezTemplates: string[] = [];
           let foundRoutineProgramId = appointment.routineProgramId || '';
           try {
             const patientSnap = await getDoc(doc(db, 'patients', appointment.patientId));
@@ -165,7 +165,7 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
               const patientData = patientSnap.data();
               if (patientData.routineAnamnezRequired === true) {
                 routineAnamnezRequired = true;
-                routineAnamnezTemplate = patientData.routineAnamnezTemplate || '';
+                routineAnamnezTemplates = patientData.routineAnamnezTemplates || [];
               }
             }
           } catch (err) {
@@ -210,7 +210,7 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
                   clinicId: appointment.clinicId || '',
                   status: 'pending',
                   routineProgramId: foundRoutineProgramId,
-                  routineAnamnezTemplate,
+                  routineAnamnezTemplates,
                   isRoutineAnamnez: true,
                   createdAt: new Date().toISOString(),
                   updatedAt: new Date().toISOString(),

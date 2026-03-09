@@ -35,7 +35,7 @@ interface AssignedPatient {
   additionalTreatmentPending?: boolean;
   // Routine anamnez
   routineAnamnezRequired?: boolean;
-  routineAnamnezTemplate?: string;
+  routineAnamnezTemplates?: string[];
   // Payment fields
   paymentCompleted?: boolean;
   paymentAmount?: number;
@@ -534,7 +534,7 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
           treatmentProtocolName: treatmentOptions.protocolName || '',
           notes: treatmentOptions.routineProgram.notes || '',
           anamnezRequired: treatmentOptions.routineProgram.anamnezRequired || false,
-          anamnezTemplate: treatmentOptions.routineProgram.anamnezTemplate || '',
+          anamnezTemplates: treatmentOptions.routineProgram.anamnezTemplates || [],
           createdAt: new Date().toISOString(),
         });
 
@@ -542,7 +542,7 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
         const patientRef = doc(db, 'patients', patient.id);
         await updateDoc(patientRef, {
           routineAnamnezRequired: treatmentOptions.routineProgram.anamnezRequired || false,
-          routineAnamnezTemplate: treatmentOptions.routineProgram.anamnezTemplate || '',
+          routineAnamnezTemplates: treatmentOptions.routineProgram.anamnezTemplates || [],
           updatedAt: new Date().toISOString(),
         });
         console.log(`📋 Routine program created for patient: ${patient.fullName}`);
@@ -559,17 +559,30 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
     }
   };
 
-  const handleToggleRoutineAnamnez = async (patient: AssignedPatient, template: string) => {
+  const handleToggleRoutineAnamnez = async (patient: AssignedPatient) => {
     const newValue = !patient.routineAnamnezRequired;
     try {
       await updateDoc(doc(db, 'patients', patient.id), {
         routineAnamnezRequired: newValue,
-        routineAnamnezTemplate: newValue ? template : '',
+        routineAnamnezTemplates: newValue ? (patient.routineAnamnezTemplates?.length ? patient.routineAnamnezTemplates : ['Genel Kontrol']) : [],
         updatedAt: new Date().toISOString(),
       });
     } catch (error) {
       console.error('❌ Error toggling routine anamnez:', error);
       alert('Rutin anamnez ayarı güncellenirken hata oluştu.');
+    }
+  };
+
+  const handleRoutineTemplateChange = async (patient: AssignedPatient, template: string, checked: boolean) => {
+    const current = patient.routineAnamnezTemplates || [];
+    const updated = checked ? [...current, template] : current.filter(t => t !== template);
+    try {
+      await updateDoc(doc(db, 'patients', patient.id), {
+        routineAnamnezTemplates: updated,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error('❌ Error updating routine templates:', error);
     }
   };
 
@@ -1045,7 +1058,7 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
 
                       {/* Rutin Anamnez Toggle */}
                       <button
-                        onClick={() => handleToggleRoutineAnamnez(patient, patient.routineAnamnezTemplate || 'Genel Kontrol')}
+                        onClick={() => handleToggleRoutineAnamnez(patient)}
                         className={`px-4 py-2 border rounded-xl text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
                           patient.routineAnamnezRequired
                             ? 'bg-purple-600/40 hover:bg-purple-600/60 border-purple-400/60 text-purple-200 hover:text-white'
@@ -1055,22 +1068,22 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
                         {patient.routineAnamnezRequired ? '🔔 Rutin Anamnez: Açık' : '🔕 Rutin Anamnez: Kapalı'}
                       </button>
 
-                      {/* Template selector if routine anamnez is on */}
+                      {/* Multi-checkbox template selector if routine anamnez is on */}
                       {patient.routineAnamnezRequired && (
-                        <select
-                          value={patient.routineAnamnezTemplate || 'Genel Kontrol'}
-                          onChange={async (e) => {
-                            await updateDoc(doc(db, 'patients', patient.id), {
-                              routineAnamnezTemplate: e.target.value,
-                              updatedAt: new Date().toISOString(),
-                            });
-                          }}
-                          className="px-3 py-1.5 bg-white/10 border border-white/20 rounded-xl text-white text-xs focus:outline-none"
-                        >
+                        <div className="bg-white/10 border border-white/20 rounded-xl p-3 space-y-1.5">
+                          <p className="text-xs text-white/60 mb-2">Talep edilecek formlar:</p>
                           {['Genel Kontrol','Dermatolojik Sistem','Solunum Sistemi','Kas – İskelet Sistemi','Santral Sinir Sistemi','Gastrointestinal Sistem','Kardiyovasküler Sistem','Psikolojik Değerlendirme','Ürogenital Sistem Hastalıkları','Endokrin Sistem'].map(s => (
-                            <option key={s} value={s}>{s}</option>
+                            <label key={s} className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={(patient.routineAnamnezTemplates || []).includes(s)}
+                                onChange={(e) => handleRoutineTemplateChange(patient, s, e.target.checked)}
+                                className="w-3.5 h-3.5 rounded border-white/30 text-purple-500"
+                              />
+                              <span className="text-xs text-white/80">{s}</span>
+                            </label>
                           ))}
-                        </select>
+                        </div>
                       )}
                       
                       {patient.status === 'assigned_to_doctor' && (() => {
