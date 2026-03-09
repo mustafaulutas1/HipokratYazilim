@@ -214,6 +214,65 @@ const LightboxOverlay: React.FC<{
   );
 };
 
+const ComparisonOverlay: React.FC<{
+  images: MediaFile[];
+  onClose: () => void;
+}> = ({ images, onClose }) => {
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') onClose();
+  }, [onClose]);
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/95 flex flex-col z-[60]"
+      onClick={onClose}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 py-3 bg-black/60 border-b border-white/10 shrink-0" onClick={(e) => e.stopPropagation()}>
+        <span className="text-white font-semibold text-sm">
+          🔍 Karşılaştırma Görünümü — {images.length} fotoğraf
+        </span>
+        <button
+          onClick={onClose}
+          className="text-white/70 hover:text-white text-2xl leading-none font-bold"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* Images side by side */}
+      <div className="flex flex-1 gap-2 p-4 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        {images.map((img) => (
+          <div key={img.id} className="flex-1 flex flex-col min-w-0">
+            <div className="flex-1 flex items-center justify-center overflow-hidden">
+              <img
+                src={img.url}
+                alt={img.name}
+                className="max-w-full max-h-full object-contain rounded-lg"
+                style={{ maxHeight: 'calc(100vh - 130px)' }}
+              />
+            </div>
+            <div className="text-center mt-2 shrink-0">
+              <p className="text-white/80 text-xs truncate px-2" title={img.name}>{img.name}</p>
+              <p className="text-white/40 text-xs">{new Date(img.uploadedAt).toLocaleDateString('tr-TR')}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Footer hint */}
+      <div className="text-center py-2 shrink-0">
+        <p className="text-white/30 text-xs">Kapatmak için ESC veya dışarıya tıklayın</p>
+      </div>
+    </div>
+  );
+};
+
 const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
   isOpen,
   onClose,
@@ -231,6 +290,8 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [loadingMedia, setLoadingMedia] = useState(false);
   const [selectedMediaForPreview, setSelectedMediaForPreview] = useState<MediaFile | null>(null);
+  const [selectedForComparison, setSelectedForComparison] = useState<string[]>([]);
+  const [showComparisonOverlay, setShowComparisonOverlay] = useState(false);
 
   // Edit mode state
   const [isEditing, setIsEditing] = useState(false);
@@ -2902,32 +2963,94 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                           </div>
                         ) : mediaFiles.length > 0 ? (
                           <>
-                            <p className="text-sm text-gray-500">
-                              {mediaFiles.length} görüntü/video mevcut. Karşılaştırma için yan yana görüntüleyebilirsiniz.
-                            </p>
+                            <div className="flex items-center justify-between">
+                              <p className="text-sm text-gray-500">
+                                {mediaFiles.length} görüntü/video mevcut. Fotoğrafları seçerek yan yana karşılaştırabilirsiniz.
+                              </p>
+                              {selectedForComparison.length >= 2 && (
+                                <button
+                                  onClick={() => setShowComparisonOverlay(true)}
+                                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
+                                >
+                                  🔍 {selectedForComparison.length} Fotoğrafı Karşılaştır
+                                </button>
+                              )}
+                            </div>
+
+                            {selectedForComparison.length > 0 && (
+                              <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm text-blue-700">
+                                <span>{selectedForComparison.length} fotoğraf seçildi</span>
+                                {selectedForComparison.length >= 2 && (
+                                  <button
+                                    onClick={() => setShowComparisonOverlay(true)}
+                                    className="font-semibold underline hover:no-underline"
+                                  >
+                                    Karşılaştır
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => setSelectedForComparison([])}
+                                  className="ml-auto text-blue-400 hover:text-blue-600"
+                                >
+                                  Seçimi Temizle
+                                </button>
+                              </div>
+                            )}
 
                             {/* Images grid - side by side */}
                             {mediaFiles.filter(m => m.type === 'image').length > 0 && (
                               <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
                                 <h4 className="font-bold text-gray-800 mb-4">Fotoğraflar ({mediaFiles.filter(m => m.type === 'image').length})</h4>
                                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-                                  {mediaFiles.filter(m => m.type === 'image').map((media) => (
-                                    <div key={media.id} className="group relative border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
-                                      <img
-                                        src={media.url}
-                                        alt={media.name}
-                                        className="w-full h-48 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                                        onClick={() => setSelectedMediaForPreview(media)}
-                                      />
-                                      <div className="p-2">
-                                        <p className="text-xs text-gray-600 truncate" title={media.name}>{media.name}</p>
-                                        <p className="text-xs text-gray-400">
-                                          {new Date(media.uploadedAt).toLocaleDateString('tr-TR')}
-                                        </p>
+                                  {mediaFiles.filter(m => m.type === 'image').map((media) => {
+                                    const isSelected = selectedForComparison.includes(media.id);
+                                    return (
+                                      <div
+                                        key={media.id}
+                                        className={`group relative border-2 rounded-lg overflow-hidden bg-gray-50 transition-all ${
+                                          isSelected
+                                            ? 'border-blue-500 ring-2 ring-blue-300 shadow-md'
+                                            : 'border-gray-200 hover:border-gray-300'
+                                        }`}
+                                      >
+                                        {/* Selection checkbox */}
+                                        <div
+                                          className="absolute top-2 left-2 z-10"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedForComparison(prev =>
+                                              prev.includes(media.id)
+                                                ? prev.filter(id => id !== media.id)
+                                                : [...prev, media.id]
+                                            );
+                                          }}
+                                        >
+                                          <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center cursor-pointer transition-all ${
+                                            isSelected
+                                              ? 'bg-blue-500 border-blue-500 text-white'
+                                              : 'bg-white/80 border-gray-400 opacity-0 group-hover:opacity-100'
+                                          }`}>
+                                            {isSelected && <span className="text-xs font-bold">{selectedForComparison.indexOf(media.id) + 1}</span>}
+                                          </div>
+                                        </div>
+
+                                        <img
+                                          src={media.url}
+                                          alt={media.name}
+                                          className="w-full h-48 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                          onClick={() => setSelectedMediaForPreview(media)}
+                                        />
+                                        <div className="p-2">
+                                          <p className="text-xs text-gray-600 truncate" title={media.name}>{media.name}</p>
+                                          <p className="text-xs text-gray-400">
+                                            {new Date(media.uploadedAt).toLocaleDateString('tr-TR')}
+                                          </p>
+                                        </div>
                                       </div>
-                                    </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
+                                <p className="text-xs text-gray-400 mt-3">Fotoğraf üzerindeki daireye tıklayarak seçin; seçili fotoğrafları yan yana karşılaştırabilirsiniz.</p>
                               </div>
                             )}
 
@@ -2980,6 +3103,14 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* Comparison Overlay */}
+      {showComparisonOverlay && selectedForComparison.length >= 2 && (
+        <ComparisonOverlay
+          images={mediaFiles.filter(m => selectedForComparison.includes(m.id))}
+          onClose={() => setShowComparisonOverlay(false)}
+        />
+      )}
 
       {/* Image Preview Lightbox */}
       {selectedMediaForPreview && (() => {
