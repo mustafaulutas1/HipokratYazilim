@@ -535,11 +535,103 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [medicationOptions, setMedicationOptions] = useState<string[]>([]);
+  const [treatmentOptions, setTreatmentOptions] = useState<string[]>([]);
+  const [selectedMedicationOption, setSelectedMedicationOption] = useState('');
+  const [selectedTreatmentOption, setSelectedTreatmentOption] = useState('');
 
   // Previous anamnez state
   const [previousAnamnez, setPreviousAnamnez] = useState<any>(null);
   const [loadingPreviousAnamnez, setLoadingPreviousAnamnez] = useState(false);
   const [usePreviousAnamnez, setUsePreviousAnamnez] = useState(false);
+
+  const activeClinicId = doctorProfile?.clinicId || patient?.clinicId || '';
+
+  const splitListValue = (value: string) => value
+    .split('\n')
+    .map(item => item.trim())
+    .filter(Boolean);
+
+  const addConventionalItem = (field: 'currentMedications' | 'otherTreatments', item: string) => {
+    if (!item) return;
+    setFormData(prev => {
+      const currentItems = splitListValue(prev.conventionalTreatment?.[field] || '');
+      if (currentItems.includes(item)) {
+        return prev;
+      }
+      return {
+        ...prev,
+        conventionalTreatment: {
+          ...prev.conventionalTreatment,
+          [field]: [...currentItems, item].join('\n')
+        }
+      };
+    });
+  };
+
+  const removeConventionalItem = (field: 'currentMedications' | 'otherTreatments', item: string) => {
+    setFormData(prev => {
+      const currentItems = splitListValue(prev.conventionalTreatment?.[field] || '');
+      const nextItems = currentItems.filter(existing => existing !== item);
+      return {
+        ...prev,
+        conventionalTreatment: {
+          ...prev.conventionalTreatment,
+          [field]: nextItems.join('\n')
+        }
+      };
+    });
+  };
+
+  useEffect(() => {
+    const fetchMedicationOptions = async () => {
+      if (!activeClinicId) return;
+      try {
+        const medicationsQuery = query(
+          collection(db, 'medications'),
+          where('clinicId', '==', activeClinicId)
+        );
+        const medicationsSnapshot = await getDocs(medicationsQuery);
+        const options = medicationsSnapshot.docs
+          .map(doc => doc.data()?.name)
+          .filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
+        setMedicationOptions(Array.from(new Set(options)).sort((a, b) => a.localeCompare(b, 'tr')));
+      } catch (error) {
+        console.error('❌ AnamrezFormModal: Error fetching medications:', error);
+      }
+    };
+
+    const fetchTreatmentOptions = async () => {
+      if (!activeClinicId) return;
+      try {
+        const applicationsSnapshot = await getDocs(collection(db, 'medicalApplications'));
+        const clinicNames = new Set<string>();
+        const options: string[] = [];
+
+        applicationsSnapshot.forEach(doc => {
+          const data = doc.data();
+          if (data?.clinicId === activeClinicId && typeof data?.name === 'string') {
+            options.push(data.name);
+            clinicNames.add(data.name);
+          }
+        });
+
+        applicationsSnapshot.forEach(doc => {
+          const data = doc.data();
+          if (data?.clinicId === 'STANDARD' && typeof data?.name === 'string' && !clinicNames.has(data.name)) {
+            options.push(data.name);
+          }
+        });
+
+        setTreatmentOptions(Array.from(new Set(options)).sort((a, b) => a.localeCompare(b, 'tr')));
+      } catch (error) {
+        console.error('❌ AnamrezFormModal: Error fetching treatments:', error);
+      }
+    };
+
+    fetchMedicationOptions();
+    fetchTreatmentOptions();
+  }, [activeClinicId]);
 
   // Fetch doctors from the clinic when modal opens
   useEffect(() => {
@@ -3381,14 +3473,58 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                       <p className="text-sm text-red-600 mb-4">
                         (Hastanın konvansiyonel tıpça önerdiği ilaçlar ve kullanım oranları yazılacak.)
                       </p>
-                      <textarea
-                        name="conventionalTreatment.currentMedications"
-                        value={formData.conventionalTreatment.currentMedications}
-                        onChange={handleInputChange}
-                        rows={8}
-                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
-                        placeholder="Hastanın kullandığı ilaçları ve dozlarını detaylı olarak yazınız..."
-                      />
+                      <div className="space-y-3">
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <select
+                            value={selectedMedicationOption}
+                            onChange={(e) => setSelectedMedicationOption(e.target.value)}
+                            className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                          >
+                            <option value="">İlaç seçin</option>
+                            {medicationOptions.map((option) => (
+                              <option key={option} value={option}>{option}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              addConventionalItem('currentMedications', selectedMedicationOption);
+                              setSelectedMedicationOption('');
+                            }}
+                            disabled={!selectedMedicationOption}
+                            className="px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Ekle
+                          </button>
+                        </div>
+
+                        {splitListValue(formData.conventionalTreatment.currentMedications).length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            {splitListValue(formData.conventionalTreatment.currentMedications).map((item) => (
+                              <div key={item} className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1 rounded-full text-sm">
+                                <span>{item}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => removeConventionalItem('currentMedications', item)}
+                                  className="text-indigo-500 hover:text-indigo-700"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <textarea
+                          name="conventionalTreatment.currentMedications"
+                          value={formData.conventionalTreatment.currentMedications}
+                          onChange={handleInputChange}
+                          rows={6}
+                          readOnly
+                          className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-700 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+                          placeholder="Seçilen ilaçlar burada listelenir..."
+                        />
+                      </div>
                     </div>
 
                     {/* Right Column - Other Treatments */}
@@ -3397,14 +3533,58 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                       <p className="text-sm text-red-600 mb-4">
                         (Hastanın konvansiyonel tıpça önerdiği tedaviler ve periyodları yazılacak.)
                       </p>
-                      <textarea
-                        name="conventionalTreatment.otherTreatments"
-                        value={formData.conventionalTreatment.otherTreatments}
-                        onChange={handleInputChange}
-                        rows={8}
-                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
-                        placeholder="Hastanın aldığı diğer tedavileri detaylı olarak yazınız..."
-                      />
+                      <div className="space-y-3">
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <select
+                            value={selectedTreatmentOption}
+                            onChange={(e) => setSelectedTreatmentOption(e.target.value)}
+                            className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                          >
+                            <option value="">Tedavi seçin</option>
+                            {treatmentOptions.map((option) => (
+                              <option key={option} value={option}>{option}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              addConventionalItem('otherTreatments', selectedTreatmentOption);
+                              setSelectedTreatmentOption('');
+                            }}
+                            disabled={!selectedTreatmentOption}
+                            className="px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Ekle
+                          </button>
+                        </div>
+
+                        {splitListValue(formData.conventionalTreatment.otherTreatments).length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            {splitListValue(formData.conventionalTreatment.otherTreatments).map((item) => (
+                              <div key={item} className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1 rounded-full text-sm">
+                                <span>{item}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => removeConventionalItem('otherTreatments', item)}
+                                  className="text-indigo-500 hover:text-indigo-700"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <textarea
+                          name="conventionalTreatment.otherTreatments"
+                          value={formData.conventionalTreatment.otherTreatments}
+                          onChange={handleInputChange}
+                          rows={6}
+                          readOnly
+                          className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-700 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+                          placeholder="Seçilen tedaviler burada listelenir..."
+                        />
+                      </div>
                     </div>
                   </div>
 

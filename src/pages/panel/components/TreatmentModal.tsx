@@ -171,6 +171,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
   const [routineTotalSessions, setRoutineTotalSessions] = useState<number>(8);
   const [routineFrequency, setRoutineFrequency] = useState<string>('Haftalık');
   const [routineNotes, setRoutineNotes] = useState<string>('');
+  const [medicationOptions, setMedicationOptions] = useState<string[]>([]);
 
   console.log('🎬 TreatmentModal: Current state', {
     savedProtocolsCount: savedProtocols.length,
@@ -185,6 +186,52 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
     if (age >= 2 && age <= 7) return '2-7';
     if (age >= 8 && age <= 14) return '8-14';
     return 'adult';
+  };
+
+  useEffect(() => {
+    const fetchMedicationOptions = async () => {
+      if (!patient?.clinicId) return;
+      try {
+        const medicationsQuery = query(
+          collection(db, 'medications'),
+          where('clinicId', '==', patient.clinicId)
+        );
+        const snapshot = await getDocs(medicationsQuery);
+        const options = snapshot.docs
+          .map((doc) => doc.data()?.name)
+          .filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
+        setMedicationOptions(Array.from(new Set(options)).sort((a, b) => a.localeCompare(b, 'tr')));
+      } catch (error) {
+        console.error('❌ TreatmentModal: Error fetching medications:', error);
+      }
+    };
+
+    fetchMedicationOptions();
+  }, [patient?.clinicId]);
+
+  const renderMedicationSelect = (
+    value: string,
+    onChange: (nextValue: string) => void,
+    className: string,
+    placeholder = 'İlaç seçin'
+  ) => {
+    const options = value && !medicationOptions.includes(value)
+      ? [value, ...medicationOptions]
+      : medicationOptions;
+
+    return (
+      <select
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
+        className={className}
+        disabled={options.length === 0}
+      >
+        <option value="">{options.length === 0 ? 'İlaç bulunamadı' : placeholder}</option>
+        {options.map((name) => (
+          <option key={name} value={name}>{name}</option>
+        ))}
+      </select>
+    );
   };
 
   // Fetch saved protocols from Firestore (including patient-specific ones)
@@ -1520,13 +1567,18 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                       <div className="w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center text-sm font-bold">R</div>
                                       <h5 className="font-bold text-red-700">Remember</h5>
                                     </div>
-                                    <input
-                                      type="text"
-                                      value={editedProtocol.phases.remember.treatment}
-                                      onChange={(e) => setEditedProtocol({ ...editedProtocol, phases: { ...editedProtocol.phases, remember: { ...editedProtocol.phases.remember!, treatment: e.target.value.toUpperCase() } } })}
-                                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2 uppercase"
-                                      placeholder="Tedavi adı"
-                                    />
+                                    {renderMedicationSelect(
+                                      editedProtocol.phases.remember.treatment,
+                                      (value) => setEditedProtocol({
+                                        ...editedProtocol,
+                                        phases: {
+                                          ...editedProtocol.phases,
+                                          remember: { ...editedProtocol.phases.remember!, treatment: value }
+                                        }
+                                      }),
+                                      'w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2',
+                                      'İlaç seçin'
+                                    )}
                                     <input
                                       type="text"
                                       value={editedProtocol.phases.remember.dosage}
@@ -1560,13 +1612,12 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                         <div className={`w-8 h-8 ${color.circle} text-white rounded-full flex items-center justify-center text-sm font-bold`}>{index + 1}</div>
                                         <h5 className={`font-bold ${color.label}`}>{index + 1} Regeneration</h5>
                                       </div>
-                                      <input
-                                        type="text"
-                                        value={reg.treatment}
-                                        onChange={(e) => handleUpdateRegeneration(index, 'treatment', e.target.value)}
-                                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2 uppercase"
-                                        placeholder="Tedavi adı"
-                                      />
+                                        {renderMedicationSelect(
+                                          reg.treatment,
+                                          (value) => handleUpdateRegeneration(index, 'treatment', value),
+                                          'w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold mb-2',
+                                          'İlaç seçin'
+                                        )}
                                       <input
                                         type="text"
                                         value={reg.dosage}
