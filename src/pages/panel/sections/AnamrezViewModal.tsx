@@ -449,7 +449,13 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
         </tr>
       `;
 
-      const dataRows = Array.from(allSymptomKeys).map(key => {
+      const filteredSymptomKeys = Array.from(allSymptomKeys).filter(key => {
+        return sortedRecords.some(record => (record.symptomRatings?.[key] || 0) > 0);
+      });
+
+      if (filteredSymptomKeys.length === 0) return '';
+
+      const dataRows = filteredSymptomKeys.map(key => {
         const label = symptomLabels[key] || key;
         return `
           <tr>
@@ -494,7 +500,14 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
         </tr>
       `;
 
-      const dataRows = toxicityKeys.map(key => {
+      const filteredToxicityKeys = toxicityKeys.filter(key => {
+        return sortedRecords.some(record => (record.toxicityAssessment?.toxicityScores?.[key] || 0) > 0);
+      });
+
+      const hasToxicityData = filteredToxicityKeys.length > 0 || sortedRecords.some(r => (r.toxicityAssessment?.totalScore || 0) > 0);
+      if (!hasToxicityData) return '';
+
+      const dataRows = filteredToxicityKeys.map(key => {
         const label = symptomLabels[key] || key;
         return `
           <tr>
@@ -630,19 +643,19 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
             </div>
           </div>
 
-          ${allAnamrezRecords.length > 0 ? `
+          ${(() => { const t = generateSymptomComparisonTable(); return t ? `
           <div class="section no-break">
             <div class="section-title">📊 Semptom Değerlendirmesi - Tarihsel Karşılaştırma</div>
             <p style="font-size: 10px; color: #718096; margin-bottom: 10px;">Her sütun bir anamnez kaydının tarihini gösterir. Değerler 1-10 arasındadır.</p>
-            ${generateSymptomComparisonTable()}
-          </div>` : ''}
+            ${t}
+          </div>` : ''; })()}
 
-          ${allAnamrezRecords.some(r => r.toxicityAssessment) ? `
+          ${(() => { const t = generateToxicityComparisonTable(); return t ? `
           <div class="section no-break">
             <div class="section-title">🔬 Toksisite Değerlendirmesi - Tarihsel Karşılaştırma</div>
             <p style="font-size: 10px; color: #718096; margin-bottom: 10px;">Her sütun bir anamnez kaydının tarihini gösterir. 5+ semptomda yüksek puan = Toksisite riski.</p>
-            ${generateToxicityComparisonTable()}
-          </div>` : ''}
+            ${t}
+          </div>` : ''; })()}
 
           ${anamrezData.selectedIllnesses && Object.keys(anamrezData.selectedIllnesses).length > 0 ? `
           <div class="section no-break">
