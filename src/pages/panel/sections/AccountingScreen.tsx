@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot, updateDoc, doc, getDocs, writeBatch, arrayUnion } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { utils, writeFile } from 'xlsx';
@@ -91,6 +91,8 @@ interface PaymentStats {
 }
 
 const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) => {
+  const filterSectionRef = useRef<HTMLDivElement>(null);
+
   const [stats, setStats] = useState<PaymentStats>({
     totalPendingPayments: 0,
     todayPayments: 0,
@@ -1392,7 +1394,10 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
               <p className="text-3xl font-bold text-red-100">{formatCurrency(stats.totalDebtAmount)}</p>
             </div>
             <button
-              onClick={() => setActiveListType('debt_patients')}
+              onClick={() => {
+                setActiveListType('debt_patients');
+                setTimeout(() => filterSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+              }}
               className="px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-all duration-200 flex items-center gap-2 shadow-lg"
             >
               <span>💰</span>
@@ -1403,7 +1408,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       )}
 
       {/* List Filter Buttons */}
-      <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+      <div ref={filterSectionRef} className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-xl font-bold text-white flex items-center gap-2">
             <span className="text-2xl">📋</span>
