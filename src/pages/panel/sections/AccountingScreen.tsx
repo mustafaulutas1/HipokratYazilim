@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, updateDoc, doc, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, updateDoc, doc, getDocs, writeBatch, arrayUnion } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { utils, writeFile } from 'xlsx';
 import ExcelJS from 'exceljs';
@@ -134,6 +134,8 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
   const [includeDebtInPayment, setIncludeDebtInPayment] = useState<boolean>(true);
   const [isPartialPayment, setIsPartialPayment] = useState<boolean>(false);
   const [remainingDebtAmount, setRemainingDebtAmount] = useState<string>('');
+  const [debtNote, setDebtNote] = useState<string>('');
+  const [debtPaymentNote, setDebtPaymentNote] = useState<string>('');
   const [debtSearchQuery, setDebtSearchQuery] = useState<string>('');
   const [reportPeriod, setReportPeriod] = useState<string>('daily');
   const [reportData, setReportData] = useState<{
@@ -382,9 +384,10 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         updateData.hasDebt = true;
         updateData.debtAmount = Math.round(totalRemainingDebt * 100) / 100;
         updateData.debtDate = new Date().toISOString();
-        updateData.debtReason = isPartialPayment 
+        updateData.debtReason = isPartialPayment
           ? `Eksik ödeme - Ödenen: ${currentPayment.toLocaleString('tr-TR')} TL, Kalan borç: ${totalRemainingDebt.toLocaleString('tr-TR')} TL`
           : selectedPatient.debtReason || 'Önceki borç';
+        updateData.debtNote = debtNote.trim() || null;
       } else {
         // Clear any previous debt
         updateData.hasDebt = false;
@@ -421,6 +424,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       setSelectedApplications([]);
       setIsPartialPayment(false);
       setRemainingDebtAmount('');
+      setDebtNote('');
       // Reset discount states
       setIsDiscountActive(false);
       setDiscountPercent('');
@@ -574,14 +578,24 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         }
       }
       
+      const paymentHistoryEntry = {
+        date: new Date().toISOString(),
+        amount: paymentAmountNum,
+        methods: validPaymentMethods.length > 0 ? validPaymentMethods : [{ method: debtPaymentMethod, amount: paymentAmountNum }],
+        note: debtPaymentNote.trim() || null,
+        remainingDebtAfter: Math.max(0, Math.round((currentDebt - paymentAmountNum) * 100) / 100),
+      };
+
       const updateData: any = {
         updatedAt: new Date().toISOString(),
         // Record this debt payment
         lastDebtPaymentAmount: paymentAmountNum,
         lastDebtPaymentDate: new Date().toISOString(),
         lastDebtPaymentMethod: debtPaymentMethod,
-        // Multi-payment method support for debt payments
         lastDebtPaymentMethods: validPaymentMethods.length > 0 ? validPaymentMethods : [{ method: debtPaymentMethod, amount: paymentAmountNum }],
+        lastDebtPaymentNote: debtPaymentNote.trim() || null,
+        // Append to cumulative payment history
+        debtPaymentHistory: arrayUnion(paymentHistoryEntry),
       };
       
       if (remainingDebt <= 0) {
@@ -618,6 +632,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       setDebtPaymentAmount('');
       setDebtPaymentMethod('nakit');
       setDebtPaymentMethods([{ method: 'nakit', amount: 0 }]);
+      setDebtPaymentNote('');
 
       // Refetch data
       window.location.reload();
@@ -2394,6 +2409,19 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                       </p>
                     </div>
                     
+                    <div className="bg-white rounded-lg p-3 border border-red-200">
+                      <label className="block text-sm font-medium text-red-700 mb-2">
+                        Borç Notu (İsteğe Bağlı)
+                      </label>
+                      <textarea
+                        value={debtNote}
+                        onChange={(e) => setDebtNote(e.target.value)}
+                        rows={2}
+                        className="w-full px-3 py-2 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none text-sm"
+                        placeholder="Borçla ilgili not ekleyin... (örn: sonraki seansta ödenecek)"
+                      />
+                    </div>
+
                     {remainingDebtAmount && parseFloat(remainingDebtAmount) > 0 && (
                       <div className="bg-red-100 rounded-lg p-3 border border-red-300">
                         <div className="flex items-center gap-2 text-red-800">
@@ -2403,6 +2431,9 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                             <p className="text-sm">
                               Ödeme alındıktan sonra hasta <strong>{parseFloat(remainingDebtAmount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</strong> borçlu olarak işaretlenecektir.
                             </p>
+                            {debtNote.trim() && (
+                              <p className="text-xs mt-1 text-red-700 italic">Not: {debtNote.trim()}</p>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -2410,6 +2441,55 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   </div>
                 )}
               </div>
+
+              {/* Bilanço */}
+              {(parseFloat(payableAmount) > 0 || isPartialPayment) && (
+                <div className="bg-gray-900 text-white rounded-xl p-4 space-y-2">
+                  <h4 className="text-sm font-semibold text-gray-300 uppercase tracking-wide mb-3">Ödeme Özeti (Bilanço)</h4>
+                  {isDiscountActive && originalAmount && parseFloat(originalAmount) > 0 && (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-400">Orijinal Tutar</span>
+                        <span className="line-through text-gray-400">{parseFloat(originalAmount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                      </div>
+                      <div className="flex justify-between text-sm text-orange-400">
+                        <span>İndirim</span>
+                        <span>- {(parseFloat(originalAmount) - parseFloat(payableAmount)).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                      </div>
+                    </>
+                  )}
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-400">Ödenecek Tutar</span>
+                    <span className="text-white font-medium">{parseFloat(payableAmount || '0').toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                  </div>
+                  {(() => {
+                    const paid = paymentMethods.reduce((s, m) => s + m.amount, 0);
+                    return (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-400">Ödenen Tutar</span>
+                        <span className="text-green-400 font-medium">{paid.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                      </div>
+                    );
+                  })()}
+                  {isPartialPayment && remainingDebtAmount && parseFloat(remainingDebtAmount) > 0 && (
+                    <div className="flex justify-between text-sm border-t border-gray-700 pt-2 mt-1">
+                      <span className="text-red-400">Oluşan Borç</span>
+                      <span className="text-red-400 font-bold">{parseFloat(remainingDebtAmount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                    </div>
+                  )}
+                  {!isPartialPayment && (() => {
+                    const paid = paymentMethods.reduce((s, m) => s + m.amount, 0);
+                    const diff = paid - parseFloat(payableAmount || '0');
+                    if (Math.abs(diff) < 0.01) return null;
+                    return (
+                      <div className="flex justify-between text-sm border-t border-gray-700 pt-2 mt-1">
+                        <span className={diff > 0 ? 'text-blue-400' : 'text-yellow-400'}>{diff > 0 ? 'Para Üstü' : 'Eksik'}</span>
+                        <span className={`font-bold ${diff > 0 ? 'text-blue-400' : 'text-yellow-400'}`}>{Math.abs(diff).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
 
               {/* Patient Info Summary */}
               <div className="bg-gray-50 p-4 rounded-lg">
@@ -2452,6 +2532,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   setIncludeDebtInPayment(true);
                   setIsPartialPayment(false);
                   setRemainingDebtAmount('');
+                  setDebtNote('');
                 }}
                 className="px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg text-gray-700 hover:text-gray-900 font-medium transition-all duration-200"
               >
@@ -2711,6 +2792,49 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                 </div>
               </div>
 
+              {/* Debt Payment History */}
+              {selectedPatient.debtPaymentHistory && selectedPatient.debtPaymentHistory.length > 0 && (
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="bg-gray-100 px-4 py-2 flex items-center gap-2">
+                    <span className="text-base">🕓</span>
+                    <h4 className="text-sm font-semibold text-gray-700">Ödeme Geçmişi ({selectedPatient.debtPaymentHistory.length} işlem)</h4>
+                  </div>
+                  <div className="divide-y divide-gray-100 max-h-48 overflow-y-auto">
+                    {[...selectedPatient.debtPaymentHistory]
+                      .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                      .map((entry: any, idx: number) => (
+                        <div key={idx} className="px-4 py-3 bg-white">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="text-xs text-gray-500">
+                                {new Date(entry.date).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                {' '}
+                                {new Date(entry.date).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                              <p className="text-xs text-gray-500 mt-0.5">
+                                {entry.methods?.map((m: any) => `${m.method === 'nakit' ? 'Nakit' : m.method === 'kartkredi' ? 'Kredi Kartı' : m.method === 'kartdebit' ? 'Banka Kartı' : m.method === 'havale' ? 'Havale/EFT' : m.method}`).join(', ')}
+                              </p>
+                              {entry.note && (
+                                <p className="text-xs text-blue-600 mt-1 italic">"{entry.note}"</p>
+                              )}
+                            </div>
+                            <div className="text-right ml-4">
+                              <p className="text-sm font-bold text-green-600">+{entry.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</p>
+                              <p className="text-xs text-gray-400 mt-0.5">Kalan: {entry.remainingDebtAfter.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</p>
+                            </div>
+                          </div>
+                        </div>
+                    ))}
+                  </div>
+                  <div className="bg-gray-50 px-4 py-2 flex justify-between text-xs text-gray-600 border-t border-gray-200">
+                    <span>Toplam Ödenen:</span>
+                    <span className="font-semibold text-green-700">
+                      {selectedPatient.debtPaymentHistory.reduce((s: number, e: any) => s + (e.amount || 0), 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* Partial Payment Checkbox */}
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                 <label className="flex items-start gap-3 cursor-pointer">
@@ -2807,6 +2931,20 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                 />
               </div>
 
+              {/* Payment Note */}
+              <div className="bg-white border border-gray-200 rounded-lg p-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Ödeme Notu <span className="text-gray-400 font-normal">(İsteğe Bağlı)</span>
+                </label>
+                <textarea
+                  value={debtPaymentNote}
+                  onChange={(e) => setDebtPaymentNote(e.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none text-sm"
+                  placeholder="Bu ödemeyle ilgili not ekleyin... (örn: nakit teslim edildi, fatura kesildi)"
+                />
+              </div>
+
               {/* Patient Info Summary */}
               <div className="bg-gray-50 p-4 rounded-lg">
                 <h4 className="font-medium text-gray-900 mb-2">Hasta Bilgileri</h4>
@@ -2858,6 +2996,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   setDebtPaymentMethods([{ method: 'nakit', amount: 0 }]);
                   setIsPartialPayment(false);
                   setRemainingDebtAmount('');
+                  setDebtPaymentNote('');
                 }}
                 className="px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg text-gray-700 hover:text-gray-900 font-medium transition-all duration-200"
               >
