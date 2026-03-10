@@ -6,6 +6,14 @@ import ExcelJS from 'exceljs';
 import MultiPaymentMethodSelector, { formatPaymentMethods } from '../../../components/UI/MultiPaymentMethodSelector';
 import type { PaymentMethodEntry } from '../../../components/UI/MultiPaymentMethodSelector';
 
+interface DebtPaymentEntry {
+  date: string;
+  methods: PaymentMethodEntry[];
+  amount: number;
+  remainingDebtAfter: number;
+  note?: string;
+}
+
 interface AccountingScreenProps {
   doctorProfile?: any;
 }
@@ -77,6 +85,7 @@ interface PaymentPatient {
   // Post-treatment payment tracking (Tedavi appointment flow)
   postTreatmentPayment?: boolean;
   appointmentType?: string;
+  debtPaymentHistory?: DebtPaymentEntry[];
 }
 
 interface PaymentStats {

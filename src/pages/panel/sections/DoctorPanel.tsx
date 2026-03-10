@@ -70,6 +70,8 @@ interface TreatmentOptions {
     frequency: string;
     totalSessions: number;
     notes: string;
+    anamnezRequired?: boolean;
+    anamnezTemplates?: string[];
   };
 }
 

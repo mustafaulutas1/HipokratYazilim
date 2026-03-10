@@ -1924,10 +1924,10 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                       Hastalık seçiniz *
                     </label>
 
-                    {routineAnamnezTemplates?.length > 0 && (
+                    {routineAnamnezTemplates && routineAnamnezTemplates.length > 0 && (
                       <div className="mb-3 p-3 bg-purple-50 border border-purple-200 rounded-lg">
                         <p className="text-sm text-purple-700 font-medium">
-                          🔒 Doktor tarafından talep edilen formlar: <strong>{routineAnamnezTemplates.join(', ')}</strong>
+                          🔒 Doktor tarafından talep edilen formlar: <strong>{routineAnamnezTemplates!.join(', ')}</strong>
                         </p>
                         <p className="text-xs text-purple-500 mt-1">Bu rutin anamnezde yalnızca talep edilen sistemler doldurulabilir.</p>
                       </div>
@@ -1940,12 +1940,12 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                             id={system}
                             checked={formData.selectedDiagnosisSystems.includes(system)}
                             onChange={(e) => handleDiagnosisSystemChange(system, e.target.checked)}
-                            disabled={routineAnamnezTemplates?.length > 0 && !routineAnamnezTemplates.includes(system)}
+                            disabled={routineAnamnezTemplates && routineAnamnezTemplates.length > 0 && !routineAnamnezTemplates.includes(system)}
                             className="w-4 h-4 text-red-600 bg-white border-gray-300 rounded focus:ring-red-500 focus:ring-2 disabled:opacity-40"
                           />
                           <label
                             htmlFor={system}
-                            className={`ml-2 text-sm font-medium cursor-pointer ${routineAnamnezTemplates?.length > 0 && !routineAnamnezTemplates.includes(system) ? 'text-gray-400' : 'text-gray-700'}`}
+                            className={`ml-2 text-sm font-medium cursor-pointer ${routineAnamnezTemplates && routineAnamnezTemplates.length > 0 && !routineAnamnezTemplates.includes(system) ? 'text-gray-400' : 'text-gray-700'}`}
                           >
                             {system}
                           </label>
