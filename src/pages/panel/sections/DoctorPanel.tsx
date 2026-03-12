@@ -561,32 +561,6 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
     }
   };
 
-  const handleToggleRoutineAnamnez = async (patient: AssignedPatient) => {
-    const newValue = !patient.routineAnamnezRequired;
-    try {
-      await updateDoc(doc(db, 'patients', patient.id), {
-        routineAnamnezRequired: newValue,
-        routineAnamnezTemplates: newValue ? (patient.routineAnamnezTemplates?.length ? patient.routineAnamnezTemplates : ['Genel Kontrol']) : [],
-        updatedAt: new Date().toISOString(),
-      });
-    } catch (error) {
-      console.error('❌ Error toggling routine anamnez:', error);
-      alert('Rutin anamnez ayarı güncellenirken hata oluştu.');
-    }
-  };
-
-  const handleRoutineTemplateChange = async (patient: AssignedPatient, template: string, checked: boolean) => {
-    const current = patient.routineAnamnezTemplates || [];
-    const updated = checked ? [...current, template] : current.filter(t => t !== template);
-    try {
-      await updateDoc(doc(db, 'patients', patient.id), {
-        routineAnamnezTemplates: updated,
-        updatedAt: new Date().toISOString(),
-      });
-    } catch (error) {
-      console.error('❌ Error updating routine templates:', error);
-    }
-  };
 
   const handleCompleteTreatment = async (patient: AssignedPatient) => {
     try {
@@ -1058,36 +1032,6 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
                         📋 Anamnez Görüntüle
                       </button>
 
-                      {/* Rutin Anamnez Toggle */}
-                      <button
-                        onClick={() => handleToggleRoutineAnamnez(patient)}
-                        className={`px-4 py-2 border rounded-xl text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
-                          patient.routineAnamnezRequired
-                            ? 'bg-purple-600/40 hover:bg-purple-600/60 border-purple-400/60 text-purple-200 hover:text-white'
-                            : 'bg-white/5 hover:bg-white/10 border-white/20 text-white/60 hover:text-white'
-                        }`}
-                      >
-                        {patient.routineAnamnezRequired ? '🔔 Rutin Anamnez: Açık' : '🔕 Rutin Anamnez: Kapalı'}
-                      </button>
-
-                      {/* Multi-checkbox template selector if routine anamnez is on */}
-                      {patient.routineAnamnezRequired && (
-                        <div className="bg-white/10 border border-white/20 rounded-xl p-3 space-y-1.5">
-                          <p className="text-xs text-white/60 mb-2">Talep edilecek formlar:</p>
-                          {['Genel Kontrol','Dermatolojik Sistem','Solunum Sistemi','Kas – İskelet Sistemi','Santral Sinir Sistemi','Gastrointestinal Sistem','Kardiyovasküler Sistem','Psikolojik Değerlendirme','Ürogenital Sistem Hastalıkları','Endokrin Sistem'].map(s => (
-                            <label key={s} className="flex items-center gap-2 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={(patient.routineAnamnezTemplates || []).includes(s)}
-                                onChange={(e) => handleRoutineTemplateChange(patient, s, e.target.checked)}
-                                className="w-3.5 h-3.5 rounded border-white/30 text-purple-500"
-                              />
-                              <span className="text-xs text-white/80">{s}</span>
-                            </label>
-                          ))}
-                        </div>
-                      )}
-                      
                       {patient.status === 'assigned_to_doctor' && (() => {
                         if (patient.additionalTreatmentPending === true) {
                           const pendingEkTedavi = treatmentRequests.find(

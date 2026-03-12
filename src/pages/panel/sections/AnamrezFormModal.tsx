@@ -399,7 +399,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
   const [formData, setFormData] = useState({
     // Ana Şikayetler - Now array for multiple selections
-    selectedDiagnosisSystems: routineAnamnezTemplates?.length ? [...routineAnamnezTemplates] : [] as string[],
+    selectedDiagnosisSystems: [] as string[],
     selectedIllnesses: {} as Record<string, string[]>,
 
     // Doktor Seçimi
@@ -1924,14 +1924,6 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                       Hastalık seçiniz *
                     </label>
 
-                    {routineAnamnezTemplates && routineAnamnezTemplates.length > 0 && (
-                      <div className="mb-3 p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                        <p className="text-sm text-purple-700 font-medium">
-                          🔒 Doktor tarafından talep edilen formlar: <strong>{routineAnamnezTemplates!.join(', ')}</strong>
-                        </p>
-                        <p className="text-xs text-purple-500 mt-1">Bu rutin anamnezde yalnızca talep edilen sistemler doldurulabilir.</p>
-                      </div>
-                    )}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                       {DIAGNOSIS_SYSTEMS.map((system) => (
                         <div key={system} className="flex items-center">
@@ -1940,12 +1932,11 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                             id={system}
                             checked={formData.selectedDiagnosisSystems.includes(system)}
                             onChange={(e) => handleDiagnosisSystemChange(system, e.target.checked)}
-                            disabled={routineAnamnezTemplates && routineAnamnezTemplates.length > 0 && !routineAnamnezTemplates.includes(system)}
-                            className="w-4 h-4 text-red-600 bg-white border-gray-300 rounded focus:ring-red-500 focus:ring-2 disabled:opacity-40"
+                            className="w-4 h-4 text-red-600 bg-white border-gray-300 rounded focus:ring-red-500 focus:ring-2"
                           />
                           <label
                             htmlFor={system}
-                            className={`ml-2 text-sm font-medium cursor-pointer ${routineAnamnezTemplates && routineAnamnezTemplates.length > 0 && !routineAnamnezTemplates.includes(system) ? 'text-gray-400' : 'text-gray-700'}`}
+                            className="ml-2 text-sm font-medium cursor-pointer text-gray-700"
                           >
                             {system}
                           </label>
@@ -2485,10 +2476,25 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                     </p>
                   </div>
 
+                  {routineAnamnezTemplates && routineAnamnezTemplates.length > 0 && (
+                    <div className="mb-3 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                      <p className="text-sm text-purple-700 font-medium">
+                        🔒 Doktor tarafından talep edilen semptomlar: <strong>{routineAnamnezTemplates.join(', ')}</strong>
+                      </p>
+                      <p className="text-xs text-purple-500 mt-1">Bu rutin anamnezde yalnızca talep edilen semptomlar doldurulabilir.</p>
+                    </div>
+                  )}
+
                   {SYMPTOM_CATEGORIES.map((category) => {
                     // Skip gender-filtered categories
                     if (category.genderFilter && patient?.gender && patient.gender !== category.genderFilter) {
                       return null;
+                    }
+
+                    // If routine templates specified, only show categories that have at least one selected symptom
+                    if (routineAnamnezTemplates && routineAnamnezTemplates.length > 0) {
+                      const hasSelected = category.questions.some(q => routineAnamnezTemplates.includes(q.label));
+                      if (!hasSelected) return null;
                     }
 
                     // Get custom questions for this category
@@ -2519,7 +2525,9 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
                         {/* Questions */}
                         <div className="p-4 space-y-4">
-                          {category.questions.map((symptom, index) => {
+                          {category.questions.filter(symptom =>
+                            !routineAnamnezTemplates || routineAnamnezTemplates.length === 0 || routineAnamnezTemplates.includes(symptom.label)
+                          ).map((symptom, index) => {
                             const rating = formData.symptomRatings[symptom.key] || 0;
                             const noteKey = symptom.key;
                             const isNoteExpanded = expandedNotes[noteKey];

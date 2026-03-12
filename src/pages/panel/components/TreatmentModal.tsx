@@ -2,6 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query, where, updateDoc, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 
+const SYMPTOM_CATEGORIES = [
+  { title: '1. Baş – Nörolojik Sistem', icon: '🧠', questions: ['Baş ağrısı', 'Baş dönmesi', 'Gözlerde uçuşmalar / siyah nokta görülmesi', 'Bilinç değişikliği', 'Uyku düzeni / düzensizliği'] },
+  { title: '2. Psikolojik Durum', icon: '🧘', questions: ['Stres', 'Kaygı', 'Ani öfkelenme', 'Duygu durum değişiklikleri'] },
+  { title: '3. Kardiyovasküler Sistem', icon: '❤️', questions: ['Çarpıntı', 'Göğüs ağrısı', 'Tansiyon yüksekliği / düşüklüğü'] },
+  { title: '4. Solunum Sistemi', icon: '🫁', questions: ['Nefes darlığı', 'Öksürük', 'Balgam', 'Hırıltı'] },
+  { title: '5. Gastrointestinal Sistem – Mide', icon: '🍽️', questions: ['Mide yanması', 'Mide bulantısı', 'Kusma', 'Şişkinlik / gaz', 'İştah durumu'] },
+  { title: '5. Gastrointestinal Sistem – Bağırsak', icon: '🔄', questions: ['Kabızlık', 'İshal', 'Mukuslu / yağlı dışkılama', 'Karın ağrısı', 'Hemoroid'] },
+  { title: '6. Üriner Sistem – Erkek', icon: '🚹', questions: ['Sık idrara çıkma', 'İdrar yaparken yanma', 'İdrarda köpüklenme', 'Kesik idrar yapma', 'İdrarı tam boşaltamama', 'İdrar sonrası damlama'] },
+  { title: '6. Üriner Sistem – Kadın', icon: '🚺', questions: ['Adet düzeni / düzensizliği', 'Son adet tarihi (SAT)', 'Vajinal akıntı', 'Vajinal kuruluk', 'Cinsel isteksizlik', 'Sık İYE', 'Ateş basması', 'Terleme'] },
+  { title: '7. Kas – Eklem Sistemi', icon: '💪', questions: ['Kas ağrıları', 'Eklem ağrıları', 'Hareket kısıtlılığı', 'Bel / boyun / sırt ağrısı', 'Kasılma, kramp', 'Uyuşma'] },
+  { title: '8. Genel Durum', icon: '🏥', questions: ['Halsizlik', 'Yorgunluk', 'Yorgun uyanma', 'Ateş', 'Kilo değişikliği', 'Vücutta kaşıntı, kızarıklık, döküntü'] },
+];
+
 // Define interfaces to match TreatmentProtocols structure
 interface SymptomCondition {
   symptomKey: string;
@@ -176,6 +189,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
   const [routineNotes, setRoutineNotes] = useState<string>('');
   const [routineAnamnezRequired, setRoutineAnamnezRequired] = useState(false);
   const [routineAnamnezTemplates, setRoutineAnamnezTemplates] = useState<string[]>([]);
+  const [anamnezSearchTerm, setAnamnezSearchTerm] = useState('');
   const [medicationOptions, setMedicationOptions] = useState<string[]>([]);
   const [applicationOptions, setApplicationOptions] = useState<string[]>([]);
 
@@ -2146,20 +2160,74 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                 {routineAnamnezRequired && (
                   <div className="mt-2">
                     <label className="block text-sm font-medium text-gray-700 mb-2">Talep Edilecek Anamnez Formları</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {['Genel Kontrol','Dermatolojik Sistem','Solunum Sistemi','Kas – İskelet Sistemi','Santral Sinir Sistemi','Gastrointestinal Sistem','Kardiyovasküler Sistem','Psikolojik Değerlendirme','Ürogenital Sistem Hastalıkları','Endokrin Sistem'].map(s => (
-                        <label key={s} className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={routineAnamnezTemplates.includes(s)}
-                            onChange={(e) => setRoutineAnamnezTemplates(prev =>
-                              e.target.checked ? [...prev, s] : prev.filter(t => t !== s)
-                            )}
-                            className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                          />
-                          <span className="text-sm text-gray-700">{s}</span>
-                        </label>
-                      ))}
+                    {/* Search bar */}
+                    <div className="relative mb-3">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+                      <input
+                        type="text"
+                        placeholder="Başlık veya içerik ara..."
+                        value={anamnezSearchTerm}
+                        onChange={(e) => setAnamnezSearchTerm(e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400"
+                      />
+                    </div>
+                    <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                      {SYMPTOM_CATEGORIES.filter(cat => {
+                        const term = anamnezSearchTerm.toLowerCase();
+                        if (!term) return true;
+                        return cat.title.toLowerCase().includes(term) || cat.questions.some(q => q.toLowerCase().includes(term));
+                      }).map(cat => {
+                        const allSelected = cat.questions.every(q => routineAnamnezTemplates.includes(q));
+                        const someSelected = cat.questions.some(q => routineAnamnezTemplates.includes(q));
+                        const term = anamnezSearchTerm.toLowerCase();
+                        const visibleQuestions = term
+                          ? cat.questions.filter(q => q.toLowerCase().includes(term) || cat.title.toLowerCase().includes(term))
+                          : cat.questions;
+                        return (
+                          <div key={cat.title} className="border border-gray-200 rounded-lg overflow-hidden">
+                            <label className={`flex items-center gap-2 cursor-pointer px-3 py-2 transition-colors ${someSelected ? 'bg-purple-50' : 'bg-gray-50 hover:bg-purple-50'}`}>
+                              <input
+                                type="checkbox"
+                                checked={allSelected}
+                                ref={el => { if (el) el.indeterminate = someSelected && !allSelected; }}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setRoutineAnamnezTemplates(prev => [...new Set([...prev, ...cat.questions])]);
+                                  } else {
+                                    setRoutineAnamnezTemplates(prev => prev.filter(t => !cat.questions.includes(t)));
+                                  }
+                                }}
+                                className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500 flex-shrink-0"
+                              />
+                              <span className="text-sm font-semibold text-gray-800">{cat.icon} {cat.title}</span>
+                              {someSelected && !allSelected && (
+                                <span className="ml-auto text-xs text-purple-500">{cat.questions.filter(q => routineAnamnezTemplates.includes(q)).length}/{cat.questions.length}</span>
+                              )}
+                            </label>
+                            <div className="px-3 py-2 flex flex-wrap gap-1.5 bg-white">
+                              {visibleQuestions.map(q => {
+                                const selected = routineAnamnezTemplates.includes(q);
+                                return (
+                                  <button
+                                    key={q}
+                                    type="button"
+                                    onClick={() => setRoutineAnamnezTemplates(prev =>
+                                      selected ? prev.filter(t => t !== q) : [...prev, q]
+                                    )}
+                                    className={`text-xs px-2 py-0.5 rounded-full border transition-colors cursor-pointer ${
+                                      selected
+                                        ? 'bg-purple-100 text-purple-700 border-purple-300 font-medium'
+                                        : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200'
+                                    }`}
+                                  >
+                                    {selected ? '✓ ' : ''}{q}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
