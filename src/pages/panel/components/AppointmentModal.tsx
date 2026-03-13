@@ -36,7 +36,7 @@ function minutesToTime(mins: number) {
 const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, onAdded, doctorId, editedAppointment, doctorProfile, initialDate, initialTime, initialPatientId, initialTypeId, routineProgramId }) => {
   const [patients, setPatients] = useState<PatientDoc[]>([]);
   const [types] = useState<TypeDoc[]>([
-    { id: 'kontrol', name: 'Kontrol', durationMinutes: 5 },
+    { id: 'kontrol', name: 'Muayene', durationMinutes: 5 },
     { id: 'tedavi', name: 'Tedavi', durationMinutes: 5 },
   ]);
   const [patientOpen, setPatientOpen] = useState<boolean>(false);
