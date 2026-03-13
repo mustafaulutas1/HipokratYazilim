@@ -64,6 +64,9 @@ interface AnamrezRecord {
   isRoutineAnamnez?: boolean;
   routineAnamnezTemplates?: string[];
   routineProgramId?: string;
+  routineAnamnezData?: Record<string, number>;
+  routineAnamnezNotes?: Record<string, string>;
+  completedAt?: string;
 }
 
 const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
@@ -71,15 +74,17 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
   const [pendingAnamrezRecords, setPendingAnamrezRecords] = useState<AnamrezRecord[]>([]);
   const [completedAnamrezRecords, setCompletedAnamrezRecords] = useState<AnamrezRecord[]>([]);
   const [pastHistoryRecords, setPastHistoryRecords] = useState<AnamrezRecord[]>([]);
+  const [routineAnamnezRecords, setRoutineAnamnezRecords] = useState<AnamrezRecord[]>([]);
   const [selectedAnamrezRecord, setSelectedAnamrezRecord] = useState<AnamrezRecord | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [completedSearchTerm, setCompletedSearchTerm] = useState('');
   const [pastHistorySearchTerm, setPastHistorySearchTerm] = useState('');
+  const [routineSearchTerm, setRoutineSearchTerm] = useState('');
   const [isAnamrezModalOpen, setIsAnamrezModalOpen] = useState(false);
   const [isAnamrezViewModalOpen, setIsAnamrezViewModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'pending' | 'completed' | 'pastHistory'>('pending');
+  const [activeTab, setActiveTab] = useState<'pending' | 'completed' | 'pastHistory' | 'routine'>('pending');
   const [, setIsEditMode] = useState(false);
   const [, setEditingAnamrezRecord] = useState<AnamrezRecord | null>(null);
 
@@ -102,9 +107,12 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
       } as AnamrezRecord));
 
       // Separate pending and completed anamnez records
-      // Routine anamnez records (isRoutineAnamnez=true) are handled in TreatmentPanel, not here
+      // Routine anamnez records (isRoutineAnamnez=true) shown in separate tab
       const pendingRecords = allAnamrezRecords.filter(r => r.status === 'pending' && !r.isRoutineAnamnez);
       const completedRecords = allAnamrezRecords.filter(r => r.status === 'completed' && !r.isRoutineAnamnez);
+      const routineRecords = allAnamrezRecords.filter(r => r.isRoutineAnamnez && r.status === 'completed');
+      routineRecords.sort((a, b) => new Date(b.completedAt || b.createdAt).getTime() - new Date(a.completedAt || a.createdAt).getTime());
+      setRoutineAnamnezRecords(routineRecords);
 
       // Sort by creation date
       pendingRecords.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -175,6 +183,11 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
   // Filter past history records by patient name
   const filteredPastHistoryRecords = pastHistoryRecords.filter(record =>
     record.patientName.toLowerCase().includes(pastHistorySearchTerm.toLowerCase())
+  );
+
+  // Filter routine anamnez records by patient name
+  const filteredRoutineRecords = routineAnamnezRecords.filter(record =>
+    record.patientName.toLowerCase().includes(routineSearchTerm.toLowerCase())
   );
 
   // Get patient by ID
@@ -371,6 +384,16 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
             >
               📜 Geçmiş ({pastHistoryRecords.length})
             </button>
+            <button
+              onClick={() => setActiveTab('routine')}
+              className={`flex-1 py-2 px-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
+                activeTab === 'routine'
+                  ? 'bg-pink-500/20 text-pink-300 border border-pink-500/30'
+                  : 'text-white/70 hover:text-white/90'
+              }`}
+            >
+              💜 Rutin ({routineAnamnezRecords.length})
+            </button>
           </div>
 
           {activeTab === 'pending' && (
@@ -510,6 +533,62 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
             </>
           )}
 
+          {activeTab === 'routine' && (
+            <>
+              <div className="mb-4">
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <span className="text-white/50">🔍</span>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Rutin anamnez ara..."
+                    value={routineSearchTerm}
+                    onChange={(e) => setRoutineSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2 max-h-96 overflow-y-auto admin-panel-scrollbar">
+                {filteredRoutineRecords.length === 0 ? (
+                  <div className="text-center py-8">
+                    <div className="text-white/50 text-lg mb-2">💜</div>
+                    <p className="text-white/70 text-sm">Rutin anamnez kaydı bulunmuyor.</p>
+                  </div>
+                ) : (
+                  filteredRoutineRecords.map((record) => (
+                    <div
+                      key={record.id}
+                      onClick={() => handleSelectAnamrezRecord(record)}
+                      className={`p-3 rounded-xl cursor-pointer transition-all duration-200 ${
+                        selectedAnamrezRecord?.id === record.id
+                          ? 'bg-pink-500/20 border border-pink-500/30'
+                          : 'bg-white/5 hover:bg-white/10 border border-transparent'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-white font-semibold text-sm">{record.patientName}</h3>
+                          <p className="text-white/60 text-xs">
+                            Tamamlandı: {new Date(record.completedAt || record.updatedAt).toLocaleDateString('tr-TR')}
+                          </p>
+                          {record.routineAnamnezTemplates && record.routineAnamnezTemplates.length > 0 && (
+                            <p className="text-pink-300 text-xs font-medium mt-0.5 line-clamp-1">
+                              {record.routineAnamnezTemplates.join(', ')}
+                            </p>
+                          )}
+                        </div>
+                        <div className="px-2 py-1 bg-pink-500/20 text-pink-300 rounded-full text-xs whitespace-nowrap">
+                          💜 Rutin
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+
           {activeTab === 'pastHistory' && (
             <>
               {/* Search for Past History */}
@@ -585,6 +664,10 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                     {selectedAnamrezRecord.isPastHistory ? (
                       <div className="px-3 py-1 bg-purple-500/20 text-purple-300 rounded-full text-xs font-semibold">
                         📜 Geçmiş Kayıt
+                      </div>
+                    ) : selectedAnamrezRecord.isRoutineAnamnez ? (
+                      <div className="px-3 py-1 bg-pink-500/20 text-pink-300 rounded-full text-xs font-semibold">
+                        💜 Rutin Anamnez
                       </div>
                     ) : selectedAnamrezRecord.status === 'completed' ? (
                       <div className="px-3 py-1 bg-green-500/20 text-green-300 rounded-full text-xs font-semibold">
@@ -683,6 +766,34 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                   </div>
                 </div>
               </div>
+
+              {/* Routine Anamnez Detail */}
+              {selectedAnamrezRecord?.isRoutineAnamnez && selectedAnamrezRecord.routineAnamnezTemplates && (
+                <div className="bg-white/10 backdrop-blur-xl border border-pink-500/30 rounded-2xl p-6">
+                  <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                    <span>💜</span> Rutin Anamnez Sonuçları
+                  </h2>
+                  <div className="space-y-3">
+                    {selectedAnamrezRecord.routineAnamnezTemplates.map((template, i) => {
+                      const rating = selectedAnamrezRecord.routineAnamnezData?.[template] ?? '-';
+                      const note = selectedAnamrezRecord.routineAnamnezNotes?.[template];
+                      return (
+                        <div key={i} className="bg-white/5 border border-pink-500/20 rounded-xl p-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-white font-medium text-sm">{template}</span>
+                            <span className="px-3 py-1 bg-pink-500/20 text-pink-300 rounded-full text-sm font-bold">
+                              Şiddet: {rating}/10
+                            </span>
+                          </div>
+                          {note && (
+                            <p className="text-white/60 text-xs mt-1">Not: {note}</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Patient's All Anamnez Records */}
               <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
