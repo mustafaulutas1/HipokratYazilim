@@ -102,8 +102,9 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
       } as AnamrezRecord));
 
       // Separate pending and completed anamnez records
-      const pendingRecords = allAnamrezRecords.filter(r => r.status === 'pending');
-      const completedRecords = allAnamrezRecords.filter(r => r.status === 'completed');
+      // Routine anamnez records (isRoutineAnamnez=true) are handled in TreatmentPanel, not here
+      const pendingRecords = allAnamrezRecords.filter(r => r.status === 'pending' && !r.isRoutineAnamnez);
+      const completedRecords = allAnamrezRecords.filter(r => r.status === 'completed' && !r.isRoutineAnamnez);
 
       // Sort by creation date
       pendingRecords.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());

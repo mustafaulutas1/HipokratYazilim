@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, updateDoc, doc, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, updateDoc, doc, onSnapshot, getDocs, addDoc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import AdditionalTreatmentRequestModal from '../components/AdditionalTreatmentRequestModal';
 
@@ -44,6 +44,8 @@ interface TreatmentPatient {
   treatmentApplied?: boolean;
   treatmentCompletedAt?: string;
   appointmentType?: string; // 'tedavi' or 'kontrol'
+  routineAnamnezRequired?: boolean;
+  routineAnamnezTemplates?: string[];
 }
 
 interface TreatmentStats {
@@ -79,6 +81,12 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
   // Additional Treatment Request state
   const [isAdditionalTreatmentModalOpen, setIsAdditionalTreatmentModalOpen] = useState(false);
   const [additionalTreatmentPatient, setAdditionalTreatmentPatient] = useState<TreatmentPatient | null>(null);
+
+  // Routine anamnez state
+  const [pendingAnamrezRecord, setPendingAnamrezRecord] = useState<{ id: string; routineAnamnezTemplates: string[] } | null>(null);
+  const [routineSymptomRatings, setRoutineSymptomRatings] = useState<Record<string, number>>({});
+  const [routineSymptomNotes, setRoutineSymptomNotes] = useState<Record<string, string>>({});
+  const [anamrezFetchLoading, setAnamrezFetchLoading] = useState(false);
 
   useEffect(() => {
     if (!doctorProfile?.clinicId) return;
@@ -149,6 +157,46 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
 
     return () => unsubscribe();
   }, [doctorProfile?.clinicId]);
+
+  const fetchPendingAnamrez = async (patient: TreatmentPatient) => {
+    setAnamrezFetchLoading(true);
+    setPendingAnamrezRecord(null);
+    setRoutineSymptomRatings({});
+    setRoutineSymptomNotes({});
+
+    try {
+      const q = query(
+        collection(db, 'anamrezRecords'),
+        where('patientId', '==', patient.id),
+        where('isRoutineAnamnez', '==', true),
+        where('status', '==', 'pending')
+      );
+      const snap = await getDocs(q);
+
+      let templates: string[] = [];
+      let recordId = '';
+
+      if (!snap.empty) {
+        const record = snap.docs[0];
+        const data = record.data();
+        recordId = record.id;
+        templates = data.routineAnamnezTemplates || [];
+      } else if (patient.routineAnamnezRequired && patient.routineAnamnezTemplates?.length) {
+        templates = patient.routineAnamnezTemplates;
+      }
+
+      if (templates.length > 0) {
+        setPendingAnamrezRecord({ id: recordId, routineAnamnezTemplates: templates });
+        const initialRatings: Record<string, number> = {};
+        templates.forEach(t => { initialRatings[t] = 0; });
+        setRoutineSymptomRatings(initialRatings);
+      }
+    } catch (err) {
+      console.error('❌ Error fetching routine anamnez:', err);
+    } finally {
+      setAnamrezFetchLoading(false);
+    }
+  };
 
   const handleMarkAsEmergency = (patient: TreatmentPatient) => {
     setEmergencyPatient(patient);
@@ -268,6 +316,31 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
 
       await updateDoc(patientRef, updateData);
 
+      // Save routine anamnez if present
+      if (pendingAnamrezRecord && pendingAnamrezRecord.routineAnamnezTemplates.length > 0) {
+        const anamrezSaveData = {
+          routineAnamnezData: routineSymptomRatings,
+          routineAnamnezNotes: routineSymptomNotes,
+          status: 'completed',
+          completedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        if (pendingAnamrezRecord.id) {
+          await updateDoc(doc(db, 'anamrezRecords', pendingAnamrezRecord.id), anamrezSaveData);
+        } else {
+          await addDoc(collection(db, 'anamrezRecords'), {
+            patientId: selectedPatient.id,
+            patientName: selectedPatient.fullName,
+            clinicId: selectedPatient.clinicId,
+            isRoutineAnamnez: true,
+            routineAnamnezTemplates: pendingAnamrezRecord.routineAnamnezTemplates,
+            createdAt: new Date().toISOString(),
+            ...anamrezSaveData,
+          });
+        }
+        console.log(`✅ Routine anamnez saved for patient: ${selectedPatient.fullName}`);
+      }
+
       console.log(`✅ Treatment processed for patient: ${selectedPatient.fullName}`);
       console.log(`✅ Applied treatments: ${selectedTreatments.join(', ')}`);
       if (hasUnselectedTreatments) {
@@ -282,6 +355,9 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
       setNotAppliedReason('');
       setSelectedTreatments([]);
       setUnselectedTreatmentReason('');
+      setPendingAnamrezRecord(null);
+      setRoutineSymptomRatings({});
+      setRoutineSymptomNotes({});
 
       // Refetch data
       window.location.reload(); // Simple refresh for now
@@ -505,10 +581,10 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
                         setTreatmentApplied(true);
                         setTreatmentNotes('Tedavi Başarı İle Uygulandı');
                         setNotAppliedReason('');
-                        // Initialize selected treatments with all available treatments
                         const allTreatments = patient.treatmentOptions?.selectedMainApplications || [];
                         setSelectedTreatments([...allTreatments]);
                         setUnselectedTreatmentReason('');
+                        fetchPendingAnamrez(patient);
                         setIsTreatmentModalOpen(true);
                       }}
                       className={`px-4 py-2 border rounded-xl transition-all duration-200 flex items-center gap-2 ${
@@ -590,6 +666,54 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
             </div>
 
             <div className="p-6 space-y-4">
+              {/* Routine Anamnez Section */}
+              {anamrezFetchLoading && (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 flex items-center gap-3">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-600"></div>
+                  <span className="text-purple-700 text-sm font-medium">Rutin anamnez bilgileri yükleniyor...</span>
+                </div>
+              )}
+
+              {!anamrezFetchLoading && pendingAnamrezRecord && pendingAnamrezRecord.routineAnamnezTemplates.length > 0 && (
+                <div className="bg-purple-50 border border-purple-300 rounded-lg p-4">
+                  <h4 className="font-semibold text-purple-900 mb-1 flex items-center gap-2">
+                    <span className="text-lg">📋</span>
+                    Rutin Anamnez
+                  </h4>
+                  <p className="text-xs text-purple-600 mb-3">Doktor tarafından her randevuda talep edilen semptom takibi</p>
+                  <div className="space-y-3">
+                    {pendingAnamrezRecord.routineAnamnezTemplates.map((template, i) => (
+                      <div key={i} className="bg-white border border-purple-100 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-medium text-gray-800 text-sm">{template}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500">Şiddet (0-10):</span>
+                            <input
+                              type="number"
+                              min={0}
+                              max={10}
+                              value={routineSymptomRatings[template] ?? 0}
+                              onChange={(e) => {
+                                const val = Math.min(10, Math.max(0, parseInt(e.target.value) || 0));
+                                setRoutineSymptomRatings(prev => ({ ...prev, [template]: val }));
+                              }}
+                              className="w-16 px-2 py-1 border border-purple-300 rounded text-center text-sm font-medium focus:ring-2 focus:ring-purple-400 focus:border-transparent"
+                            />
+                          </div>
+                        </div>
+                        <input
+                          type="text"
+                          placeholder="Not ekle (opsiyonel)..."
+                          value={routineSymptomNotes[template] ?? ''}
+                          onChange={(e) => setRoutineSymptomNotes(prev => ({ ...prev, [template]: e.target.value }))}
+                          className="w-full px-2 py-1 border border-gray-200 rounded text-sm text-gray-600 focus:ring-1 focus:ring-purple-300 focus:border-transparent"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Selected Applications Display - Clickable to toggle */}
               {selectedPatient.treatmentOptions?.selectedMainApplications && selectedPatient.treatmentOptions.selectedMainApplications.length > 0 && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
@@ -801,6 +925,9 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
                   setNotAppliedReason('');
                   setSelectedTreatments([]);
                   setUnselectedTreatmentReason('');
+                  setPendingAnamrezRecord(null);
+                  setRoutineSymptomRatings({});
+                  setRoutineSymptomNotes({});
                 }}
                 className="px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg text-gray-700 hover:text-gray-900 font-medium transition-all duration-200"
               >

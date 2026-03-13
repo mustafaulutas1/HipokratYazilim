@@ -173,14 +173,16 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
           }
 
           if (routineAnamnezRequired) {
-            // Route to anamnez screen instead of skipping it
+            // Routine anamnez: route through normal assistant flow, anamnez is collected in Treatment Panel
             try {
               const patientRef = doc(db, 'patients', appointment.patientId);
               const patientDoc = await getDoc(patientRef);
               if (patientDoc.exists()) {
                 await updateDoc(patientRef, {
-                  status: 'treatment_decided',
+                  status: 'anamnez_completed',
+                  isAnamnezCompleted: true,
                   appointmentType: 'tedavi',
+                  anamrezCompletedAt: new Date().toISOString(),
                   updatedAt: new Date().toISOString(),
                 });
               } else {
@@ -188,14 +190,16 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
                   fullName: appointment.patientName || 'Hasta',
                   phone: appointment.patientPhone || '',
                   clinicId: appointment.clinicId || 'default-clinic',
-                  status: 'treatment_decided',
+                  status: 'anamnez_completed',
+                  isAnamnezCompleted: true,
                   appointmentType: 'tedavi',
+                  anamrezCompletedAt: new Date().toISOString(),
                   createdAt: new Date().toISOString(),
                   updatedAt: new Date().toISOString(),
                 });
               }
 
-              // Create anamnez record with routine program info
+              // Create anamnez record so TreatmentPanel can fetch and display it
               const existingAnamrezQuery = query(
                 collection(db, 'anamrezRecords'),
                 where('appointmentId', '==', appointment.id)
@@ -216,11 +220,11 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
                   updatedAt: new Date().toISOString(),
                 });
               }
-              toast.success('Hasta Anamnez Ekranına yönlendirildi!');
-              onNavigate?.('anamnez');
+              toast.success('Hasta Asistan Ekranına yönlendirildi!');
+              onNavigate?.('assistant-panel');
             } catch (err) {
-              console.error('Error routing to anamnez for routine program:', err);
-              toast.warning('Randevu onaylandı, ancak hasta anamnez ekranına yönlendirilemedi.');
+              console.error('Error routing routine anamnez patient to assistant:', err);
+              toast.warning('Randevu onaylandı, ancak hasta asistan ekranına yönlendirilemedi.');
             }
           } else {
           // Tedavi appointments go to Treatment first, then to Accounting after treatment
