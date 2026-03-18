@@ -394,12 +394,6 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
     return explicitMuayenePrice || fallbackMuayenePrice;
   };
 
-  const getSelectedApplicationsTotal = (applications: string[]) => {
-    if (!selectedPatient) {
-      return applications.reduce((sum, appName) => sum + getApplicationPrice(appName), 0);
-    }
-    return applications.reduce((sum, appName) => sum + getPatientApplicationPrice(selectedPatient, appName), 0);
-  };
 
   const calculateAutoPaymentAmount = (
     patient: PaymentPatient,

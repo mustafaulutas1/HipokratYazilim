@@ -537,103 +537,13 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showSuccessToast, setShowSuccessToast] = useState(false);
-  const [medicationOptions, setMedicationOptions] = useState<string[]>([]);
-  const [treatmentOptions, setTreatmentOptions] = useState<string[]>([]);
-  const [selectedMedicationOption, setSelectedMedicationOption] = useState('');
-  const [selectedTreatmentOption, setSelectedTreatmentOption] = useState('');
 
   // Previous anamnez state
   const [previousAnamnez, setPreviousAnamnez] = useState<any>(null);
   const [loadingPreviousAnamnez, setLoadingPreviousAnamnez] = useState(false);
   const [usePreviousAnamnez, setUsePreviousAnamnez] = useState(false);
 
-  const activeClinicId = doctorProfile?.clinicId || patient?.clinicId || '';
 
-  const splitListValue = (value: string) => value
-    .split('\n')
-    .map(item => item.trim())
-    .filter(Boolean);
-
-  const addConventionalItem = (field: 'currentMedications' | 'otherTreatments', item: string) => {
-    if (!item) return;
-    setFormData(prev => {
-      const currentItems = splitListValue(prev.conventionalTreatment?.[field] || '');
-      if (currentItems.includes(item)) {
-        return prev;
-      }
-      return {
-        ...prev,
-        conventionalTreatment: {
-          ...prev.conventionalTreatment,
-          [field]: [...currentItems, item].join('\n')
-        }
-      };
-    });
-  };
-
-  const removeConventionalItem = (field: 'currentMedications' | 'otherTreatments', item: string) => {
-    setFormData(prev => {
-      const currentItems = splitListValue(prev.conventionalTreatment?.[field] || '');
-      const nextItems = currentItems.filter(existing => existing !== item);
-      return {
-        ...prev,
-        conventionalTreatment: {
-          ...prev.conventionalTreatment,
-          [field]: nextItems.join('\n')
-        }
-      };
-    });
-  };
-
-  useEffect(() => {
-    const fetchMedicationOptions = async () => {
-      if (!activeClinicId) return;
-      try {
-        const medicationsQuery = query(
-          collection(db, 'medications'),
-          where('clinicId', '==', activeClinicId)
-        );
-        const medicationsSnapshot = await getDocs(medicationsQuery);
-        const options = medicationsSnapshot.docs
-          .map(doc => doc.data()?.name)
-          .filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
-        setMedicationOptions(Array.from(new Set(options)).sort((a, b) => a.localeCompare(b, 'tr')));
-      } catch (error) {
-        console.error('❌ AnamrezFormModal: Error fetching medications:', error);
-      }
-    };
-
-    const fetchTreatmentOptions = async () => {
-      if (!activeClinicId) return;
-      try {
-        const applicationsSnapshot = await getDocs(collection(db, 'medicalApplications'));
-        const clinicNames = new Set<string>();
-        const options: string[] = [];
-
-        applicationsSnapshot.forEach(doc => {
-          const data = doc.data();
-          if (data?.clinicId === activeClinicId && typeof data?.name === 'string') {
-            options.push(data.name);
-            clinicNames.add(data.name);
-          }
-        });
-
-        applicationsSnapshot.forEach(doc => {
-          const data = doc.data();
-          if (data?.clinicId === 'STANDARD' && typeof data?.name === 'string' && !clinicNames.has(data.name)) {
-            options.push(data.name);
-          }
-        });
-
-        setTreatmentOptions(Array.from(new Set(options)).sort((a, b) => a.localeCompare(b, 'tr')));
-      } catch (error) {
-        console.error('❌ AnamrezFormModal: Error fetching treatments:', error);
-      }
-    };
-
-    fetchMedicationOptions();
-    fetchTreatmentOptions();
-  }, [activeClinicId]);
 
   // Fetch doctors from the clinic when modal opens
   useEffect(() => {

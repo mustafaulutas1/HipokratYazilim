@@ -351,14 +351,8 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
       toast.error('Yazdırma penceresi açılamadı. Lütfen pop-up engelleyiciyi devre dışı bırakın.');
       return;
     }
-    const age = calculateAge ? (() => {
-      const today = new Date();
-      const birth = new Date(patient.birthDate);
-      let a = today.getFullYear() - birth.getFullYear();
-      const m = today.getMonth() - birth.getMonth();
-      if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) a--;
-      return a;
-    })() : '-';
+    if (!patient) { printWindow.close(); return; }
+    const age = calculateAge(patient.birthDate);
     const fmt = (d: string) => { try { return new Date(d).toLocaleDateString('tr-TR'); } catch { return d || '-'; } };
 
     printWindow.document.write(`<!DOCTYPE html>
