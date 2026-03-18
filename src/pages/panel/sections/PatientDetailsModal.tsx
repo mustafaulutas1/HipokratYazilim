@@ -345,6 +345,96 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
     }
   };
 
+  const handlePrint = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast.error('Yazdırma penceresi açılamadı. Lütfen pop-up engelleyiciyi devre dışı bırakın.');
+      return;
+    }
+    const age = calculateAge ? (() => {
+      const today = new Date();
+      const birth = new Date(patient.birthDate);
+      let a = today.getFullYear() - birth.getFullYear();
+      const m = today.getMonth() - birth.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) a--;
+      return a;
+    })() : '-';
+    const fmt = (d: string) => { try { return new Date(d).toLocaleDateString('tr-TR'); } catch { return d || '-'; } };
+
+    printWindow.document.write(`<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Hasta Bilgileri - ${patient.fullName}</title>
+  <style>
+    @media print { @page { size: A4 portrait; margin: 12mm; } }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; color: #333; margin: 0; padding: 20px; background: #fff; }
+    .header { text-align: center; border-bottom: 2px solid #4c1d95; padding-bottom: 12px; margin-bottom: 20px; }
+    .header h1 { font-size: 20px; color: #4c1d95; margin: 0 0 4px; }
+    .header p { color: #666; margin: 0; font-size: 11px; }
+    .section { margin-bottom: 18px; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
+    .section-title { background: #f3f0ff; color: #4c1d95; font-weight: 700; font-size: 12px; padding: 7px 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+    .field { padding: 6px 12px; border-bottom: 1px solid #f0f0f0; }
+    .field:last-child { border-bottom: none; }
+    .label { font-size: 10px; color: #718096; text-transform: uppercase; font-weight: 600; margin-bottom: 2px; }
+    .value { font-weight: 500; color: #2d3748; }
+    .footer { margin-top: 30px; border-top: 1px solid #eee; padding-top: 10px; text-align: center; font-size: 10px; color: #aaa; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>HASTA BİLGİ FORMU</h1>
+    <p>${patient.fullName} &nbsp;|&nbsp; Hasta No: ${patient.id} &nbsp;|&nbsp; Yazdırma Tarihi: ${new Date().toLocaleDateString('tr-TR')}</p>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Temel Bilgiler</div>
+    <div class="grid">
+      <div class="field"><div class="label">Ad Soyad</div><div class="value">${patient.fullName || '-'}</div></div>
+      <div class="field"><div class="label">TC Kimlik No</div><div class="value">${patient.tcNo || '-'}</div></div>
+      <div class="field"><div class="label">Doğum Tarihi</div><div class="value">${fmt(patient.birthDate)}</div></div>
+      <div class="field"><div class="label">Yaş</div><div class="value">${age} yaş</div></div>
+      <div class="field"><div class="label">Cinsiyet</div><div class="value">${patient.gender || '-'}</div></div>
+      <div class="field"><div class="label">Durum</div><div class="value">Kayıtlı</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Aile Bilgileri</div>
+    <div class="grid">
+      <div class="field"><div class="label">Baba Adı</div><div class="value">${patient.fatherName || '-'}</div></div>
+      <div class="field"><div class="label">Doğum Yeri</div><div class="value">${patient.birthPlace || '-'}</div></div>
+      <div class="field"><div class="label">Kayıtlı İl</div><div class="value">${patient.registeredProvince || '-'}</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">İletişim Bilgileri</div>
+    <div class="grid">
+      <div class="field"><div class="label">Telefon</div><div class="value">${patient.phone || '-'}</div></div>
+      <div class="field"><div class="label">E-Posta</div><div class="value">${patient.email || '-'}</div></div>
+      <div class="field"><div class="label">Acil Telefon</div><div class="value">${patient.emergencyPhone || '-'}</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">İkamet Bilgileri</div>
+    <div class="grid">
+      <div class="field"><div class="label">Ülke</div><div class="value">${patient.country || 'Türkiye'}</div></div>
+      <div class="field"><div class="label">İkamet İli</div><div class="value">${patient.residenceCity || '-'}</div></div>
+      <div class="field" style="grid-column: span 2"><div class="label">Adres</div><div class="value">${patient.address || '-'}</div></div>
+    </div>
+  </div>
+
+  <div class="footer">RTM Clinic &nbsp;|&nbsp; Son Güncelleme: ${fmt(patient.updatedAt)}</div>
+</body>
+</html>`);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => { printWindow.print(); }, 300);
+  };
+
   if (!isOpen || !patient) return null;
 
   // Calculate age from birth date
@@ -1295,7 +1385,7 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
               >
                 Kapat
               </button>
-              <button className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white font-medium rounded-lg transition-all duration-200">
+              <button className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white font-medium rounded-lg transition-all duration-200" onClick={handlePrint}>
                 Yazdır
               </button>
             </div>

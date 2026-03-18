@@ -414,7 +414,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
     }
 
     const logoHtml = doctorProfile?.logoUrl 
-      ? `<div style="text-align: center; margin-bottom: 30px;"><img src="${doctorProfile.logoUrl}" style="max-height: 100px; max-width: 100%; object-fit: contain;" /></div>` 
+      ? `<div style="text-align: center; margin-bottom: 8px;"><img src="${doctorProfile.logoUrl}" style="max-height: 50px; max-width: 100%; object-fit: contain;" /></div>` 
       : '';
 
     const symptomLabels: Record<string, string> = {
@@ -501,9 +501,9 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
 
       const headerRow = `
         <tr style="background: #2c5282; color: white;">
-          <th style="padding: 8px; text-align: left; border: 1px solid #e2e8f0;">Semptom</th>
+          <th style="padding: 4px 6px; text-align: left; border: 1px solid #e2e8f0; font-size:9px;">Semptom</th>
           ${sortedRecords.map(record => `
-            <th style="padding: 8px; text-align: center; border: 1px solid #e2e8f0; min-width: 80px;">
+            <th style="padding: 4px 6px; text-align: center; border: 1px solid #e2e8f0; min-width: 55px; font-size:9px;">
               ${formatDate(record.createdAt)}
             </th>
           `).join('')}
@@ -520,13 +520,13 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
         const label = symptomLabels[key] || key;
         return `
           <tr>
-            <td style="padding: 6px; border: 1px solid #e2e8f0; font-weight: 500;">${label}</td>
+            <td style="padding: 3px 6px; border: 1px solid #e2e8f0; font-weight: 500; font-size:9px;">${label}</td>
             ${sortedRecords.map(record => {
               const value = record.symptomRatings?.[key] || 0;
               const bgColor = value <= 3 ? '#f0fff4' : value <= 6 ? '#fffaf0' : '#fff5f5';
               const textColor = value <= 3 ? '#276749' : value <= 6 ? '#9c4221' : '#c53030';
               return `
-                <td style="padding: 6px; text-align: center; border: 1px solid #e2e8f0; background: ${bgColor}; color: ${textColor}; font-weight: bold;">
+                <td style="padding: 3px 6px; text-align: center; border: 1px solid #e2e8f0; background: ${bgColor}; color: ${textColor}; font-weight: bold; font-size:9px;">
                   ${value}/10
                 </td>
               `;
@@ -536,7 +536,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
       }).join('');
 
       return `
-        <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 9px; margin-top: 4px;">
           ${headerRow}
           ${dataRows}
         </table>
@@ -552,9 +552,9 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
       
       const headerRow = `
         <tr style="background: #742a2a; color: white;">
-          <th style="padding: 8px; text-align: left; border: 1px solid #e2e8f0;">Toksisite Parametresi</th>
+          <th style="padding: 4px 6px; text-align: left; border: 1px solid #e2e8f0; font-size:9px;">Toksisite Parametresi</th>
           ${sortedRecords.map(record => `
-            <th style="padding: 8px; text-align: center; border: 1px solid #e2e8f0; min-width: 80px;">
+            <th style="padding: 4px 6px; text-align: center; border: 1px solid #e2e8f0; min-width: 55px; font-size:9px;">
               ${formatDate(record.createdAt)}
             </th>
           `).join('')}
@@ -572,13 +572,13 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
         const label = symptomLabels[key] || key;
         return `
           <tr>
-            <td style="padding: 6px; border: 1px solid #e2e8f0; font-weight: 500;">${label}</td>
+            <td style="padding: 3px 6px; border: 1px solid #e2e8f0; font-weight: 500; font-size:9px;">${label}</td>
             ${sortedRecords.map(record => {
               const value = record.toxicityAssessment?.toxicityScores?.[key] || 0;
               const bgColor = value <= 3 ? '#f0fff4' : value <= 6 ? '#fffaf0' : '#fff5f5';
               const textColor = value <= 3 ? '#276749' : value <= 6 ? '#9c4221' : '#c53030';
               return `
-                <td style="padding: 6px; text-align: center; border: 1px solid #e2e8f0; background: ${bgColor}; color: ${textColor}; font-weight: bold;">
+                <td style="padding: 3px 6px; text-align: center; border: 1px solid #e2e8f0; background: ${bgColor}; color: ${textColor}; font-weight: bold; font-size:9px;">
                   ${value}/10
                 </td>
               `;
@@ -590,14 +590,14 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
       // Summary row
       const summaryRow = `
         <tr style="background: #f7fafc; font-weight: bold;">
-          <td style="padding: 8px; border: 1px solid #e2e8f0;">TOPLAM PUAN</td>
+          <td style="padding: 4px 6px; border: 1px solid #e2e8f0; font-size:9px;">TOPLAM PUAN</td>
           ${sortedRecords.map(record => {
             const total = record.toxicityAssessment?.totalScore || 0;
             const hasToxicity = record.toxicityAssessment?.hasToxicity;
             const bgColor = hasToxicity ? '#fff5f5' : '#f0fff4';
             const textColor = hasToxicity ? '#c53030' : '#276749';
             return `
-              <td style="padding: 8px; text-align: center; border: 1px solid #e2e8f0; background: ${bgColor}; color: ${textColor};">
+              <td style="padding: 4px 6px; text-align: center; border: 1px solid #e2e8f0; background: ${bgColor}; color: ${textColor}; font-size:9px;">
                 ${total}
               </td>
             `;
@@ -606,7 +606,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
       `;
 
       return `
-        <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 9px; margin-top: 4px;">
           ${headerRow}
           ${dataRows}
           ${summaryRow}
@@ -621,36 +621,38 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
           <title>Anamnez Raporu - ${patient.fullName}</title>
           <style>
             @media print {
-              @page { size: A4 landscape; margin: 10mm; }
+              @page { size: A4 portrait; margin: 8mm; }
               body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
               .no-break { break-inside: avoid; }
             }
-            body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 12px; line-height: 1.5; color: #333; margin: 0 auto; padding: 20px; background: white; }
-            h1 { text-align: center; font-size: 22px; margin-bottom: 30px; color: #1a365d; text-transform: uppercase; letter-spacing: 1px; }
-            .section { margin-bottom: 25px; break-inside: avoid; }
-            .section-title { font-size: 14px; font-weight: 700; color: #2c5282; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 12px; text-transform: uppercase; }
-            .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-            .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-            .field { margin-bottom: 4px; }
-            .label { font-weight: 600; color: #718096; font-size: 10px; display: block; margin-bottom: 2px; text-transform: uppercase; }
-            .value { color: #2d3748; font-weight: 500; font-size: 12px; }
+            body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 9.5px; line-height: 1.3; color: #333; margin: 0 auto; padding: 10px; background: #e8e8e8; }
+            .page { background: white; max-width: 210mm; margin: 0 auto; padding: 10mm; }
+            h1 { text-align: center; font-size: 15px; margin-bottom: 6px; color: #1a365d; text-transform: uppercase; letter-spacing: 1px; }
+            .section { margin-bottom: 8px; break-inside: avoid; }
+            .section-title { font-size: 10px; font-weight: 700; color: #2c5282; border-bottom: 1px solid #e2e8f0; padding-bottom: 3px; margin-bottom: 5px; text-transform: uppercase; }
+            .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
+            .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+            .field { margin-bottom: 2px; }
+            .label { font-weight: 600; color: #718096; font-size: 8px; display: block; margin-bottom: 1px; text-transform: uppercase; }
+            .value { color: #2d3748; font-weight: 500; font-size: 9.5px; }
             .full-width { grid-column: span 2; }
-            .text-content { white-space: pre-wrap; background: #f8fafc; padding: 10px; border-radius: 4px; border: 1px solid #edf2f7; font-size: 12px; }
-            .tag { display: inline-block; padding: 2px 8px; background: #ebf8ff; color: #2b6cb0; border-radius: 4px; font-size: 11px; margin-right: 5px; margin-bottom: 5px; border: 1px solid #bee3f8; }
-            .score-item { display: flex; justify-content: space-between; align-items: center; padding: 6px; border-bottom: 1px solid #f7fafc; }
+            .text-content { white-space: pre-wrap; background: #f8fafc; padding: 4px 6px; border-radius: 3px; border: 1px solid #edf2f7; font-size: 9.5px; }
+            .tag { display: inline-block; padding: 1px 5px; background: #ebf8ff; color: #2b6cb0; border-radius: 3px; font-size: 9px; margin-right: 3px; margin-bottom: 3px; border: 1px solid #bee3f8; }
+            .score-item { display: flex; justify-content: space-between; align-items: center; padding: 2px 4px; border-bottom: 1px solid #f7fafc; }
             .score-item:last-child { border-bottom: none; }
-            .score-val { font-weight: bold; padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+            .score-val { font-weight: bold; padding: 1px 4px; border-radius: 3px; font-size: 9px; }
             .score-low { background: #f0fff4; color: #276749; }
             .score-med { background: #fffaf0; color: #9c4221; }
             .score-high { background: #fff5f5; color: #c53030; }
-            .check-item { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+            .check-item { display: flex; align-items: center; gap: 5px; margin-bottom: 2px; }
             .check-icon { color: #38a169; font-weight: bold; }
-            .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #edf2f7; text-align: center; color: #a0aec0; font-size: 10px; }
-            .date-badge { display: inline-block; padding: 4px 10px; background: #ebf8ff; color: #2b6cb0; border-radius: 4px; font-size: 11px; font-weight: bold; margin-bottom: 10px; }
-            .records-summary { background: #f7fafc; padding: 10px; border-radius: 4px; margin-bottom: 20px; text-align: center; }
+            .footer { margin-top: 10px; padding-top: 6px; border-top: 1px solid #edf2f7; text-align: center; color: #a0aec0; font-size: 8px; }
+            .date-badge { display: inline-block; padding: 1px 5px; background: #ebf8ff; color: #2b6cb0; border-radius: 3px; font-size: 8px; font-weight: bold; margin-bottom: 3px; }
+            .records-summary { background: #f7fafc; padding: 4px 8px; border-radius: 3px; margin-bottom: 8px; text-align: center; font-size: 9.5px; }
           </style>
         </head>
         <body>
+          <div class="page">
           ${logoHtml}
           <h1>ANAMNEZ RAPORU</h1>
           
@@ -707,14 +709,14 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
           ${(() => { const t = generateSymptomComparisonTable(); return t ? `
           <div class="section no-break">
             <div class="section-title">📊 Semptom Değerlendirmesi - Tarihsel Karşılaştırma</div>
-            <p style="font-size: 10px; color: #718096; margin-bottom: 10px;">Her sütun bir anamnez kaydının tarihini gösterir. Değerler 1-10 arasındadır.</p>
+            <p style="font-size: 8px; color: #718096; margin-bottom: 4px;">Her sütun bir anamnez kaydının tarihini gösterir. Değerler 1-10 arasındadır.</p>
             ${t}
           </div>` : ''; })()}
 
           ${(() => { const t = generateToxicityComparisonTable(); return t ? `
           <div class="section no-break">
             <div class="section-title">🔬 Toksisite Değerlendirmesi - Tarihsel Karşılaştırma</div>
-            <p style="font-size: 10px; color: #718096; margin-bottom: 10px;">Her sütun bir anamnez kaydının tarihini gösterir. 5+ semptomda yüksek puan = Toksisite riski.</p>
+            <p style="font-size: 8px; color: #718096; margin-bottom: 4px;">Her sütun bir anamnez kaydının tarihini gösterir. 5+ semptomda yüksek puan = Toksisite riski.</p>
             ${t}
           </div>` : ''; })()}
 
@@ -741,9 +743,9 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
               const questionSet = DIAGNOSIS_SPECIFIC_QUESTIONS[diagnosis];
               if (!questionSet) return '';
               return `
-                <div style="margin-bottom: 15px;">
-                  <div style="font-weight:bold; font-size:11px; color:#4a5568; margin-bottom:5px;">${questionSet.label}</div>
-                  <div class="grid-3" style="background:#f7fafc; padding:8px; border-radius:4px;">
+                <div style="margin-bottom: 6px;">
+                  <div style="font-weight:bold; font-size:9px; color:#4a5568; margin-bottom:2px;">${questionSet.label}</div>
+                  <div class="grid-3" style="background:#f7fafc; padding:4px; border-radius:3px;">
                     ${questionSet.questions.map(question => {
                       const rating = anamrezData.diagnosisResponses?.[diagnosis]?.[question] || 0;
                       const scoreClass = rating <= 3 ? 'score-low' : rating <= 6 ? 'score-med' : 'score-high';
@@ -786,7 +788,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
           ${(anamrezData.optionalScans?.meridianScan?.enabled || anamrezData.optionalScans?.thermalScan?.enabled || anamrezData.optionalScans?.toxicityScan?.enabled || anamrezData.optionalScans?.biyokimya?.enabled || anamrezData.optionalScans?.radyoloji?.enabled || anamrezData.optionalScans?.patoloji?.enabled) ? `
           <div class="section no-break">
             <div class="section-title">Opsiyonel Taramalar <span class="date-badge">📅 ${formatDate(anamrezData.createdAt)}</span></div>
-            <div style="display:flex; flex-direction:column; gap:5px; margin-bottom:10px;">
+            <div style="display:flex; flex-direction:column; gap:2px; margin-bottom:5px;">
               ${anamrezData.optionalScans.meridianScan?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Meridyen Tarama</div>' : ''}
               ${anamrezData.optionalScans.thermalScan?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Termal Tarama (IRIS-XP)</div>' : ''}
               ${anamrezData.optionalScans.toxicityScan?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Toksisite Ölçümü</div>' : ''}
@@ -794,7 +796,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
               ${anamrezData.optionalScans.radyoloji?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Radyolojik Görüntüleme</div>' : ''}
               ${anamrezData.optionalScans.patoloji?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Patoloji</div>' : ''}
             </div>
-            <div style="display:flex; flex-direction:column; gap:15px;">
+            <div style="display:flex; flex-direction:column; gap:8px;">
               ${anamrezData.optionalScans.meridianScan?.enabled && anamrezData.optionalScans.meridianScan?.fileUrl && anamrezData.optionalScans.meridianScan.fileUrl !== 'pending' ? renderScanFileBlock('Meridyen Tarama Dosyası', anamrezData.optionalScans.meridianScan.fileUrl) : ''}
               ${anamrezData.optionalScans.thermalScan?.enabled && anamrezData.optionalScans.thermalScan?.fileUrl && anamrezData.optionalScans.thermalScan.fileUrl !== 'pending' ? renderScanFileBlock('Termal Tarama Dosyası', anamrezData.optionalScans.thermalScan.fileUrl) : ''}
               ${anamrezData.optionalScans.toxicityScan?.enabled && anamrezData.optionalScans.toxicityScan?.fileUrl && anamrezData.optionalScans.toxicityScan.fileUrl !== 'pending' ? renderScanFileBlock('Toksisite Ölçümü Dosyası', anamrezData.optionalScans.toxicityScan.fileUrl) : ''}
@@ -839,6 +841,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
           <div class="footer">
             Rapor Tarihi: ${new Date().toLocaleDateString('tr-TR')} ${new Date().toLocaleTimeString('tr-TR')} |
             ${anamrezData.completedBy?.name} tarafından oluşturulmuştur.
+          </div>
           </div>
 
           <script>
