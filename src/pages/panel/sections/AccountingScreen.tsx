@@ -99,6 +99,13 @@ interface PaymentStats {
   totalDebtAmount: number;
 }
 
+interface MedicalApplicationPrice {
+  id: string;
+  name: string;
+  price: number;
+  clinicId: string;
+}
+
 const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) => {
   const filterSectionRef = useRef<HTMLDivElement>(null);
 
@@ -149,6 +156,8 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
   const [debtPaymentNote, setDebtPaymentNote] = useState<string>('');
   const [debtSearchQuery, setDebtSearchQuery] = useState<string>('');
   const [reportPeriod, setReportPeriod] = useState<string>('daily');
+  const [medicalApplicationPrices, setMedicalApplicationPrices] = useState<MedicalApplicationPrice[]>([]);
+  const [lastAutoCalculatedAmount, setLastAutoCalculatedAmount] = useState<string>('');
   const [reportData, setReportData] = useState<{
     payments: PaymentPatient[];
     refunds: PaymentPatient[];
@@ -288,6 +297,109 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
     return () => unsubscribe();
   }, [doctorProfile?.clinicId]);
 
+  // Fetch treatment application prices for auto-calculation in payment modal
+  useEffect(() => {
+    const fetchMedicalApplicationPrices = async () => {
+      if (!doctorProfile?.clinicId) {
+        setMedicalApplicationPrices([]);
+        return;
+      }
+
+      try {
+        const applicationsSnapshot = await getDocs(collection(db, 'medicalApplications'));
+        const clinicSpecificByName = new Map<string, MedicalApplicationPrice>();
+        const standardByName = new Map<string, MedicalApplicationPrice>();
+
+        applicationsSnapshot.forEach((applicationDoc) => {
+          const data = applicationDoc.data() as any;
+          if (!data?.name || typeof data.name !== 'string') return;
+
+          const normalizedName = data.name.trim().toLowerCase();
+          const appData: MedicalApplicationPrice = {
+            id: applicationDoc.id,
+            name: data.name,
+            price: Number(data.price) || 0,
+            clinicId: data.clinicId || ''
+          };
+
+          if (data.clinicId === doctorProfile.clinicId) {
+            clinicSpecificByName.set(normalizedName, appData);
+          } else if (data.clinicId === 'STANDARD') {
+            standardByName.set(normalizedName, appData);
+          }
+        });
+
+        const mergedPrices: MedicalApplicationPrice[] = [];
+        clinicSpecificByName.forEach((value) => mergedPrices.push(value));
+        standardByName.forEach((value, key) => {
+          if (!clinicSpecificByName.has(key)) {
+            mergedPrices.push(value);
+          }
+        });
+
+        setMedicalApplicationPrices(mergedPrices);
+      } catch (error) {
+        console.error('❌ AccountingScreen: Error fetching medical application prices:', error);
+        setMedicalApplicationPrices([]);
+      }
+    };
+
+    fetchMedicalApplicationPrices();
+  }, [doctorProfile?.clinicId]);
+
+  const getApplicationPrice = (applicationName: string) => {
+    const normalizedName = applicationName.trim().toLowerCase();
+    const found = medicalApplicationPrices.find(
+      (application) => application.name.trim().toLowerCase() === normalizedName
+    );
+    return found?.price || 0;
+  };
+
+  const calculateAutoPaymentAmount = (
+    patient: PaymentPatient,
+    applications: string[],
+    includeExamination: boolean,
+    includeDebt: boolean
+  ) => {
+    const treatmentTotal = applications.reduce((sum, appName) => sum + getApplicationPrice(appName), 0);
+
+    // Try to resolve examination fee from known fields first, then fallback to configured application names.
+    const explicitMuayenePrice = Number((patient as any)?.treatmentOptions?.muayenePrice) || 0;
+    const fallbackMuayenePrice = [
+      'Muayene',
+      'Muayene Ucreti',
+      'Muayene Ücreti',
+      'Ilk Muayene',
+      'İlk Muayene'
+    ].reduce((maxPrice, name) => Math.max(maxPrice, getApplicationPrice(name)), 0);
+
+    const examinationPrice = includeExamination ? (explicitMuayenePrice || fallbackMuayenePrice) : 0;
+    const additionalTreatmentPrice = Number(patient.additionalTreatmentPrice) || 0;
+    const debtToInclude = includeDebt ? (Number(patient.debtAmount) || 0) : 0;
+
+    return treatmentTotal + examinationPrice + additionalTreatmentPrice + debtToInclude;
+  };
+
+  const syncAutoCalculatedPayment = (force = false) => {
+    if (!selectedPatient || isDiscountActive) return;
+
+    const calculated = calculateAutoPaymentAmount(
+      selectedPatient,
+      selectedApplications,
+      includeMuayene,
+      includeDebtInPayment
+    );
+
+    const formattedAmount = calculated.toFixed(2);
+    const shouldOverwrite = force || paymentAmount === '' || paymentAmount === lastAutoCalculatedAmount;
+    if (!shouldOverwrite) return;
+
+    setPaymentAmount(formattedAmount);
+    setPayableAmount(formattedAmount);
+    setOriginalAmount(formattedAmount);
+    setLastAutoCalculatedAmount(formattedAmount);
+  };
+
   // Auto-calculate remaining debt when partial payment is enabled
   useEffect(() => {
     if (!isPartialPayment) return;
@@ -304,6 +416,25 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       setPaymentMethods((prev) => prev.map((m, i) => i === 0 ? { ...m, amount: parseFloat(payableAmount) || 0 } : m));
     }
   }, [payableAmount]);
+
+  // Keep treatment total in sync with selected applications / muayene / debt choices.
+  useEffect(() => {
+    if (!isPaymentModalOpen || !selectedPatient) return;
+    syncAutoCalculatedPayment(false);
+  }, [
+    isPaymentModalOpen,
+    selectedPatient,
+    selectedApplications,
+    includeMuayene,
+    includeDebtInPayment,
+    medicalApplicationPrices
+  ]);
+
+  // Force auto-fill once when modal is opened for a patient.
+  useEffect(() => {
+    if (!isPaymentModalOpen || !selectedPatient) return;
+    syncAutoCalculatedPayment(true);
+  }, [isPaymentModalOpen, selectedPatient, medicalApplicationPrices]);
 
   const handleProcessPayment = async () => {
     if (!selectedPatient || !payableAmount) return;
@@ -1721,6 +1852,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                         setDiscountType('yuzde');
                         setIsDiscountActive(false);
                         setOriginalAmount('');
+                        setLastAutoCalculatedAmount('');
                         setIncludeDebtInPayment(true);
                         setIsPartialPayment(false);
                         setRemainingDebtAmount('');
@@ -2078,6 +2210,11 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                     onChange={(e) => {
                       const newAmount = e.target.value;
                       setPaymentAmount(newAmount);
+
+                      // Manual edits break the auto-sync chain until amount is cleared or reset.
+                      if (newAmount !== lastAutoCalculatedAmount) {
+                        setLastAutoCalculatedAmount('');
+                      }
 
                       // Update payable amount only when discount is not active.
                       if (!isDiscountActive) {
