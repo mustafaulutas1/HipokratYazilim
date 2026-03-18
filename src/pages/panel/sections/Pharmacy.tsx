@@ -606,6 +606,19 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     return desc || medication.name;
   };
 
+  // Find a saved medication by protocol/display name or barcode name
+  const findMedicationByName = (medName: string) => {
+    const lower = medName.toLowerCase().replace(/\s*-\s*/g, '-');
+    return savedMedications.find(sm => {
+      const displayLower = getMedicationDisplayName(sm).toLowerCase().replace(/\s*-\s*/g, '-');
+      const protocolLower = (sm.protocolName || '').toLowerCase().replace(/\s*-\s*/g, '-');
+      const nameLower = sm.name.toLowerCase().replace(/\s*-\s*/g, '-');
+      return displayLower.includes(lower) || lower.includes(displayLower) ||
+             protocolLower.includes(lower) || lower.includes(protocolLower) ||
+             nameLower.includes(lower) || lower.includes(nameLower);
+    });
+  };
+
   const getPrescribedMedicines = (patient: PharmacyPatient) => {
     const protocol = patient.treatmentOptions?.customizedProtocol || patient.treatmentOptions?.selectedProtocol;
     if (!protocol?.phases) return [];
@@ -1145,9 +1158,14 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   // Filter and sort medications
   const filteredAndSortedMedications = savedMedications
     .filter(med => {
-      const matchesSearch = med.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                           med.barcode.includes(searchTerm) ||
-                           (med.manufacturer && med.manufacturer.toLowerCase().includes(searchTerm.toLowerCase()));
+      const displayName = getMedicationDisplayName(med).toLowerCase();
+      const term = searchTerm.toLowerCase();
+      const matchesSearch = displayName.includes(term) ||
+                           med.name.toLowerCase().includes(term) ||
+                           med.barcode.toLowerCase().includes(term) ||
+                           (med.protocolName && med.protocolName.toLowerCase().includes(term)) ||
+                           (med.description && med.description.toLowerCase().includes(term)) ||
+                           (med.manufacturer && med.manufacturer.toLowerCase().includes(term));
       const matchesCategory = filterCategory === 'all' || med.category === filterCategory;
       return matchesSearch && matchesCategory;
     })
@@ -2494,10 +2512,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       ) : (
                         getPrescribedMedicines(selectedPatientForSale).map((med, index) => {
                           // Find matching medication for price (optional)
-                          const match = savedMedications.find(sm => 
-                            sm.name.toLowerCase().includes(med.name.toLowerCase()) || 
-                            med.name.toLowerCase().includes(sm.name.toLowerCase())
-                          );
+                          const match = findMedicationByName(med.name);
                           
                           return (
                             <tr key={index} className="text-white/80 hover:bg-white/5">
@@ -2522,10 +2537,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                    <p className="text-white/60 text-sm">Toplam Tutar</p>
                    <p className="text-2xl font-bold text-white">
                      {getPrescribedMedicines(selectedPatientForSale).reduce((total, med) => {
-                       const match = savedMedications.find(sm => 
-                          sm.name.toLowerCase().includes(med.name.toLowerCase()) || 
-                          med.name.toLowerCase().includes(sm.name.toLowerCase())
-                       );
+                       const match = findMedicationByName(med.name);
                        return total + (match ? match.price : 0);
                      }, 0).toFixed(2)} TL
                    </p>
@@ -2534,10 +2546,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                   onClick={() => {
                      const prescribed = getPrescribedMedicines(selectedPatientForSale);
                      const soldItems = prescribed.map(med => {
-                        const match = savedMedications.find(sm => 
-                          sm.name.toLowerCase().includes(med.name.toLowerCase()) || 
-                          med.name.toLowerCase().includes(sm.name.toLowerCase())
-                        );
+                        const match = findMedicationByName(med.name);
                         return {
                           name: med.name,
                           dosage: med.dosage,
