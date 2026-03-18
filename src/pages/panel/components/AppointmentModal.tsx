@@ -674,10 +674,11 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
                   Randevu Tarihi
                 </label>
                 <div className="bg-white/90 backdrop-blur-sm border border-purple-300/50 rounded-2xl p-3 pb-1 shadow-sm">
-                  <DayPicker 
-                    mode="single" 
-                    selected={selectedDate} 
-                    onSelect={(d)=>d && setSelectedDate(d)} 
+                  <DayPicker
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={(d)=>d && setSelectedDate(d)}
+                    disabled={{ before: new Date(new Date().setHours(0,0,0,0)) }}
                     className="w-full"
                     styles={{
                       month: { fontSize: '14px', width: '100%' },
