@@ -408,13 +408,16 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
     includeDebt: boolean
   ) => {
     const treatmentTotal = applications.reduce((sum, appName) => sum + getPatientApplicationPrice(patient, appName), 0);
-    const _examinationPrice = getExaminationPrice(patient, includeExamination);
-    const _additionalTreatmentPrice = Number(patient.additionalTreatmentPrice) || 0;
+    const examinationPrice = getExaminationPrice(patient, includeExamination);
+    const additionalTreatmentPrice = Number(patient.additionalTreatmentPrice) || 0;
     const debtToInclude = includeDebt ? (Number(patient.debtAmount) || 0) : 0;
+    const calculatedTotal = treatmentTotal + examinationPrice + additionalTreatmentPrice;
 
-    // Payment total should match selected application prices in the blue section.
-    // Debt is optionally included as a separate existing balance.
-    return treatmentTotal + debtToInclude;
+    // If prices are not resolvable from catalog for this patient, fallback to known expected/payment values.
+    const fallbackBase = Number(patient.originalExpectedAmount) || Number(patient.paymentAmount) || 0;
+    const baseTotal = calculatedTotal > 0 ? calculatedTotal : fallbackBase;
+
+    return baseTotal + debtToInclude;
   };
 
   const syncAutoCalculatedPayment = (force = false) => {
