@@ -2094,6 +2094,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   <div className="space-y-2">
                     {selectedPatient.treatmentOptions.selectedMainApplications.map((application: string, index: number) => {
                       const isSelected = selectedApplications.includes(application);
+                      const applicationPrice = getApplicationPrice(application);
                       return (
                         <div 
                           key={index} 
@@ -2118,13 +2119,26 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                           <span className={`font-medium ${isSelected ? 'text-blue-900' : 'text-gray-500 line-through'}`}>
                             {application}
                           </span>
-                          <span className={`ml-auto text-xs px-2 py-1 rounded-full ${
-                            isSelected 
-                              ? 'text-green-600 bg-green-100' 
-                              : 'text-red-600 bg-red-100'
-                          }`}>
-                            {isSelected ? 'Aktif' : 'Kaldırıldı'}
-                          </span>
+                          <div className="ml-auto flex items-center gap-2">
+                            <span
+                              className={`text-xs px-2 py-1 rounded-full font-medium ${
+                                applicationPrice > 0
+                                  ? 'text-indigo-700 bg-indigo-100'
+                                  : 'text-gray-600 bg-gray-200'
+                              }`}
+                            >
+                              {applicationPrice > 0
+                                ? `${applicationPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL`
+                                : 'Fiyat tanımsız'}
+                            </span>
+                            <span className={`text-xs px-2 py-1 rounded-full ${
+                              isSelected 
+                                ? 'text-green-600 bg-green-100' 
+                                : 'text-red-600 bg-red-100'
+                            }`}>
+                              {isSelected ? 'Aktif' : 'Kaldırıldı'}
+                            </span>
+                          </div>
                         </div>
                       );
                     })}
