@@ -3492,58 +3492,14 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                       <p className="text-sm text-red-600 mb-4">
                         (Hastanın konvansiyonel tıpça önerdiği ilaçlar ve kullanım oranları yazılacak.)
                       </p>
-                      <div className="space-y-3">
-                        <div className="flex flex-col sm:flex-row gap-3">
-                          <select
-                            value={selectedMedicationOption}
-                            onChange={(e) => setSelectedMedicationOption(e.target.value)}
-                            className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                          >
-                            <option value="">İlaç seçin</option>
-                            {medicationOptions.map((option) => (
-                              <option key={option} value={option}>{option}</option>
-                            ))}
-                          </select>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              addConventionalItem('currentMedications', selectedMedicationOption);
-                              setSelectedMedicationOption('');
-                            }}
-                            disabled={!selectedMedicationOption}
-                            className="px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Ekle
-                          </button>
-                        </div>
-
-                        {splitListValue(formData.conventionalTreatment.currentMedications).length > 0 && (
-                          <div className="flex flex-wrap gap-2">
-                            {splitListValue(formData.conventionalTreatment.currentMedications).map((item) => (
-                              <div key={item} className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1 rounded-full text-sm">
-                                <span>{item}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => removeConventionalItem('currentMedications', item)}
-                                  className="text-indigo-500 hover:text-indigo-700"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        <textarea
-                          name="conventionalTreatment.currentMedications"
-                          value={formData.conventionalTreatment.currentMedications}
-                          onChange={handleInputChange}
-                          rows={6}
-                          readOnly
-                          className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-700 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
-                          placeholder="Seçilen ilaçlar burada listelenir..."
-                        />
-                      </div>
+                      <textarea
+                        name="conventionalTreatment.currentMedications"
+                        value={formData.conventionalTreatment.currentMedications}
+                        onChange={handleInputChange}
+                        rows={8}
+                        className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-700 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+                        placeholder="Kullanılan ilaçlar ve dozajlarını buraya yazın..."
+                      />
                     </div>
 
                     {/* Right Column - Other Treatments */}
@@ -3552,58 +3508,14 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                       <p className="text-sm text-red-600 mb-4">
                         (Hastanın konvansiyonel tıpça önerdiği tedaviler ve periyodları yazılacak.)
                       </p>
-                      <div className="space-y-3">
-                        <div className="flex flex-col sm:flex-row gap-3">
-                          <select
-                            value={selectedTreatmentOption}
-                            onChange={(e) => setSelectedTreatmentOption(e.target.value)}
-                            className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                          >
-                            <option value="">Tedavi seçin</option>
-                            {treatmentOptions.map((option) => (
-                              <option key={option} value={option}>{option}</option>
-                            ))}
-                          </select>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              addConventionalItem('otherTreatments', selectedTreatmentOption);
-                              setSelectedTreatmentOption('');
-                            }}
-                            disabled={!selectedTreatmentOption}
-                            className="px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Ekle
-                          </button>
-                        </div>
-
-                        {splitListValue(formData.conventionalTreatment.otherTreatments).length > 0 && (
-                          <div className="flex flex-wrap gap-2">
-                            {splitListValue(formData.conventionalTreatment.otherTreatments).map((item) => (
-                              <div key={item} className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1 rounded-full text-sm">
-                                <span>{item}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => removeConventionalItem('otherTreatments', item)}
-                                  className="text-indigo-500 hover:text-indigo-700"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        <textarea
-                          name="conventionalTreatment.otherTreatments"
-                          value={formData.conventionalTreatment.otherTreatments}
-                          onChange={handleInputChange}
-                          rows={6}
-                          readOnly
-                          className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-700 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
-                          placeholder="Seçilen tedaviler burada listelenir..."
-                        />
-                      </div>
+                      <textarea
+                        name="conventionalTreatment.otherTreatments"
+                        value={formData.conventionalTreatment.otherTreatments}
+                        onChange={handleInputChange}
+                        rows={8}
+                        className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-700 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+                        placeholder="Alınan tedaviler ve periyodlarını buraya yazın..."
+                      />
                     </div>
                   </div>
 
