@@ -355,13 +355,31 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
     return found?.price || 0;
   };
 
-  const calculateAutoPaymentAmount = (
-    patient: PaymentPatient,
-    applications: string[],
-    includeExamination: boolean,
-    includeDebt: boolean
-  ) => {
-    const treatmentTotal = applications.reduce((sum, appName) => sum + getApplicationPrice(appName), 0);
+  const getPatientApplicationPrice = (patient: PaymentPatient, applicationName: string) => {
+    const listedPrice = getApplicationPrice(applicationName);
+    if (listedPrice > 0) return listedPrice;
+
+    const additionalPrice = Number(patient.additionalTreatmentPrice) || 0;
+    const additionalName = String(patient.additionalTreatmentName || '').trim().toLowerCase();
+    const normalizedApplication = applicationName.trim().toLowerCase();
+
+    // Fallback: if the extra treatment name matches this application, use that price.
+    if (additionalPrice > 0 && additionalName && additionalName === normalizedApplication) {
+      return additionalPrice;
+    }
+
+    // If there is only one selected application and we have an additional treatment price,
+    // use it to avoid visual mismatch between list and payment amount.
+    const selectedApps = patient.treatmentOptions?.selectedMainApplications || [];
+    if (additionalPrice > 0 && selectedApps.length === 1) {
+      return additionalPrice;
+    }
+
+    return 0;
+  };
+
+  const getExaminationPrice = (patient: PaymentPatient, includeExamination: boolean) => {
+    if (!includeExamination) return 0;
 
     // Try to resolve examination fee from known fields first, then fallback to configured application names.
     const explicitMuayenePrice = Number((patient as any)?.treatmentOptions?.muayenePrice) || 0;
@@ -373,11 +391,30 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       'İlk Muayene'
     ].reduce((maxPrice, name) => Math.max(maxPrice, getApplicationPrice(name)), 0);
 
-    const examinationPrice = includeExamination ? (explicitMuayenePrice || fallbackMuayenePrice) : 0;
-    const additionalTreatmentPrice = Number(patient.additionalTreatmentPrice) || 0;
+    return explicitMuayenePrice || fallbackMuayenePrice;
+  };
+
+  const getSelectedApplicationsTotal = (applications: string[]) => {
+    if (!selectedPatient) {
+      return applications.reduce((sum, appName) => sum + getApplicationPrice(appName), 0);
+    }
+    return applications.reduce((sum, appName) => sum + getPatientApplicationPrice(selectedPatient, appName), 0);
+  };
+
+  const calculateAutoPaymentAmount = (
+    patient: PaymentPatient,
+    applications: string[],
+    includeExamination: boolean,
+    includeDebt: boolean
+  ) => {
+    const treatmentTotal = applications.reduce((sum, appName) => sum + getPatientApplicationPrice(patient, appName), 0);
+    const _examinationPrice = getExaminationPrice(patient, includeExamination);
+    const _additionalTreatmentPrice = Number(patient.additionalTreatmentPrice) || 0;
     const debtToInclude = includeDebt ? (Number(patient.debtAmount) || 0) : 0;
 
-    return treatmentTotal + examinationPrice + additionalTreatmentPrice + debtToInclude;
+    // Payment total should match selected application prices in the blue section.
+    // Debt is optionally included as a separate existing balance.
+    return treatmentTotal + debtToInclude;
   };
 
   const syncAutoCalculatedPayment = (force = false) => {
@@ -2094,7 +2131,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   <div className="space-y-2">
                     {selectedPatient.treatmentOptions.selectedMainApplications.map((application: string, index: number) => {
                       const isSelected = selectedApplications.includes(application);
-                      const applicationPrice = getApplicationPrice(application);
+                      const applicationPrice = getPatientApplicationPrice(selectedPatient, application);
                       return (
                         <div 
                           key={index} 
