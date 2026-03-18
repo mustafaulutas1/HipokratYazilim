@@ -770,6 +770,19 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
             </div>
           </div>
 
+          ${anamrezData.customQuestions && anamrezData.customQuestions.length > 0 ? `
+          <div class="section no-break">
+            <div class="section-title">Ek Sorular <span class="date-badge">📅 ${formatDate(anamrezData.createdAt)}</span></div>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              ${anamrezData.customQuestions.map((q, i) => `
+                <div style="border-left:4px solid #ed8936; padding:8px 12px; background:#fffaf0; border-radius:0 4px 4px 0;">
+                  <div style="font-weight:600; color:#2d3748; font-size:12px; margin-bottom:4px;">${i + 1}. ${q.question || '-'}</div>
+                  <div style="color:#4a5568; font-size:12px;">${q.answer || '-'}</div>
+                </div>
+              `).join('')}
+            </div>
+          </div>` : ''}
+
           ${(anamrezData.optionalScans?.meridianScan?.enabled || anamrezData.optionalScans?.thermalScan?.enabled || anamrezData.optionalScans?.toxicityScan?.enabled || anamrezData.optionalScans?.biyokimya?.enabled || anamrezData.optionalScans?.radyoloji?.enabled || anamrezData.optionalScans?.patoloji?.enabled) ? `
           <div class="section no-break">
             <div class="section-title">Opsiyonel Taramalar <span class="date-badge">📅 ${formatDate(anamrezData.createdAt)}</span></div>
@@ -1111,8 +1124,9 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                 {anamrezData && !isEditing && (
                   <button
                     onClick={handlePrint}
-                    className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors duration-200 font-medium shadow-md hover:shadow-lg text-xs sm:text-sm"
-                    title="PDF Olarak İndir"
+                    disabled={loading}
+                    className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors duration-200 font-medium shadow-md hover:shadow-lg text-xs sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={loading ? "Veriler yükleniyor..." : "PDF Olarak İndir"}
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="sm:w-4 sm:h-4">
                       <path d="M12 16L7 11L8.4 9.6L11 12.2V4H13V12.2L15.6 9.6L17 11L12 16Z" fill="currentColor"/>
