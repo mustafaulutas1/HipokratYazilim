@@ -8,6 +8,7 @@ import type { PaymentMethodEntry } from '../../../components/UI/MultiPaymentMeth
 interface Medication {
   id?: string;
   name: string;
+  protocolName?: string;
   description: string;
   dosageForm: string; // Tablet, Syrup, Injection, etc.
   manufacturer: string;
@@ -99,6 +100,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const [activeTab, setActiveTab] = useState<'medications' | 'devices' | 'patients' | 'pharmacy_debt' | 'sales_history'>('medications');
   const [savedMedications, setSavedMedications] = useState<SavedMedication[]>([]);
   const [savedDevices, setSavedDevices] = useState<SavedMedicalDevice[]>([]);
+  const [protocolNames, setProtocolNames] = useState<string[]>([]);
   const [waitingPatients, setWaitingPatients] = useState<PharmacyPatient[]>([]);
   const [patientsWithDebt, setPatientsWithDebt] = useState<any[]>([]);
   const [completedSales, setCompletedSales] = useState<any[]>([]);
@@ -141,6 +143,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const [pharmacyNote, setPharmacyNote] = useState<string>('');
   const [formData, setFormData] = useState<Medication>({
     name: '',
+    protocolName: '',
     description: '',
     dosageForm: '',
     manufacturer: '',
@@ -573,8 +576,35 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       fetchDevices();
       fetchPatients();
       fetchCompletedSales();
+
+      // Fetch treatment protocol names for medication name dropdown
+      const fetchProtocolNames = async () => {
+        try {
+          const snap = await getDocs(collection(db, 'treatmentProtocols'));
+          const names = snap.docs
+            .map(d => (d.data() as any).name as string)
+            .filter(Boolean)
+            .sort((a, b) => a.localeCompare(b, 'tr'));
+          setProtocolNames(Array.from(new Set(names)));
+        } catch (e) {
+          console.error('Protocol names fetch error:', e);
+        }
+      };
+      fetchProtocolNames();
     }
   }, [doctorProfile?.clinicId]);
+
+  // Extract the protocol name for display — uses stored protocolName first,
+  // then tries to match the start of description against known protocol names,
+  // then falls back to the full description, then to name (barcode).
+  const getMedicationDisplayName = (medication: SavedMedication): string => {
+    if (medication.protocolName) return medication.protocolName;
+    const desc = (medication.description || '').trim();
+    for (const pName of protocolNames) {
+      if (desc.toUpperCase().startsWith(pName.toUpperCase())) return pName;
+    }
+    return desc || medication.name;
+  };
 
   const getPrescribedMedicines = (patient: PharmacyPatient) => {
     const protocol = patient.treatmentOptions?.customizedProtocol || patient.treatmentOptions?.selectedProtocol;
@@ -855,6 +885,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
         const medicationRef = doc(db, 'medications', editingMedication.id);
         await updateDoc(medicationRef, {
           name: formData.name,
+          protocolName: formData.protocolName || '',
           description: formData.description,
           dosageForm: formData.dosageForm,
           manufacturer: formData.manufacturer,
@@ -896,6 +927,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     setEditingMedication(medication);
     setFormData({
       name: medication.name,
+      protocolName: medication.protocolName || '',
       description: medication.description,
       dosageForm: medication.dosageForm || '',
       manufacturer: medication.manufacturer || '',
@@ -929,6 +961,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const resetForm = () => {
     setFormData({
       name: '',
+      protocolName: '',
       description: '',
       dosageForm: '',
       manufacturer: '',
@@ -1536,7 +1569,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <div className="flex items-center gap-3 mb-2">
-                              <h4 className="text-lg font-semibold text-white">{medication.name}</h4>
+                              <h4 className="text-lg font-semibold text-white">{getMedicationDisplayName(medication)}</h4>
                               <span className="px-3 py-1 bg-green-500/20 border border-green-400/30 rounded-full text-green-300 text-sm font-medium">
                                 💰 {medication.price.toFixed(2)} TL
                               </span>
@@ -2150,18 +2183,21 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
             /* Medication Form */
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Medication Name */}
+                {/* Protocol Name (from Treatment Protocols) */}
                 <div>
                   <label className="block text-white/80 text-sm font-medium mb-2">
-                    İlaç Adı *
+                    İlaç Adı (Protokol) *
                   </label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="Örn: Parol, Dolorex"
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                  />
+                  <select
+                    value={formData.protocolName || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, protocolName: e.target.value }))}
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  >
+                    <option value="" className="text-gray-900 bg-white">Protokol seçin</option>
+                    {protocolNames.map(name => (
+                      <option key={name} value={name} className="text-gray-900 bg-white">{name}</option>
+                    ))}
+                  </select>
                 </div>
 
               {/* Barcode */}
