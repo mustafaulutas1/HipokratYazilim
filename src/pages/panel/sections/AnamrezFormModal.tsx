@@ -647,13 +647,19 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         const anamnezSnapshot = await getDocs(anamnezQuery);
 
         if (!anamnezSnapshot.empty) {
-          // Filter completed records and sort by createdAt (newest first)
+          // Filter completed regular (non-routine) anamnez records and sort by createdAt (newest first)
           const completedRecords = anamnezSnapshot.docs
             .map(doc => ({
               id: doc.id,
               ...doc.data()
             }))
-            .filter((record: any) => record.status === 'completed')
+            .filter((record: any) =>
+              record.status === 'completed' &&
+              !record.isRoutineAnamnez &&
+              record.selectedDiagnosisSystems?.length > 0 &&
+              record.complaintDetails?.trim() &&
+              record.selectedDoctor?.id
+            )
             .sort((a: any, b: any) => {
               const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
               const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
