@@ -506,8 +506,12 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
       // Check if treatment has medications - only send to pharmacy if there are drugs
       const shouldGoToPharmacy = hasMedicationsInProtocol(treatmentOptions);
 
+      const isMuayene = patient.appointmentType === 'muayene';
+
       await updateDoc(patientRef, {
-        status: 'treatment_continue',
+        // Muayene: önce Muhasebe'ye, sonra Tedavi Ekranı'na. Diğerleri direkt Tedavi Ekranı'na.
+        status: isMuayene ? 'treatment_decided' : 'treatment_continue',
+        ...(isMuayene && { postTreatmentPayment: false }),
         // Only set pharmacyStatus to 'waiting' if there are medications in the protocol
         ...(shouldGoToPharmacy && { pharmacyStatus: 'waiting' }),
         treatmentStartedAt: new Date().toISOString(),
@@ -521,19 +525,21 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
         ...(previousPaymentData && {
           paymentHistory: [...(patient.paymentHistory || []), previousPaymentData]
         }),
-        // Track as an active session for TreatmentPanel multi-session support
-        activeAppointments: [...(patient.activeAppointments || []), {
-          sessionId: String(Date.now()),
-          sessionType: treatmentOptions.routineProgram?.enabled
-            ? 'rutin_tedavi'
-            : (patient.appointmentType || 'tedavi'),
-          treatmentOptions: treatmentOptions,
-          routineAnamnezRequired: treatmentOptions.routineProgram?.anamnezRequired || false,
-          routineAnamnezTemplates: treatmentOptions.routineProgram?.anamnezTemplates || [],
-          assignedDoctorId: patient.assignedDoctorId || '',
-          assignedDoctorName: patient.assignedDoctorName || '',
-          addedAt: new Date().toISOString(),
-        }],
+        // Muayene: activeAppointments'a Muhasebe adımından sonra AccountingScreen ekleyecek
+        ...(!isMuayene && {
+          activeAppointments: [...(patient.activeAppointments || []), {
+            sessionId: String(Date.now()),
+            sessionType: treatmentOptions.routineProgram?.enabled
+              ? 'rutin_tedavi'
+              : (patient.appointmentType || 'tedavi'),
+            treatmentOptions: treatmentOptions,
+            routineAnamnezRequired: treatmentOptions.routineProgram?.anamnezRequired || false,
+            routineAnamnezTemplates: treatmentOptions.routineProgram?.anamnezTemplates || [],
+            assignedDoctorId: patient.assignedDoctorId || '',
+            assignedDoctorName: patient.assignedDoctorName || '',
+            addedAt: new Date().toISOString(),
+          }],
+        }),
         updatedAt: new Date().toISOString()
       });
 

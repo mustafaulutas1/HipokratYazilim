@@ -17,7 +17,6 @@
 /* Prevent text I-beam cursor on non-editable elements */
 * {
   cursor: default !important;
-  user-select: none !important;
 }
 
 a, button, [role="button"], .cursor-pointer, select,

@@ -322,48 +322,55 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
         updatedAt: new Date().toISOString()
       };
 
+      // Muayene hastaları ödemeyi Tedavi Ekranı'ndan önce yaptığından tekrar Muhasebe'ye gitmez
+      const isMuayeneSession =
+        (selectedPatient as TreatmentSession)._sessionType === 'muayene' ||
+        selectedPatient.appointmentType === 'muayene';
+
       if (treatmentApplied) {
-        // Check if some treatments were not applied (unselected)
         if (hasUnselectedTreatments) {
-          // Partial treatment - send to Muhasebe for payment of applied treatments
-          updateData.status = 'treatment_decided';
-          updateData.paymentCompleted = false;
           updateData.treatmentCompletedAt = new Date().toISOString();
           updateData.treatmentApplied = true;
           updateData.treatmentPartiallyApplied = true;
           updateData.appliedTreatments = selectedTreatments;
           updateData.unselectedTreatments = unselectedTreatments;
           updateData.unselectedTreatmentReason = unselectedTreatmentReason.trim() || 'Hasta tarafından reddedildi';
-          updateData.postTreatmentPayment = true;
-          if (treatmentNotes.trim()) {
-            updateData.treatmentNotes = treatmentNotes.trim();
+          if (treatmentNotes.trim()) updateData.treatmentNotes = treatmentNotes.trim();
+          if (isMuayeneSession) {
+            updateData.status = 'treatment_completed';
+          } else {
+            updateData.status = 'treatment_decided';
+            updateData.paymentCompleted = false;
+            updateData.postTreatmentPayment = true;
           }
         } else {
-          // All treatments applied - send to Muhasebe for payment
-          updateData.status = 'treatment_decided';
-          updateData.paymentCompleted = false;
           updateData.treatmentCompletedAt = new Date().toISOString();
           updateData.treatmentApplied = true;
           updateData.treatmentPartiallyApplied = false;
           updateData.appliedTreatments = selectedTreatments;
           updateData.unselectedTreatments = [];
-          updateData.postTreatmentPayment = true;
-          if (treatmentNotes.trim()) {
-            updateData.treatmentNotes = treatmentNotes.trim();
+          if (treatmentNotes.trim()) updateData.treatmentNotes = treatmentNotes.trim();
+          if (isMuayeneSession) {
+            updateData.status = 'treatment_completed';
+          } else {
+            updateData.status = 'treatment_decided';
+            updateData.paymentCompleted = false;
+            updateData.postTreatmentPayment = true;
           }
         }
       } else {
-        // No treatment applied at all - send to Muhasebe for cancellation/zero payment
-        updateData.status = 'treatment_decided';
-        updateData.paymentCompleted = false;
         updateData.treatmentApplied = false;
         updateData.treatmentPartiallyApplied = false;
         updateData.treatmentNotAppliedReason = notAppliedReason.trim();
         updateData.appliedTreatments = [];
         updateData.unselectedTreatments = allTreatments;
-        updateData.postTreatmentPayment = true;
-        if (treatmentNotes.trim()) {
-          updateData.treatmentNotes = treatmentNotes.trim();
+        if (treatmentNotes.trim()) updateData.treatmentNotes = treatmentNotes.trim();
+        if (isMuayeneSession) {
+          updateData.status = 'treatment_completed';
+        } else {
+          updateData.status = 'treatment_decided';
+          updateData.paymentCompleted = false;
+          updateData.postTreatmentPayment = true;
         }
       }
 
