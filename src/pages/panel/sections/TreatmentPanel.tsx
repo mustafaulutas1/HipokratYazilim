@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, updateDoc, doc, onSnapshot, getDocs, addDoc } from 'firebase/firestore';
+import { collection, query, where, updateDoc, doc, onSnapshot, getDocs, addDoc, getDoc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import AdditionalTreatmentRequestModal from '../components/AdditionalTreatmentRequestModal';
 
@@ -46,6 +46,33 @@ interface TreatmentPatient {
   appointmentType?: string; // 'tedavi' or 'kontrol'
   routineAnamnezRequired?: boolean;
   routineAnamnezTemplates?: string[];
+  activeAppointments?: ActiveAppointmentSession[];
+}
+
+interface ActiveAppointmentSession {
+  sessionId: string;
+  sessionType?: string;
+  treatmentOptions?: {
+    protocolName?: string;
+    selectedMainApplications?: string[];
+  };
+  paymentAmount?: number;
+  paymentDate?: string;
+  paymentMethod?: string;
+  paymentCompleted?: boolean;
+  approvedApplications?: string[];
+  removedApplications?: string[];
+  includeMuayene?: boolean;
+  routineAnamnezRequired?: boolean;
+  routineAnamnezTemplates?: string[];
+  assignedDoctorId?: string;
+  assignedDoctorName?: string;
+  addedAt: string;
+}
+
+interface TreatmentSession extends TreatmentPatient {
+  _sessionId?: string;
+  _sessionType?: string;
 }
 
 interface TreatmentStats {
@@ -62,7 +89,7 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
     completedTreatments: 0,
     inProgressTreatments: 0
   });
-  const [pendingTreatmentPatients, setPendingTreatmentPatients] = useState<TreatmentPatient[]>([]);
+  const [pendingTreatmentPatients, setPendingTreatmentPatients] = useState<TreatmentSession[]>([]);
   const [completedTreatmentPatients, setCompletedTreatmentPatients] = useState<TreatmentPatient[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeListType, setActiveListType] = useState<'pending_treatment' | 'completed_treatment'>('pending_treatment');
@@ -110,14 +137,40 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
       console.log('🏥 TreatmentPanel: All patient statuses:', allClinicPatients.map(p => ({ name: p.fullName, status: p.status, appointmentType: p.appointmentType })));
       
       // Filter patients with payment_completed status (ready for treatment)
-      const pendingTreatments = allClinicPatients.filter(patient =>
-        (patient.status === 'payment_completed' && patient.paymentCompleted === true) ||
-        patient.status === 'treatment_continue'
-      ).sort((a, b) => {
+      const pendingSessionsList: TreatmentSession[] = [];
+      allClinicPatients.forEach(patient => {
+        const activeSessions = patient.activeAppointments;
+        if (activeSessions && activeSessions.length > 0) {
+          // Multi-session support: one row per session
+          activeSessions.forEach(session => {
+            pendingSessionsList.push({
+              ...patient,
+              treatmentOptions: session.treatmentOptions || patient.treatmentOptions,
+              paymentAmount: session.paymentAmount !== undefined ? session.paymentAmount : patient.paymentAmount,
+              paymentDate: session.paymentDate || patient.paymentDate,
+              paymentMethod: session.paymentMethod || patient.paymentMethod,
+              paymentCompleted: session.paymentCompleted !== undefined ? session.paymentCompleted : patient.paymentCompleted,
+              routineAnamnezRequired: session.routineAnamnezRequired !== undefined ? session.routineAnamnezRequired : patient.routineAnamnezRequired,
+              routineAnamnezTemplates: session.routineAnamnezTemplates || patient.routineAnamnezTemplates,
+              assignedDoctorName: session.assignedDoctorName || patient.assignedDoctorName,
+              _sessionId: session.sessionId,
+              _sessionType: session.sessionType,
+            });
+          });
+        } else if (
+          (patient.status === 'payment_completed' && patient.paymentCompleted === true) ||
+          patient.status === 'treatment_continue'
+        ) {
+          // Backward compat: patient in TreatmentPanel without activeAppointments
+          pendingSessionsList.push({ ...patient, _sessionId: undefined, _sessionType: undefined });
+        }
+      });
+      pendingSessionsList.sort((a, b) => {
         const dateA = new Date(a.paymentDate || a.updatedAt || a.createdAt).getTime();
         const dateB = new Date(b.paymentDate || b.updatedAt || b.createdAt).getTime();
-        return dateA - dateB; // Oldest payments first (earliest treatments first)
+        return dateA - dateB;
       });
+      const pendingTreatments = pendingSessionsList;
 
       console.log('🏥 TreatmentPanel: Pending treatment patients:', pendingTreatments.length);
       setPendingTreatmentPatients(pendingTreatments);
@@ -312,6 +365,16 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
         if (treatmentNotes.trim()) {
           updateData.treatmentNotes = treatmentNotes.trim();
         }
+      }
+
+      // Remove this session from activeAppointments if it has a sessionId
+      if ((selectedPatient as TreatmentSession)._sessionId) {
+        const patientSnap = await getDoc(patientRef);
+        const currentActiveAppointments: ActiveAppointmentSession[] = patientSnap.data()?.activeAppointments || [];
+        const remainingSessions = currentActiveAppointments.filter(
+          s => s.sessionId !== (selectedPatient as TreatmentSession)._sessionId
+        );
+        updateData.activeAppointments = remainingSessions;
       }
 
       await updateDoc(patientRef, updateData);
@@ -519,14 +582,32 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
 
         <div className="divide-y divide-white/10">
           {(activeListType === 'pending_treatment' ? pendingTreatmentPatients : completedTreatmentPatients).map((patient) => (
-            <div key={patient.id} className="p-6 hover:bg-white/5 transition-all duration-200">
+            <div key={patient.id + '_' + ((patient as TreatmentSession)._sessionId || 'default')} className="p-6 hover:bg-white/5 transition-all duration-200">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
                     {patient.fullName?.charAt(0) || '?'}
                   </div>
                   <div>
-                    <h4 className="font-semibold text-white text-lg">{patient.fullName}</h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-semibold text-white text-lg">{patient.fullName}</h4>
+                      {(() => {
+                        const apptType = (patient as TreatmentSession)._sessionType || patient.appointmentType;
+                        if (!apptType) return null;
+                        const label = apptType === 'muayene' ? 'Muayene'
+                          : apptType === 'kontrol' ? 'Kontrol'
+                          : apptType === 'rutin_tedavi' ? 'Rutin'
+                          : 'Tedavi';
+                        const cls = apptType === 'muayene'
+                          ? 'bg-amber-500/20 border-amber-400/50 text-amber-300'
+                          : apptType === 'kontrol'
+                          ? 'bg-violet-500/20 border-violet-400/50 text-violet-300'
+                          : apptType === 'rutin_tedavi'
+                          ? 'bg-teal-500/20 border-teal-400/50 text-teal-300'
+                          : 'bg-blue-500/20 border-blue-400/50 text-blue-300';
+                        return <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${cls}`}>{label}</span>;
+                      })()}
+                    </div>
                     <p className="text-white/60 text-sm">TC: {patient.tcNo}</p>
                     <p className="text-white/60 text-sm">📞 {patient.phone}</p>
                   </div>
@@ -535,10 +616,30 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
                 <div className="text-right">
                   {activeListType === 'pending_treatment' ? (
                     <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="px-3 py-1 bg-blue-500/20 border border-blue-400 rounded-full text-blue-200 text-xs font-medium">
-                          Tedavi Bekliyor
-                        </span>
+                      <div className="flex items-center justify-end gap-2">
+                        {(() => {
+                          const apptType = (patient as TreatmentSession)._sessionType || patient.appointmentType;
+                          if (apptType === 'muayene') return (
+                            <span className="px-3 py-1 bg-amber-500/20 border border-amber-400/60 rounded-full text-amber-200 text-xs font-medium">
+                              Muayene Tedavisi Bekliyor
+                            </span>
+                          );
+                          if (apptType === 'rutin_tedavi') return (
+                            <span className="px-3 py-1 bg-teal-500/20 border border-teal-400/60 rounded-full text-teal-200 text-xs font-medium">
+                              Rutin Tedavi Bekliyor
+                            </span>
+                          );
+                          if (apptType === 'kontrol') return (
+                            <span className="px-3 py-1 bg-violet-500/20 border border-violet-400/60 rounded-full text-violet-200 text-xs font-medium">
+                              Kontrol Tedavisi Bekliyor
+                            </span>
+                          );
+                          return (
+                            <span className="px-3 py-1 bg-blue-500/20 border border-blue-400 rounded-full text-blue-200 text-xs font-medium">
+                              Tedavi Bekliyor
+                            </span>
+                          );
+                        })()}
                       </div>
                       <p className="text-white/60 text-sm">
                         Ödeme: {formatDate(patient.paymentDate)}

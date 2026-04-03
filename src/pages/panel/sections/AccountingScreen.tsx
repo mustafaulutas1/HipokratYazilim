@@ -85,6 +85,9 @@ interface PaymentPatient {
   // Post-treatment payment tracking (Tedavi appointment flow)
   postTreatmentPayment?: boolean;
   appointmentType?: string;
+  activeAppointments?: any[];
+  routineAnamnezRequired?: boolean;
+  routineAnamnezTemplates?: string[];
   debtPaymentHistory?: DebtPaymentEntry[];
 }
 
@@ -579,6 +582,28 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         updateData.previousDebtClearedAmount = previousDebt;
       }
       
+      // When sending patient to TreatmentPanel (treatment_continue), track as an active session
+      if (!selectedPatient.postTreatmentPayment && updateData.status === 'treatment_continue') {
+        const newSession = {
+          sessionId: String(Date.now()),
+          sessionType: selectedPatient.appointmentType || 'tedavi',
+          treatmentOptions: selectedPatient.treatmentOptions,
+          paymentAmount: currentPayment,
+          paymentDate: new Date().toISOString(),
+          paymentMethod: paymentMethod,
+          paymentCompleted: true,
+          approvedApplications: selectedApplications,
+          removedApplications: removedApplications,
+          includeMuayene: includeMuayene,
+          routineAnamnezRequired: selectedPatient.routineAnamnezRequired || false,
+          routineAnamnezTemplates: selectedPatient.routineAnamnezTemplates || [],
+          assignedDoctorId: selectedPatient.assignedDoctorId || '',
+          assignedDoctorName: selectedPatient.assignedDoctorName || '',
+          addedAt: new Date().toISOString(),
+        };
+        updateData.activeAppointments = [...(selectedPatient.activeAppointments || []), newSession];
+      }
+
       await updateDoc(patientRef, updateData);
 
       console.log(`✅ Payment processed for patient: ${selectedPatient.fullName}`);

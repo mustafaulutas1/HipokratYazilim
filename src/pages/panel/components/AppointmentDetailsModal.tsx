@@ -267,17 +267,18 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
           }
           }
         } else {
-          // Kontrol / other types go through normal anamnez flow AND create accounting record
+          // Muayene / Kontrol / other types go through normal anamnez flow AND create accounting record
           try {
             const patientRef = doc(db, 'patients', appointment.patientId);
             const patientDoc = await getDoc(patientRef);
-            
+            const resolvedAppointmentType = typeName.includes('muayene') ? 'muayene' : 'kontrol';
+
             // Update patient with treatment_decided status so it appears in Accounting
             if (patientDoc.exists()) {
               const existingData = patientDoc.data();
               await updateDoc(patientRef, {
                 status: 'treatment_decided',
-                appointmentType: 'kontrol',
+                appointmentType: resolvedAppointmentType,
                 treatmentStartedAt: new Date().toISOString(),
                 paymentCompleted: false,
                 // Keep existing payment amount if set, otherwise use default or 0
@@ -292,7 +293,7 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
                 phone: appointment.patientPhone || '',
                 clinicId: appointment.clinicId || 'default-clinic',
                 status: 'treatment_decided',
-                appointmentType: 'kontrol',
+                appointmentType: resolvedAppointmentType,
                 treatmentStartedAt: new Date().toISOString(),
                 paymentCompleted: false,
                 paymentAmount: 0,

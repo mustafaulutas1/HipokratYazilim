@@ -46,6 +46,8 @@ interface AssignedPatient {
     date?: string;
     method?: string;
   }>;
+  activeAppointments?: any[];
+  appointmentType?: string;
 }
 
 interface PatientStats {
@@ -519,6 +521,19 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
         ...(previousPaymentData && {
           paymentHistory: [...(patient.paymentHistory || []), previousPaymentData]
         }),
+        // Track as an active session for TreatmentPanel multi-session support
+        activeAppointments: [...(patient.activeAppointments || []), {
+          sessionId: String(Date.now()),
+          sessionType: treatmentOptions.routineProgram?.enabled
+            ? 'rutin_tedavi'
+            : (patient.appointmentType || 'tedavi'),
+          treatmentOptions: treatmentOptions,
+          routineAnamnezRequired: treatmentOptions.routineProgram?.anamnezRequired || false,
+          routineAnamnezTemplates: treatmentOptions.routineProgram?.anamnezTemplates || [],
+          assignedDoctorId: patient.assignedDoctorId || '',
+          assignedDoctorName: patient.assignedDoctorName || '',
+          addedAt: new Date().toISOString(),
+        }],
         updatedAt: new Date().toISOString()
       });
 
@@ -1007,7 +1022,25 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
                         <span className="text-white text-2xl">👤</span>
                       </div>
                       <div>
-                        <h3 className="text-2xl font-bold text-white">{patient.fullName}</h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-2xl font-bold text-white">{patient.fullName}</h3>
+                          {patient.appointmentType && (
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${
+                              patient.appointmentType === 'muayene'
+                                ? 'bg-amber-500/20 border-amber-400/50 text-amber-300'
+                                : patient.appointmentType === 'kontrol'
+                                ? 'bg-violet-500/20 border-violet-400/50 text-violet-300'
+                                : patient.appointmentType === 'rutin_tedavi'
+                                ? 'bg-teal-500/20 border-teal-400/50 text-teal-300'
+                                : 'bg-blue-500/20 border-blue-400/50 text-blue-300'
+                            }`}>
+                              {patient.appointmentType === 'muayene' ? 'Muayene'
+                                : patient.appointmentType === 'kontrol' ? 'Kontrol'
+                                : patient.appointmentType === 'rutin_tedavi' ? 'Rutin'
+                                : 'Tedavi'}
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 mt-1">
                           {getStatusBadge(patient.status)}
                           <span className="text-white/60 text-sm">
