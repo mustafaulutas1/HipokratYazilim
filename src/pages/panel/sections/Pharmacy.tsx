@@ -647,11 +647,12 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
 
   // Open payment modal when clicking "Satışı Tamamla"
   const handleOpenPaymentModal = (soldItems: any[]) => {
-    setPendingSoldItems(soldItems);
+    const itemsWithQty = soldItems.map(item => ({ ...item, quantity: item.quantity || 1 }));
+    setPendingSoldItems(itemsWithQty);
     // Initialize all medicines as selected
-    setSelectedMedicines(soldItems.map(item => item.name));
+    setSelectedMedicines(itemsWithQty.map(item => item.name));
     // Calculate total from sold items
-    const total = soldItems.reduce((sum, item) => sum + (item.price || 0), 0);
+    const total = itemsWithQty.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
     setPharmacyPaymentAmount(total.toFixed(2));
     // Reset debt selection
     setSelectedDebts([]);
@@ -663,11 +664,32 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   };
 
   // Recalculate total when selection changes
-  const recalculatePharmacyTotal = (selected: string[]) => {
-    const total = pendingSoldItems
+  const recalculatePharmacyTotal = (selected: string[], items?: any[]) => {
+    const sourceItems = items || pendingSoldItems;
+    const total = sourceItems
       .filter(item => selected.includes(item.name))
-      .reduce((sum, item) => sum + (item.price || 0), 0);
+      .reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
     setPharmacyPaymentAmount(total.toFixed(2));
+  };
+
+  // Update quantity of a pending item
+  const handleUpdateQuantity = (itemName: string, delta: number) => {
+    setPendingSoldItems(prev => {
+      const updated = prev.map(item => {
+        if (item.name === itemName) {
+          const newQty = Math.max(1, (item.quantity || 1) + delta);
+          return { ...item, quantity: newQty };
+        }
+        return item;
+      });
+      // Recalculate total with updated quantities
+      const selected = selectedMedicines;
+      const total = updated
+        .filter(item => selected.includes(item.name))
+        .reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
+      setPharmacyPaymentAmount(total.toFixed(2));
+      return updated;
+    });
   };
 
   // Toggle medicine selection
@@ -683,10 +705,12 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
 
   // Add extra medicine from clinic inventory
   const handleAddExtraMedicine = (medication: SavedMedication) => {
-    // Check if already in pending items
-    const alreadyExists = pendingSoldItems.some(item => item.medicationId === medication.id);
-    if (alreadyExists) {
-      alert('Bu ilaç zaten listede mevcut.');
+    // Check if already in pending items - if so, increase quantity
+    const existingItem = pendingSoldItems.find(item => item.medicationId === medication.id);
+    if (existingItem) {
+      handleUpdateQuantity(existingItem.name, 1);
+      setShowExtraMedicinePicker(false);
+      setExtraMedicineSearch('');
       return;
     }
 
@@ -695,19 +719,20 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       dosage: medication.dosageForm,
       type: 'extra',
       medicationId: medication.id,
-      price: medication.price
+      price: medication.price,
+      quantity: 1
     };
 
-    setPendingSoldItems(prev => [...prev, newItem]);
-    setSelectedMedicines(prev => {
-      const newSelection = [...prev, medication.name];
-      // Recalculate total with new item included
-      const total = [...pendingSoldItems, newItem]
+    setPendingSoldItems(prev => {
+      const updated = [...prev, newItem];
+      const newSelection = [...selectedMedicines, medication.name];
+      const total = updated
         .filter(item => newSelection.includes(item.name))
-        .reduce((sum, item) => sum + (item.price || 0), 0);
+        .reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
       setPharmacyPaymentAmount(total.toFixed(2));
-      return newSelection;
+      return updated;
     });
+    setSelectedMedicines(prev => [...prev, medication.name]);
     setShowExtraMedicinePicker(false);
     setExtraMedicineSearch('');
   };
@@ -2661,15 +2686,35 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                               >
                                 {isSelected ? '✓' : '✕'}
                               </div>
-                              <span 
+                              <span
                                 onClick={() => handleMedicineToggle(item.name)}
                                 className={`flex-1 text-sm cursor-pointer ${isSelected ? 'text-gray-900' : 'text-gray-400 line-through'}`}
                               >
                                 {item.name}
                                 {isExtra && <span className="ml-1 text-xs text-purple-600">(Ek)</span>}
                               </span>
+                              {/* Quantity controls */}
+                              <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                                <button
+                                  onClick={() => handleUpdateQuantity(item.name, -1)}
+                                  className="w-5 h-5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded flex items-center justify-center text-xs font-bold transition-colors"
+                                  title="Azalt"
+                                >
+                                  −
+                                </button>
+                                <span className="w-5 text-center text-xs font-bold text-gray-700">
+                                  {item.quantity || 1}
+                                </span>
+                                <button
+                                  onClick={() => handleUpdateQuantity(item.name, 1)}
+                                  className="w-5 h-5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded flex items-center justify-center text-xs font-bold transition-colors"
+                                  title="Artır"
+                                >
+                                  +
+                                </button>
+                              </div>
                               <span className={`text-sm font-bold ${isSelected ? isExtra ? 'text-purple-700' : 'text-green-700' : 'text-gray-400'}`}>
-                                {item.price > 0 ? `${item.price.toFixed(2)} TL` : '-'}
+                                {item.price > 0 ? `${(item.price * (item.quantity || 1)).toFixed(2)} TL` : '-'}
                               </span>
                               {isExtra && (
                                 <button
@@ -2695,7 +2740,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                           <span className="text-blue-600">
                             {pendingSoldItems
                               .filter(item => selectedMedicines.includes(item.name))
-                              .reduce((sum, item) => sum + (item.price || 0), 0)
+                              .reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0)
                               .toFixed(2)} TL
                           </span>
                         </div>
@@ -3023,7 +3068,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                     <p className="font-bold text-blue-600 text-lg">
                       {pendingSoldItems
                         .filter(item => selectedMedicines.includes(item.name))
-                        .reduce((sum, item) => sum + (item.price || 0), 0)
+                        .reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0)
                         .toFixed(2)} TL
                     </p>
                   </div>
@@ -3040,7 +3085,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                     <p className="font-bold text-green-600 text-2xl">
                       {(pendingSoldItems
                         .filter(item => selectedMedicines.includes(item.name))
-                        .reduce((sum, item) => sum + (item.price || 0), 0) + calculateSelectedDebtTotal()
+                        .reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0) + calculateSelectedDebtTotal()
                       ).toFixed(2)} TL
                     </p>
                   </div>
