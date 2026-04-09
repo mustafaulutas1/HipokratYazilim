@@ -774,54 +774,6 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
             </div>
 
             <div className="p-6 space-y-4">
-              {/* Routine Anamnez Section */}
-              {anamrezFetchLoading && (
-                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 flex items-center gap-3">
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-600"></div>
-                  <span className="text-purple-700 text-sm font-medium">Rutin anamnez bilgileri yükleniyor...</span>
-                </div>
-              )}
-
-              {!anamrezFetchLoading && pendingAnamrezRecord && pendingAnamrezRecord.routineAnamnezTemplates.length > 0 && (
-                <div className="bg-purple-50 border border-purple-300 rounded-lg p-4">
-                  <h4 className="font-semibold text-purple-900 mb-1 flex items-center gap-2">
-                    <span className="text-lg">📋</span>
-                    Rutin Anamnez
-                  </h4>
-                  <p className="text-xs text-purple-600 mb-3">Doktor tarafından her randevuda talep edilen semptom takibi</p>
-                  <div className="space-y-3">
-                    {pendingAnamrezRecord.routineAnamnezTemplates.map((template, i) => (
-                      <div key={i} className="bg-white border border-purple-100 rounded-lg p-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-medium text-gray-800 text-sm">{template}</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-500">Şiddet (0-10):</span>
-                            <input
-                              type="number"
-                              min={0}
-                              max={10}
-                              value={routineSymptomRatings[template] ?? 0}
-                              onChange={(e) => {
-                                const val = Math.min(10, Math.max(0, parseInt(e.target.value) || 0));
-                                setRoutineSymptomRatings(prev => ({ ...prev, [template]: val }));
-                              }}
-                              className="w-16 px-2 py-1 border border-purple-300 rounded text-center text-sm font-medium focus:ring-2 focus:ring-purple-400 focus:border-transparent"
-                            />
-                          </div>
-                        </div>
-                        <input
-                          type="text"
-                          placeholder="Not ekle (opsiyonel)..."
-                          value={routineSymptomNotes[template] ?? ''}
-                          onChange={(e) => setRoutineSymptomNotes(prev => ({ ...prev, [template]: e.target.value }))}
-                          className="w-full px-2 py-1 border border-gray-200 rounded text-sm text-gray-600 focus:ring-1 focus:ring-purple-300 focus:border-transparent"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Selected Applications Display - Clickable to toggle */}
               {selectedPatient.treatmentOptions?.selectedMainApplications && selectedPatient.treatmentOptions.selectedMainApplications.length > 0 && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
