@@ -731,7 +731,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     }
 
     const newItem = {
-      name: medication.name,
+      name: getMedicationDisplayName(medication),
       dosage: medication.dosageForm,
       type: 'extra',
       medicationId: medication.id,
@@ -741,14 +741,14 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
 
     setPendingSoldItems(prev => {
       const updated = [...prev, newItem];
-      const newSelection = [...selectedMedicines, medication.name];
+      const newSelection = [...selectedMedicines, getMedicationDisplayName(medication)];
       const total = updated
         .filter(item => newSelection.includes(item.name))
         .reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
       setPharmacyPaymentAmount(total.toFixed(2));
       return updated;
     });
-    setSelectedMedicines(prev => [...prev, medication.name]);
+    setSelectedMedicines(prev => [...prev, getMedicationDisplayName(medication)]);
     setPickerQuantities(prev => { const n = { ...prev }; delete n[medication.id!]; return n; });
     setShowExtraMedicinePicker(false);
     setExtraMedicineSearch('');
@@ -2559,7 +2559,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                           return (
                             <tr key={index} className="text-white/80 hover:bg-white/5">
                               <td className="p-4 text-sm text-white/50">{med.type}</td>
-                              <td className="p-4 font-medium">{med.name}</td>
+                              <td className="p-4 font-medium">{match ? getMedicationDisplayName(match) : med.name}</td>
                               <td className="p-4 text-sm">{med.dosage}</td>
                               <td className="p-4">
                                 {match ? `${match.price.toFixed(2)} TL` : '-'}
@@ -2590,7 +2590,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                      const soldItems = prescribed.map(med => {
                         const match = findMedicationByName(med.name);
                         return {
-                          name: med.name,
+                          name: match ? getMedicationDisplayName(match) : med.name,
                           dosage: med.dosage,
                           type: med.type,
                           medicationId: match?.id || null,
@@ -2817,7 +2817,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                                   }`}
                                 >
                                   <div className="flex-1 min-w-0">
-                                    <span className="font-medium text-gray-900 text-sm">{med.name}</span>
+                                    <span className="font-medium text-gray-900 text-sm">{getMedicationDisplayName(med)}</span>
                                     <span className="text-xs text-gray-500 ml-2">({med.category})</span>
                                     {alreadyAdded && (
                                       <span className="ml-2 text-xs text-green-600 font-medium">
