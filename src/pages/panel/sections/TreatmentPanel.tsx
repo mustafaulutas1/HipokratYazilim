@@ -113,7 +113,7 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
   const [pendingAnamrezRecord, setPendingAnamrezRecord] = useState<{ id: string; routineAnamnezTemplates: string[] } | null>(null);
   const [routineSymptomRatings, setRoutineSymptomRatings] = useState<Record<string, number>>({});
   const [routineSymptomNotes, setRoutineSymptomNotes] = useState<Record<string, string>>({});
-  const [anamrezFetchLoading, setAnamrezFetchLoading] = useState(false);
+  const [_anamrezFetchLoading, setAnamrezFetchLoading] = useState(false);
 
   useEffect(() => {
     if (!doctorProfile?.clinicId) return;
