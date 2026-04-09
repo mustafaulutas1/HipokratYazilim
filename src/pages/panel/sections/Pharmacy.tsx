@@ -139,6 +139,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   // Extra medicine picker state
   const [showExtraMedicinePicker, setShowExtraMedicinePicker] = useState(false);
   const [extraMedicineSearch, setExtraMedicineSearch] = useState('');
+  const [pickerQuantities, setPickerQuantities] = useState<Record<string, number>>({});
   // Sale note state
   const [pharmacyNote, setPharmacyNote] = useState<string>('');
   const [formData, setFormData] = useState<Medication>({
@@ -704,11 +705,26 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   };
 
   // Add extra medicine from clinic inventory
-  const handleAddExtraMedicine = (medication: SavedMedication) => {
+  const handleAddExtraMedicine = (medication: SavedMedication, qty?: number) => {
+    const addQty = Math.max(1, qty || pickerQuantities[medication.id!] || 1);
+
     // Check if already in pending items - if so, increase quantity
     const existingItem = pendingSoldItems.find(item => item.medicationId === medication.id);
     if (existingItem) {
-      handleUpdateQuantity(existingItem.name, 1);
+      setPendingSoldItems(prev => {
+        const updated = prev.map(item => {
+          if (item.medicationId === medication.id) {
+            return { ...item, quantity: (item.quantity || 1) + addQty };
+          }
+          return item;
+        });
+        const total = updated
+          .filter(item => selectedMedicines.includes(item.name))
+          .reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
+        setPharmacyPaymentAmount(total.toFixed(2));
+        return updated;
+      });
+      setPickerQuantities(prev => { const n = { ...prev }; delete n[medication.id!]; return n; });
       setShowExtraMedicinePicker(false);
       setExtraMedicineSearch('');
       return;
@@ -720,7 +736,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       type: 'extra',
       medicationId: medication.id,
       price: medication.price,
-      quantity: 1
+      quantity: addQty
     };
 
     setPendingSoldItems(prev => {
@@ -733,6 +749,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       return updated;
     });
     setSelectedMedicines(prev => [...prev, medication.name]);
+    setPickerQuantities(prev => { const n = { ...prev }; delete n[medication.id!]; return n; });
     setShowExtraMedicinePicker(false);
     setExtraMedicineSearch('');
   };
@@ -2757,7 +2774,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       </h5>
                       <button
                         type="button"
-                        onClick={() => setShowExtraMedicinePicker(!showExtraMedicinePicker)}
+                        onClick={() => { setShowExtraMedicinePicker(p => !p); setPickerQuantities({}); }}
                         className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 ${
                           showExtraMedicinePicker
                             ? 'bg-red-500 text-white hover:bg-red-600'
@@ -2782,34 +2799,66 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                         {/* Medicines List */}
                         <div className="max-h-[200px] overflow-y-auto space-y-2">
                           {savedMedications
-                            .filter(med => 
-                              !pendingSoldItems.some(item => item.medicationId === med.id) &&
-                              (extraMedicineSearch === '' || 
-                               med.name.toLowerCase().includes(extraMedicineSearch.toLowerCase()) ||
-                               med.category.toLowerCase().includes(extraMedicineSearch.toLowerCase()))
+                            .filter(med =>
+                              extraMedicineSearch === '' ||
+                              med.name.toLowerCase().includes(extraMedicineSearch.toLowerCase()) ||
+                              med.category.toLowerCase().includes(extraMedicineSearch.toLowerCase())
                             )
-                            .map((med) => (
-                              <div
-                                key={med.id}
-                                onClick={() => handleAddExtraMedicine(med)}
-                                className="flex items-center justify-between px-3 py-2 bg-gray-50 hover:bg-green-50 border border-gray-200 hover:border-green-300 rounded-lg cursor-pointer transition-all duration-200"
-                              >
-                                <div className="flex-1">
-                                  <span className="font-medium text-gray-900 text-sm">{med.name}</span>
-                                  <span className="text-xs text-gray-500 ml-2">({med.category})</span>
+                            .map((med) => {
+                              const alreadyAdded = pendingSoldItems.find(item => item.medicationId === med.id);
+                              const pickerQty = pickerQuantities[med.id!] || 1;
+                              return (
+                                <div
+                                  key={med.id}
+                                  className={`flex items-center gap-2 px-3 py-2 border rounded-lg transition-all duration-200 ${
+                                    alreadyAdded
+                                      ? 'bg-green-50 border-green-300'
+                                      : 'bg-gray-50 hover:bg-green-50 border-gray-200 hover:border-green-300'
+                                  }`}
+                                >
+                                  <div className="flex-1 min-w-0">
+                                    <span className="font-medium text-gray-900 text-sm">{med.name}</span>
+                                    <span className="text-xs text-gray-500 ml-2">({med.category})</span>
+                                    {alreadyAdded && (
+                                      <span className="ml-2 text-xs text-green-600 font-medium">
+                                        (listede: {alreadyAdded.quantity || 1} adet)
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-green-700 font-bold text-sm shrink-0">{med.price.toFixed(2)} TL</span>
+                                  {/* Quantity controls */}
+                                  <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+                                    <button
+                                      onClick={() => setPickerQuantities(prev => ({ ...prev, [med.id!]: Math.max(1, (prev[med.id!] || 1) - 1) }))}
+                                      className="w-6 h-6 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded flex items-center justify-center text-xs font-bold transition-colors"
+                                    >
+                                      −
+                                    </button>
+                                    <span className="w-6 text-center text-xs font-bold text-gray-800">{pickerQty}</span>
+                                    <button
+                                      onClick={() => setPickerQuantities(prev => ({ ...prev, [med.id!]: (prev[med.id!] || 1) + 1 }))}
+                                      className="w-6 h-6 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded flex items-center justify-center text-xs font-bold transition-colors"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                  <button
+                                    onClick={() => handleAddExtraMedicine(med, pickerQty)}
+                                    className="shrink-0 px-2 py-1 bg-green-500 hover:bg-green-600 text-white rounded text-xs font-bold transition-colors"
+                                  >
+                                    {alreadyAdded ? 'Ekle' : 'Ekle'}
+                                  </button>
                                 </div>
-                                <span className="text-green-700 font-bold text-sm">{med.price.toFixed(2)} TL</span>
-                              </div>
-                            ))
+                              );
+                            })
                           }
-                          {savedMedications.filter(med => 
-                            !pendingSoldItems.some(item => item.medicationId === med.id) &&
-                            (extraMedicineSearch === '' || 
-                             med.name.toLowerCase().includes(extraMedicineSearch.toLowerCase()) ||
-                             med.category.toLowerCase().includes(extraMedicineSearch.toLowerCase()))
+                          {savedMedications.filter(med =>
+                            extraMedicineSearch === '' ||
+                            med.name.toLowerCase().includes(extraMedicineSearch.toLowerCase()) ||
+                            med.category.toLowerCase().includes(extraMedicineSearch.toLowerCase())
                           ).length === 0 && (
                             <div className="text-center py-4 text-gray-500 text-sm">
-                              {savedMedications.length === 0 
+                              {savedMedications.length === 0
                                 ? 'Henüz ilaç tanımlanmamış. İlaçlar sekmesinden ilaç ekleyin.'
                                 : 'Arama kriterine uygun ilaç bulunamadı.'}
                             </div>
