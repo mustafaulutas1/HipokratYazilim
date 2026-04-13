@@ -4,6 +4,7 @@ import { db } from '../../../firebase/config';
 import AppointmentModal from '../components/AppointmentModal';
 import AppointmentTypeManager from '../components/AppointmentTypeManager';
 import AppointmentDetailsModal from '../components/AppointmentDetailsModal';
+import ExcelJS from 'exceljs';
 
 type PanelSection = 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
 
@@ -228,6 +229,89 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
     fetchRoutinePrograms();
   }, [doctorProfile?.clinicId, programsRefreshKey]);
 
+  const exportToExcel = async () => {
+    if (!doctorProfile?.clinicId) return;
+
+    const snap = await getDocs(
+      query(collection(db, 'appointments'), where('clinicId', '==', doctorProfile.clinicId))
+    );
+    const allAppointments = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+    allAppointments.sort((a, b) => {
+      const dateCompare = String(b.dateISO || '').localeCompare(String(a.dateISO || ''));
+      if (dateCompare !== 0) return dateCompare;
+      return String(b.start || '').localeCompare(String(a.start || ''));
+    });
+
+    const statusMap: Record<string, string> = {
+      confirmed: 'Onaylandı',
+      pending: 'Bekliyor',
+      cancelled: 'İptal Edildi',
+    };
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'RTM Soft';
+    wb.created = new Date();
+
+    const ws = wb.addWorksheet('Randevular');
+
+    // Sütun genişlikleri
+    ws.columns = [
+      { key: 'patientName', width: 28 },
+      { key: 'dateISO',     width: 14 },
+      { key: 'start',       width: 10 },
+      { key: 'typeName',    width: 24 },
+      { key: 'status',      width: 16 },
+    ];
+
+    // Başlık satırı
+    const headerRow = ws.addRow(['Hasta Adı', 'Tarih', 'Saat', 'Randevu Tipi', 'Durum']);
+    headerRow.eachCell(cell => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A7A4A' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      cell.border = {
+        bottom: { style: 'thin', color: { argb: 'FF0F5C37' } },
+      };
+    });
+    headerRow.height = 22;
+
+    // Veri satırları
+    allAppointments.forEach((apt, i) => {
+      const row = ws.addRow([
+        apt.patientName || '-',
+        apt.dateISO     || '-',
+        apt.start || apt.time || '-',
+        apt.typeName || apt.type || '-',
+        statusMap[apt.status] || apt.status || '-',
+      ]);
+
+      const isEven = i % 2 === 0;
+      row.eachCell(cell => {
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: isEven ? 'FFF4FAF7' : 'FFFFFFFF' },
+        };
+        cell.alignment = { vertical: 'middle', horizontal: 'left' };
+        cell.font = { size: 10 };
+        cell.border = {
+          bottom: { style: 'hair', color: { argb: 'FFD0E8DB' } },
+        };
+      });
+      row.height = 18;
+    });
+
+    // İndir
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Randevular_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -237,6 +321,12 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
           <p className="text-white/70">Randevu takvimi ve planlama</p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={exportToExcel}
+            className="px-4 py-3 bg-emerald-700/80 text-white font-semibold rounded-xl hover:bg-emerald-600 transition-all duration-200 border border-emerald-500/40 flex items-center gap-2"
+          >
+            <span>📥</span> Excel İndir
+          </button>
           <button
             onClick={() => setOpenTypeModal(true)}
             className="px-4 py-3 bg-white/10 text-white font-semibold rounded-xl hover:bg-white/20 transition-all duration-200 border border-white/20"
