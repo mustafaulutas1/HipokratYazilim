@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { getRolePermissions } from '../services/roleService';
 import { getUserPermissions } from '../constants/permissions';
 
+// Tüm kullanıcılar için zorunlu izinler
+const MANDATORY_PERMISSIONS = ['appointments'];
+
 export const useUserPermissions = (userRole: string | undefined, clinicId: string | undefined, customPermissions?: string[]) => {
   const [permissions, setPermissions] = useState<string[]>(['dashboard']);
   const [loading, setLoading] = useState(true);
@@ -104,5 +107,10 @@ export const useUserPermissions = (userRole: string | undefined, clinicId: strin
     fetchPermissions();
   }, [userRole, clinicId, customPermissions]);
 
-  return { permissions, loading, securityError };
+  // Zorunlu izinleri her zaman ekle (Firestore'da eski kayıtlar olabilir)
+  const permissionsWithMandatory = [
+    ...new Set([...permissions, ...MANDATORY_PERMISSIONS])
+  ];
+
+  return { permissions: permissionsWithMandatory, loading, securityError };
 };

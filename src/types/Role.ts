@@ -29,7 +29,7 @@ export const DEFAULT_ROLES: Omit<Role, 'id' | 'createdAt' | 'updatedAt'>[] = [
     name: 'anamnez',
     displayName: 'Anamnez Uzmanı',
     description: 'Hasta anamnez kayıtları ve değerlendirme işlemleri',
-    permissions: ['anamnez', 'patients'],
+    permissions: ['patients', 'appointments', 'anamnez'],
     isDefault: true
   },
   {
@@ -50,14 +50,14 @@ export const DEFAULT_ROLES: Omit<Role, 'id' | 'createdAt' | 'updatedAt'>[] = [
     name: 'accounting',
     displayName: 'Muhasebe Uzmanı',
     description: 'Mali işlemler, faturalama ve finansal raporlama',
-    permissions: ['dashboard', 'patients', 'accounting'],
+    permissions: ['dashboard', 'patients', 'appointments', 'accounting'],
     isDefault: true
   },
   {
     name: 'pharmacy',
     displayName: 'Eczane Sorumlusu',
     description: 'İlaç yönetimi, reçete kontrolü ve eczane işlemleri',
-    permissions: ['dashboard', 'patients', 'pharmacy', 'prescriptions'],
+    permissions: ['dashboard', 'patients', 'appointments', 'pharmacy', 'prescriptions'],
     isDefault: true
   },
   {
