@@ -110,6 +110,10 @@ interface AnamrezData {
       enabled: boolean;
       fileUrl: string;
     };
+    epikriz?: {
+      enabled: boolean;
+      fileUrl: string;
+    };
   };
   toxicityAssessment: {
     totalScore: number;
@@ -785,7 +789,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
             </div>
           </div>` : ''}
 
-          ${(anamrezData.optionalScans?.meridianScan?.enabled || anamrezData.optionalScans?.thermalScan?.enabled || anamrezData.optionalScans?.toxicityScan?.enabled || anamrezData.optionalScans?.biyokimya?.enabled || anamrezData.optionalScans?.radyoloji?.enabled || anamrezData.optionalScans?.patoloji?.enabled) ? `
+          ${(anamrezData.optionalScans?.meridianScan?.enabled || anamrezData.optionalScans?.thermalScan?.enabled || anamrezData.optionalScans?.toxicityScan?.enabled || anamrezData.optionalScans?.biyokimya?.enabled || anamrezData.optionalScans?.radyoloji?.enabled || anamrezData.optionalScans?.patoloji?.enabled || anamrezData.optionalScans?.epikriz?.enabled) ? `
           <div class="section no-break">
             <div class="section-title">Opsiyonel Taramalar <span class="date-badge">📅 ${formatDate(anamrezData.createdAt)}</span></div>
             <div style="display:flex; flex-direction:column; gap:2px; margin-bottom:5px;">
@@ -795,6 +799,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
               ${anamrezData.optionalScans.biyokimya?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Biyokimya</div>' : ''}
               ${anamrezData.optionalScans.radyoloji?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Radyolojik Görüntüleme</div>' : ''}
               ${anamrezData.optionalScans.patoloji?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Patoloji</div>' : ''}
+              ${anamrezData.optionalScans.epikriz?.enabled ? '<div class="check-item"><span class="check-icon">✓</span> Epikriz</div>' : ''}
             </div>
             <div style="display:flex; flex-direction:column; gap:8px;">
               ${anamrezData.optionalScans.meridianScan?.enabled && anamrezData.optionalScans.meridianScan?.fileUrl && anamrezData.optionalScans.meridianScan.fileUrl !== 'pending' ? renderScanFileBlock('Meridyen Tarama Dosyası', anamrezData.optionalScans.meridianScan.fileUrl) : ''}
@@ -803,6 +808,7 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
               ${anamrezData.optionalScans.biyokimya?.enabled && anamrezData.optionalScans.biyokimya?.fileUrl && anamrezData.optionalScans.biyokimya.fileUrl !== 'pending' ? renderScanFileBlock('Biyokimya Dosyası', anamrezData.optionalScans.biyokimya.fileUrl) : ''}
               ${anamrezData.optionalScans.radyoloji?.enabled && anamrezData.optionalScans.radyoloji?.fileUrl && anamrezData.optionalScans.radyoloji.fileUrl !== 'pending' ? renderScanFileBlock('Radyolojik Görüntüleme Dosyası', anamrezData.optionalScans.radyoloji.fileUrl) : ''}
               ${anamrezData.optionalScans.patoloji?.enabled && anamrezData.optionalScans.patoloji?.fileUrl && anamrezData.optionalScans.patoloji.fileUrl !== 'pending' ? renderScanFileBlock('Patoloji Dosyası', anamrezData.optionalScans.patoloji.fileUrl) : ''}
+              ${anamrezData.optionalScans.epikriz?.enabled && anamrezData.optionalScans.epikriz?.fileUrl && anamrezData.optionalScans.epikriz.fileUrl !== 'pending' ? renderScanFileBlock('Epikriz Dosyası', anamrezData.optionalScans.epikriz.fileUrl) : ''}
             </div>
           </div>` : ''}
 
@@ -2359,7 +2365,8 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                           anamrezData.optionalScans.toxicityScan?.enabled ||
                           anamrezData.optionalScans.biyokimya?.enabled ||
                           anamrezData.optionalScans.radyoloji?.enabled ||
-                          anamrezData.optionalScans.patoloji?.enabled
+                          anamrezData.optionalScans.patoloji?.enabled ||
+                          anamrezData.optionalScans.epikriz?.enabled
                         ) ? (
                           <div className="space-y-4">
                             {anamrezData.optionalScans.meridianScan?.enabled && (
@@ -2788,6 +2795,76 @@ const AnamrezViewModal: React.FC<AnamrezViewModalProps> = ({
                                             <img
                                               src={fileUrl}
                                               alt="Patoloji"
+                                              className="max-w-full h-auto max-h-64 rounded-lg border border-purple-300 shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
+                                              onClick={() => window.open(fileUrl, '_blank')}
+                                            />
+                                            <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors">
+                                              🔍 Tam Boyut Görüntüle
+                                            </a>
+                                          </div>
+                                        );
+                                      } else if (isPdf) {
+                                        return (
+                                          <div className="flex items-center gap-3 p-4 bg-white rounded-lg border border-purple-200">
+                                            <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+                                              <span className="text-red-600 text-xl">📄</span>
+                                            </div>
+                                            <div className="flex-1">
+                                              <p className="font-medium text-gray-800">PDF Dosyası</p>
+                                              <p className="text-sm text-gray-500">Görüntülemek için tıklayın</p>
+                                            </div>
+                                            <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors">
+                                              📄 PDF Aç
+                                            </a>
+                                          </div>
+                                        );
+                                      } else {
+                                        return (
+                                          <div className="flex items-center gap-3 p-4 bg-white rounded-lg border border-purple-200">
+                                            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                                              <span className="text-gray-600 text-xl">📎</span>
+                                            </div>
+                                            <div className="flex-1">
+                                              <p className="font-medium text-gray-800">Dosya</p>
+                                              <p className="text-sm text-gray-500">İndirmek için tıklayın</p>
+                                            </div>
+                                            <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors">
+                                              ⬇️ İndir
+                                            </a>
+                                          </div>
+                                        );
+                                      }
+                                    })()}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {anamrezData.optionalScans.epikriz?.enabled && (
+                              <div className="bg-purple-50 border border-purple-200 rounded-xl p-6">
+                                <div className="flex items-center gap-3 mb-3">
+                                  <div className="w-10 h-10 bg-purple-500 text-white rounded-full flex items-center justify-center font-bold">
+                                    ✓
+                                  </div>
+                                  <div className="flex-1">
+                                    <h4 className="font-bold text-purple-900">Epikriz</h4>
+                                    <p className="text-sm text-purple-700">Seçilmiş</p>
+                                  </div>
+                                </div>
+                                {anamrezData.optionalScans.epikriz?.fileUrl && 
+                                 anamrezData.optionalScans.epikriz.fileUrl !== 'pending' && (
+                                  <div className="mt-4 border-t border-purple-200 pt-4">
+                                    <p className="text-sm font-medium text-purple-800 mb-3">📎 Yüklenen Dosya:</p>
+                                    {(() => {
+                                      const fileUrl = anamrezData.optionalScans.epikriz.fileUrl;
+                                      const isImage = /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(fileUrl);
+                                      const isPdf = /\.pdf(\?|$)/i.test(fileUrl);
+                                      if (isImage) {
+                                        return (
+                                          <div className="space-y-3">
+                                            <img
+                                              src={fileUrl}
+                                              alt="Epikriz"
                                               className="max-w-full h-auto max-h-64 rounded-lg border border-purple-300 shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
                                               onClick={() => window.open(fileUrl, '_blank')}
                                             />

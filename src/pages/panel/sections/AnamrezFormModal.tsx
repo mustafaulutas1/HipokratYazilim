@@ -396,6 +396,14 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   const [biyokimyaFile, setBiyokimyaFile] = useState<File | null>(null);
   const [radyolojiFile, setRadyolojiFile] = useState<File | null>(null);
   const [patolojiFile, setPatolojiFile] = useState<File | null>(null);
+  const [epikrizFile, setEpikrizFile] = useState<File | null>(null);
+
+  const [usePreviousAnamnez, setUsePreviousAnamnez] = useState(false);
+  const [previousAnamnez, setPreviousAnamnez] = useState<any | null>(null);
+  const [loadingPreviousAnamnez, setLoadingPreviousAnamnez] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
 
   const [formData, setFormData] = useState({
     // Ana Şikayetler - Now array for multiple selections
@@ -530,31 +538,22 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         enabled: false,
         fileUrl: ''
       },
+      epikriz: {
+        enabled: false,
+        fileUrl: ''
+      },
       hasMediaGallery: false
     }
   });
 
-  const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [showSuccessToast, setShowSuccessToast] = useState(false);
-
-  // Previous anamnez state
-  const [previousAnamnez, setPreviousAnamnez] = useState<any>(null);
-  const [loadingPreviousAnamnez, setLoadingPreviousAnamnez] = useState(false);
-  const [usePreviousAnamnez, setUsePreviousAnamnez] = useState(false);
-
-
-
-  // Fetch doctors from the clinic when modal opens
   useEffect(() => {
     const fetchDoctors = async () => {
       if (!patient?.clinicId || !isOpen) return;
-
       setLoadingDoctors(true);
+
       try {
         let doctorsList: Doctor[] = [];
 
-        // 1. Get doctors from 'doctors' collection
         const doctorsQuery = query(
           collection(db, 'doctors'),
           where('clinicId', '==', patient.clinicId)
@@ -621,7 +620,6 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         );
 
         setDoctors(uniqueDoctors);
-
       } catch (error) {
         console.error('Doktorlar yüklenirken hata oluştu:', error);
       } finally {
@@ -815,6 +813,10 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
             fileUrl: ''
           },
           patoloji: {
+            enabled: false,
+            fileUrl: ''
+          },
+          epikriz: {
             enabled: false,
             fileUrl: ''
           },
@@ -1202,6 +1204,34 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
     }));
   };
 
+  const handleEpikrizFileUpload = (file: File) => {
+    setEpikrizFile(file);
+    setFormData(prev => ({
+      ...prev,
+      optionalScans: {
+        ...prev.optionalScans,
+        epikriz: {
+          ...(prev.optionalScans.epikriz || { enabled: false, fileUrl: '' }),
+          fileUrl: 'pending'
+        }
+      }
+    }));
+  };
+
+  const handleEpikrizFileRemove = () => {
+    setEpikrizFile(null);
+    setFormData(prev => ({
+      ...prev,
+      optionalScans: {
+        ...prev.optionalScans,
+        epikriz: {
+          ...(prev.optionalScans.epikriz || { enabled: false, fileUrl: '' }),
+          fileUrl: ''
+        }
+      }
+    }));
+  };
+
   const validateCurrentPage = () => {
     const newErrors: Record<string, string> = {};
 
@@ -1343,6 +1373,14 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         await uploadBytes(patolojiRef, patolojiFile);
         const patolojiUrl = await getDownloadURL(patolojiRef);
         updatedOptionalScans.patoloji.fileUrl = patolojiUrl;
+      }
+
+      // Upload Epikriz file if selected
+      if (epikrizFile && updatedOptionalScans.epikriz?.enabled) {
+        const epikrizRef = ref(storage, `scans/${patient.id}/epikriz_${Date.now()}_${epikrizFile.name}`);
+        await uploadBytes(epikrizRef, epikrizFile);
+        const epikrizUrl = await getDownloadURL(epikrizRef);
+        updatedOptionalScans.epikriz.fileUrl = epikrizUrl;
       }
 
       // Upload Device Scan file if selected
@@ -1627,6 +1665,10 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
             fileUrl: ''
           },
           patoloji: {
+            enabled: false,
+            fileUrl: ''
+          },
+          epikriz: {
             enabled: false,
             fileUrl: ''
           },
@@ -3357,6 +3399,44 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                             onFileRemove={handlePatolojiFileRemove}
                             uploadedFileUrl={formData.optionalScans.patoloji?.fileUrl || ''}
                             fileName={patolojiFile ? patolojiFile.name : ''}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Epikriz */}
+                    <div className="bg-white rounded-xl p-6 border border-gray-200">
+                      <div className="flex items-center gap-3 mb-4">
+                        <input
+                          type="checkbox"
+                          id="epikriz"
+                          checked={formData.optionalScans.epikriz?.enabled || false}
+                          onChange={(e) => {
+                            setFormData(prev => ({
+                              ...prev,
+                              optionalScans: {
+                                ...prev.optionalScans,
+                                epikriz: {
+                                  ...(prev.optionalScans.epikriz || { enabled: false, fileUrl: '' }),
+                                  enabled: e.target.checked
+                                }
+                              }
+                            }));
+                          }}
+                          className="w-5 h-5 text-purple-600 bg-white border-gray-300 rounded focus:ring-purple-500 focus:ring-2"
+                        />
+                        <label htmlFor="epikriz" className="text-lg font-semibold text-gray-800 cursor-pointer">
+                          Epikriz
+                        </label>
+                      </div>
+
+                      {formData.optionalScans.epikriz?.enabled && (
+                        <div className="ml-8 mt-4">
+                          <FileUpload
+                            onFileUpload={handleEpikrizFileUpload}
+                            onFileRemove={handleEpikrizFileRemove}
+                            uploadedFileUrl={formData.optionalScans.epikriz?.fileUrl || ''}
+                            fileName={epikrizFile ? epikrizFile.name : ''}
                           />
                         </div>
                       )}

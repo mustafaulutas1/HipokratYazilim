@@ -42,16 +42,6 @@ interface PaymentPatient {
   paymentMethod?: string;
   paymentMethods?: PaymentMethodEntry[];
   updatedAt?: string;
-  indirim_check?: boolean;
-  indirim_orani?: number;
-  indirim_tipi?: 'yuzde' | 'tutar';
-  indirim_tutar?: number;
-  // Discount tracking for reporting
-  discountApplied?: boolean;
-  discountType?: 'yuzde' | 'tutar';
-  discountValue?: number;
-  discountAmount?: number;
-  originalPaymentAmount?: number;
   treatmentApplied?: boolean;
   treatmentNotAppliedReason?: string;
   treatmentNotes?: string;
@@ -64,6 +54,7 @@ interface PaymentPatient {
     meridianScan?: { enabled?: boolean };
     thermalScan?: { enabled?: boolean };
     toxicityScan?: { enabled?: boolean };
+    epikriz?: { enabled?: boolean };
   };
   // Debt tracking fields
   debtAmount?: number;
@@ -147,11 +138,6 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
   const [debtPaymentAmount, setDebtPaymentAmount] = useState<string>('');
   const [debtPaymentMethod, setDebtPaymentMethod] = useState<string>('nakit');
   const [debtPaymentMethods, setDebtPaymentMethods] = useState<PaymentMethodEntry[]>([{ method: 'nakit', amount: 0 }]);
-  const [discountPercent, setDiscountPercent] = useState<string>('');
-  const [discountFixedAmount, setDiscountFixedAmount] = useState<string>('');
-  const [discountType, setDiscountType] = useState<'yuzde' | 'tutar'>('yuzde');
-  const [isDiscountActive, setIsDiscountActive] = useState<boolean>(false);
-  const [originalAmount, setOriginalAmount] = useState<string>('');
   const [includeDebtInPayment, setIncludeDebtInPayment] = useState<boolean>(true);
   const [isPartialPayment, setIsPartialPayment] = useState<boolean>(false);
   const [remainingDebtAmount, setRemainingDebtAmount] = useState<string>('');
@@ -418,7 +404,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
   };
 
   const syncAutoCalculatedPayment = (force = false) => {
-    if (!selectedPatient || isDiscountActive) return;
+    if (!selectedPatient) return;
 
     const calculated = calculateAutoPaymentAmount(
       selectedPatient,
@@ -433,7 +419,6 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
 
     setPaymentAmount(formattedAmount);
     setPayableAmount(formattedAmount);
-    setOriginalAmount(formattedAmount);
     setLastAutoCalculatedAmount(formattedAmount);
   };
 
@@ -476,25 +461,6 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
   const handleProcessPayment = async () => {
     if (!selectedPatient || !payableAmount) return;
 
-    // Validate discount
-    if (isDiscountActive && !originalAmount) {
-      alert('⚠️ Lütfen indirimi uygulamadan önce ödeme tutarını girin!');
-      return;
-    }
-
-    if (isDiscountActive && !discountPercent && !discountFixedAmount) {
-      alert('⚠️ İndirim seçtiniz fakat yüzde veya tutarını seçmemişsiniz!\n\nLütfen bir indirim oranı veya tutarı seçin.');
-      return;
-    }
-
-    if (isDiscountActive) {
-      const discountValue = discountType === 'yuzde' ? parseFloat(discountPercent) : parseFloat(discountFixedAmount);
-      if (isNaN(discountValue) || discountValue <= 0) {
-        alert('⚠️ Geçerli bir indirim değeri giriniz!');
-        return;
-      }
-    }
-
     try {
       setLoading(true);
       const patientRef = doc(db, 'patients', selectedPatient.id);
@@ -515,20 +481,6 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       // Total debt = new debt from this payment + any previous debt NOT being paid off
       const totalRemainingDebt = newDebtAmount + (!includeDebtInPayment && selectedPatient.debtAmount ? selectedPatient.debtAmount : 0);
       
-      // Calculate discount amount based on type
-      let calculatedDiscountAmount = 0;
-      let calculatedDiscountPercent = 0;
-      if (isDiscountActive && originalAmount) {
-        const original = parseFloat(originalAmount);
-        if (discountType === 'yuzde' && discountPercent) {
-          calculatedDiscountPercent = parseFloat(discountPercent);
-          calculatedDiscountAmount = original * calculatedDiscountPercent / 100;
-        } else if (discountType === 'tutar' && discountFixedAmount) {
-          calculatedDiscountAmount = parseFloat(discountFixedAmount);
-          calculatedDiscountPercent = (calculatedDiscountAmount / original) * 100;
-        }
-      }
-
       const updateData: any = {
         paymentCompleted: true,
         paymentAmount: currentPayment,
@@ -544,12 +496,6 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         // If payment is after treatment (Tedavi flow), mark as completed. Otherwise, send to treatment.
         status: selectedPatient.postTreatmentPayment ? 'treatment_completed' : 'treatment_continue',
         updatedAt: new Date().toISOString(),
-        // Discount tracking for reporting
-        discountApplied: isDiscountActive && calculatedDiscountAmount > 0,
-        discountType: isDiscountActive ? discountType : null,
-        discountValue: isDiscountActive ? (discountType === 'yuzde' ? calculatedDiscountPercent : calculatedDiscountAmount) : null,
-        discountAmount: isDiscountActive ? Math.round(calculatedDiscountAmount * 100) / 100 : null,
-        originalPaymentAmount: isDiscountActive && originalAmount ? parseFloat(originalAmount) : null,
         // Clear additional treatment flags after payment
         additionalTreatmentPending: false,
         additionalTreatmentName: null,
@@ -626,13 +572,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       setIsPartialPayment(false);
       setRemainingDebtAmount('');
       setDebtNote('');
-      // Reset discount states
-      setIsDiscountActive(false);
-      setDiscountPercent('');
-      setDiscountFixedAmount('');
-      setDiscountType('yuzde');
-      setOriginalAmount('');
-      
+
       // Refetch data
       window.location.reload(); // Simple refresh for now
 
@@ -1906,11 +1846,6 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                         setPayableAmount('');
                         setPaymentMethod('nakit');
                         setPaymentMethods([{ method: 'nakit', amount: 0 }]);
-                        setDiscountPercent('');
-                        setDiscountFixedAmount('');
-                        setDiscountType('yuzde');
-                        setIsDiscountActive(false);
-                        setOriginalAmount('');
                         setLastAutoCalculatedAmount('');
                         setIncludeDebtInPayment(true);
                         setIsPartialPayment(false);
@@ -1984,15 +1919,6 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                     <p>Protokol: {patient.treatmentOptions.protocolName || 'Belirtilmemiş'}</p>
                     {patient.treatmentOptions.selectedMainApplications && (
                       <p>Uygulamalar: {patient.treatmentOptions.selectedMainApplications.join(', ')}</p>
-                    )}
-                    {patient.indirim_check && (
-                      <div className="mt-2 p-2 bg-green-500/20 border border-green-400/30 rounded-lg">
-                        <p className="text-green-200 font-medium text-xs">
-                          🎯 İndirim Aktif: {patient.indirim_tipi === 'tutar'
-                            ? `${patient.indirim_tutar || 0} TL indirim uygulanacak`
-                            : `%${patient.indirim_orani || 20} indirim uygulanacak`}
-                        </p>
-                      </div>
                     )}
                   </div>
                 </div>
@@ -2224,7 +2150,8 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
               {selectedPatient.optionalScans && (
                 selectedPatient.optionalScans.meridianScan?.enabled ||
                 selectedPatient.optionalScans.thermalScan?.enabled ||
-                selectedPatient.optionalScans.toxicityScan?.enabled
+                selectedPatient.optionalScans.toxicityScan?.enabled ||
+                selectedPatient.optionalScans.epikriz?.enabled
               ) && (
                 <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4">
                   <h4 className="font-semibold text-purple-900 mb-3 flex items-center gap-2">
@@ -2265,6 +2192,18 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                         </span>
                       </div>
                     )}
+                    {selectedPatient.optionalScans.epikriz?.enabled && (
+                      <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-purple-200">
+                        <div className="w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-sm font-bold">
+                          ✓
+                        </div>
+                        <span className="text-purple-900 font-medium">Epikriz</span>
+                        <span className="ml-auto text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded-full">
+                          Tarama
+                        </span>
+                      </div>
+                    )}
+
                   </div>
                   <div className="mt-3 p-2 bg-purple-100 border border-purple-300 rounded text-sm text-purple-800">
                     <span className="font-medium">💡 Not:</span> Bu taramalar ayrı fiyatlandırılmalıdır.
@@ -2289,15 +2228,11 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                         setLastAutoCalculatedAmount('');
                       }
 
-                      // Update payable amount only when discount is not active.
-                      if (!isDiscountActive) {
-                        setOriginalAmount(newAmount);
-                        setPayableAmount(newAmount);
-                      }
+                      setPayableAmount(newAmount);
 
                       // Otomatik olarak ödeme yöntemi tutarını güncelle
                       if (paymentMethods.length > 0) {
-                        const numAmount = parseFloat(!isDiscountActive ? newAmount : payableAmount) || 0;
+                        const numAmount = parseFloat(newAmount) || 0;
                         setPaymentMethods([{
                           method: paymentMethods[0].method,
                           amount: numAmount
@@ -2309,276 +2244,13 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                     min="0"
                     step="0.01"
                   />
-                  {isDiscountActive && originalAmount && (
-                    <div className="px-3 py-2 bg-red-50 border border-red-300 rounded-lg flex items-center gap-1 text-xs text-red-700 font-medium whitespace-nowrap">
-                      <span>📍 Orijinal:</span>
-                      <span>{parseFloat(originalAmount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
-                    </div>
-                  )}
                 </div>
-              </div>
-
-              {/* Discount Section */}
-              <div className="bg-gradient-to-r from-orange-50 to-yellow-50 border border-orange-200 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="font-semibold text-orange-900 flex items-center gap-2">
-                    <span className="text-lg">🏷️</span>
-                    İndirim Uygula
-                  </h4>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isDiscountActive) {
-                        // Disable discount - restore payable amount to original
-                        if (!originalAmount || parseFloat(originalAmount) <= 0) {
-                          alert('⚠️ İndirim iptal edilemiyor. Lütfen baştan ödeme tutarını giriniz.');
-                          return;
-                        }
-                        setIsDiscountActive(false);
-                        setPayableAmount(originalAmount);
-                        setDiscountPercent('');
-                        setDiscountFixedAmount('');
-                        setDiscountType('yuzde');
-                      } else {
-                        // Enable discount
-                        if (!paymentAmount || parseFloat(paymentAmount) <= 0) {
-                          alert('⚠️ Lütfen önce ödeme tutarını giriniz.');
-                          return;
-                        }
-                        setIsDiscountActive(true);
-                        setOriginalAmount(paymentAmount);
-                        setPayableAmount(paymentAmount);
-                        setDiscountPercent('');
-                        setDiscountFixedAmount('');
-                      }
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                      isDiscountActive
-                        ? 'bg-orange-500 text-white hover:bg-orange-600'
-                        : 'bg-white border border-orange-300 text-orange-700 hover:bg-orange-100'
-                    }`}
-                  >
-                    {isDiscountActive ? '✓ İndirim Aktif' : 'İndirim Uygula'}
-                  </button>
-                </div>
-
-                {isDiscountActive && (
-                  <div className="space-y-3">
-                    {/* Discount Type Toggle */}
-                    <div className="flex items-center gap-2 bg-white rounded-lg p-2 border border-orange-200">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDiscountType('yuzde');
-                          setDiscountFixedAmount('');
-                          if (originalAmount) {
-                            setPayableAmount(originalAmount);
-                          }
-                        }}
-                        className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
-                          discountType === 'yuzde'
-                            ? 'bg-orange-500 text-white'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        % Yüzde
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDiscountType('tutar');
-                          setDiscountPercent('');
-                          if (originalAmount) {
-                            setPayableAmount(originalAmount);
-                          }
-                        }}
-                        className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
-                          discountType === 'tutar'
-                            ? 'bg-orange-500 text-white'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        ₺ Tutar
-                      </button>
-                    </div>
-
-                    {/* Percentage Discount Input */}
-                    {discountType === 'yuzde' && (
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1">
-                          <label className="block text-xs font-medium text-orange-700 mb-1">
-                            İndirim Oranı (%)
-                          </label>
-                          <input
-                            type="number"
-                            value={discountPercent}
-                              onChange={(e) => {
-                              const percent = e.target.value;
-                              setDiscountPercent(percent);
-                              if (percent && originalAmount) {
-                                const discountValue = parseFloat(percent);
-                                const original = parseFloat(originalAmount);
-                                if (!isNaN(discountValue) && !isNaN(original) && discountValue >= 0 && discountValue <= 100) {
-                                  const discountedAmount = original - (original * discountValue / 100);
-                                  setPayableAmount(discountedAmount.toFixed(2));
-                                } else if (discountValue > 100) {
-                                  alert('⚠️ İndirim oranı %100 den fazla olamaz!');
-                                  setDiscountPercent('100');
-                                  setPayableAmount((0).toFixed(2));
-                                }
-                              }
-                            }}
-                            className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
-                            placeholder="10"
-                            min="0"
-                            max="100"
-                          />
-                        </div>
-                        <div className="flex gap-1 pt-5 flex-wrap">
-                          {[5, 10, 15, 20, 25].map((percent) => (
-                            <button
-                              key={percent}
-                              type="button"
-                                onClick={() => {
-                                setDiscountPercent(percent.toString());
-                                if (originalAmount) {
-                                  const original = parseFloat(originalAmount);
-                                  if (!isNaN(original)) {
-                                    const discountedAmount = original - (original * percent / 100);
-                                    setPayableAmount(discountedAmount.toFixed(2));
-                                  }
-                                }
-                              }}
-                              className={`px-2 py-1 text-xs rounded-md transition-all ${
-                                discountPercent === percent.toString()
-                                  ? 'bg-orange-500 text-white'
-                                  : 'bg-white border border-orange-200 text-orange-700 hover:bg-orange-100'
-                              }`}
-                            >
-                              %{percent}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Fixed Amount Discount Input */}
-                    {discountType === 'tutar' && (
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1">
-                          <label className="block text-xs font-medium text-orange-700 mb-1">
-                            İndirim Tutarı (TL)
-                          </label>
-                          <input
-                            type="number"
-                            value={discountFixedAmount}
-                            onChange={(e) => {
-                              const amount = e.target.value;
-                              setDiscountFixedAmount(amount);
-                              if (amount && originalAmount) {
-                                const discountValue = parseFloat(amount);
-                                const original = parseFloat(originalAmount);
-                                if (!isNaN(discountValue) && !isNaN(original) && discountValue >= 0) {
-                                  if (discountValue > original) {
-                                    alert(`⚠️ İndirim tutarı orijinal tutardan (${original.toLocaleString('tr-TR')} TL) fazla olamaz!`);
-                                    setDiscountFixedAmount(original.toString());
-                                    setPayableAmount((0).toFixed(2));
-                                  } else {
-                                    const discountedAmount = original - discountValue;
-                                    setPayableAmount(discountedAmount.toFixed(2));
-                                  }
-                                }
-                              }
-                            }}
-                            className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-white"
-                            placeholder="100"
-                            min="0"
-                            step="0.01"
-                          />
-                        </div>
-                        <div className="flex gap-1 pt-5 flex-wrap">
-                          {[50, 100, 200, 500].map((amount) => (
-                            <button
-                              key={amount}
-                              type="button"
-                                onClick={() => {
-                                if (originalAmount) {
-                                  const original = parseFloat(originalAmount);
-                                  if (amount > original) {
-                                    alert(`⚠️ İndirim tutarı orijinal tutardan (${original.toLocaleString('tr-TR')} TL) fazla olamaz!`);
-                                    return;
-                                  }
-                                }
-                                setDiscountFixedAmount(amount.toString());
-                                if (originalAmount) {
-                                  const original = parseFloat(originalAmount);
-                                  if (!isNaN(original) && amount <= original) {
-                                    const discountedAmount = original - amount;
-                                    setPayableAmount(discountedAmount.toFixed(2));
-                                  }
-                                }
-                              }}
-                              className={`px-2 py-1 text-xs rounded-md transition-all ${
-                                discountFixedAmount === amount.toString()
-                                  ? 'bg-orange-500 text-white'
-                                  : 'bg-white border border-orange-200 text-orange-700 hover:bg-orange-100'
-                              }`}
-                            >
-                              {amount}₺
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Discount Summary - Percentage */}
-                    {discountType === 'yuzde' && discountPercent && originalAmount && parseFloat(discountPercent) > 0 && (
-                      <div className="bg-white rounded-lg p-3 border border-orange-200">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">Orijinal Tutar:</span>
-                          <span className="text-gray-900 line-through">{parseFloat(originalAmount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
-                        </div>
-                        <div className="flex justify-between text-sm text-orange-600">
-                          <span>İndirim (%{discountPercent}):</span>
-                          <span>-{(parseFloat(originalAmount) * parseFloat(discountPercent) / 100).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
-                        </div>
-                        <div className="flex justify-between text-sm font-bold text-green-600 mt-1 pt-1 border-t border-orange-200">
-                          <span>İndirimli Tutar:</span>
-                          <span>{parseFloat(payableAmount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Discount Summary - Fixed Amount */}
-                    {discountType === 'tutar' && discountFixedAmount && originalAmount && parseFloat(discountFixedAmount) > 0 && (
-                      <div className="bg-white rounded-lg p-3 border border-orange-200">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">Orijinal Tutar:</span>
-                          <span className="text-gray-900 line-through">{parseFloat(originalAmount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
-                        </div>
-                        <div className="flex justify-between text-sm text-orange-600">
-                          <span>İndirim (Tutar):</span>
-                          <span>-{parseFloat(discountFixedAmount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
-                        </div>
-                        <div className="flex justify-between text-sm text-gray-500">
-                          <span>İndirim Oranı:</span>
-                          <span>%{((parseFloat(discountFixedAmount) / parseFloat(originalAmount)) * 100).toFixed(1)}</span>
-                        </div>
-                        <div className="flex justify-between text-sm font-bold text-green-600 mt-1 pt-1 border-t border-orange-200">
-                          <span>İndirimli Tutar:</span>
-                          <span>{parseFloat(payableAmount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
 
               {/* Multi Payment Method Selector */}
               <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
                 <MultiPaymentMethodSelector
                   totalAmount={parseFloat(payableAmount) || 0}
-                  originalAmount={originalAmount ? (parseFloat(originalAmount) || undefined) : undefined}
                   value={paymentMethods}
                   onChange={(methods) => {
                     setPaymentMethods(methods);
@@ -2670,18 +2342,6 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
               {(parseFloat(payableAmount) > 0 || isPartialPayment) && (
                 <div className="bg-gray-900 text-white rounded-xl p-4 space-y-2">
                   <h4 className="text-sm font-semibold text-gray-300 uppercase tracking-wide mb-3">Ödeme Özeti (Bilanço)</h4>
-                  {isDiscountActive && originalAmount && parseFloat(originalAmount) > 0 && (
-                    <>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-400">Orijinal Tutar</span>
-                        <span className="line-through text-gray-400">{parseFloat(originalAmount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
-                      </div>
-                      <div className="flex justify-between text-sm text-orange-400">
-                        <span>İndirim</span>
-                        <span>- {(parseFloat(originalAmount) - parseFloat(payableAmount)).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
-                      </div>
-                    </>
-                  )}
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-400">Ödenecek Tutar</span>
                     <span className="text-white font-medium">{parseFloat(payableAmount || '0').toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
@@ -2724,15 +2384,6 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   <p>Telefon: {selectedPatient.phone}</p>
                   <p>Tedavi Tarihi: {formatDate(selectedPatient.treatmentStartedAt)}</p>
                   <p>Doktor: {selectedPatient.assignedDoctorName || 'Belirtilmemiş'}</p>
-                  {selectedPatient.indirim_check && (
-                    <div className="mt-2 p-2 bg-green-100 border border-green-300 rounded-lg">
-                      <p className="text-green-800 font-medium">
-                        🎯 İndirim Aktif: {selectedPatient.indirim_tipi === 'tutar'
-                          ? `${selectedPatient.indirim_tutar || 0} TL indirim uygulanacak`
-                          : `%${selectedPatient.indirim_orani || 20} indirim uygulanacak`}
-                      </p>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
@@ -2748,11 +2399,6 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   setPaymentMethods([{ method: 'nakit', amount: 0 }]);
                   setSelectedApplications([]);
                   setIncludeMuayene(true);
-                  setDiscountPercent('');
-                  setDiscountFixedAmount('');
-                  setDiscountType('yuzde');
-                  setIsDiscountActive(false);
-                  setOriginalAmount('');
                   setIncludeDebtInPayment(true);
                   setIsPartialPayment(false);
                   setRemainingDebtAmount('');
@@ -2768,15 +2414,10 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   loading || 
                   !payableAmount || 
                   parseFloat(payableAmount) <= 0 || 
-                  (selectedPatient?.treatmentOptions?.selectedMainApplications?.length > 0 && selectedApplications.length === 0) ||
-                  (isDiscountActive && (!discountPercent && !discountFixedAmount))
+                  (selectedPatient?.treatmentOptions?.selectedMainApplications?.length > 0 && selectedApplications.length === 0)
                 }
                 className="px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-lg font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                title={
-                  isDiscountActive && (!discountPercent && !discountFixedAmount)
-                    ? 'İndirim seçtiniz. Lütfen indirim oranı veya tutarını seçiniz.'
-                    : ''
-                }
+                title=""
               >
                 {loading ? (
                   <>
