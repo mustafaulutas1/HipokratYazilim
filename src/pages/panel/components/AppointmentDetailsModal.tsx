@@ -271,7 +271,9 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
           try {
             const patientRef = doc(db, 'patients', appointment.patientId);
             const patientDoc = await getDoc(patientRef);
-            const resolvedAppointmentType = typeName.includes('muayene') ? 'muayene' : 'kontrol';
+            const resolvedAppointmentType = appointment.typeId === 'ilk_muayene'
+              ? 'ilk_muayene'
+              : typeName.includes('muayene') ? 'muayene' : 'kontrol';
 
             // Update patient with treatment_decided status so it appears in Accounting
             if (patientDoc.exists()) {

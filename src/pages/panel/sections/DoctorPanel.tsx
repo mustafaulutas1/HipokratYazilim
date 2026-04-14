@@ -506,7 +506,7 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
       // Check if treatment has medications - only send to pharmacy if there are drugs
       const shouldGoToPharmacy = hasMedicationsInProtocol(treatmentOptions);
 
-      const isMuayene = patient.appointmentType === 'muayene';
+      const isMuayene = patient.appointmentType === 'muayene' || patient.appointmentType === 'ilk_muayene';
 
       await updateDoc(patientRef, {
         // Muayene: önce Muhasebe'ye, sonra Tedavi Ekranı'na. Diğerleri direkt Tedavi Ekranı'na.
@@ -1032,7 +1032,9 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
                           <h3 className="text-2xl font-bold text-white">{patient.fullName}</h3>
                           {patient.appointmentType && (
                             <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${
-                              patient.appointmentType === 'muayene'
+                              patient.appointmentType === 'ilk_muayene'
+                                ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300'
+                                : patient.appointmentType === 'muayene'
                                 ? 'bg-amber-500/20 border-amber-400/50 text-amber-300'
                                 : patient.appointmentType === 'kontrol'
                                 ? 'bg-violet-500/20 border-violet-400/50 text-violet-300'
@@ -1040,7 +1042,8 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
                                 ? 'bg-teal-500/20 border-teal-400/50 text-teal-300'
                                 : 'bg-blue-500/20 border-blue-400/50 text-blue-300'
                             }`}>
-                              {patient.appointmentType === 'muayene' ? 'Muayene'
+                              {patient.appointmentType === 'ilk_muayene' ? 'İlk Muayene'
+                                : patient.appointmentType === 'muayene' ? 'Muayene'
                                 : patient.appointmentType === 'kontrol' ? 'Kontrol'
                                 : patient.appointmentType === 'rutin_tedavi' ? 'Rutin'
                                 : 'Tedavi'}

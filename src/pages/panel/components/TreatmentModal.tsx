@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, updateDoc, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, updateDoc, doc, getDoc, addDoc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
+import { DayPicker } from 'react-day-picker';
+import 'react-day-picker/dist/style.css';
 
 const SYMPTOM_CATEGORIES = [
   { title: '1. Baş – Nörolojik Sistem', icon: '🧠', questions: ['Baş ağrısı', 'Baş dönmesi', 'Gözlerde uçuşmalar / siyah nokta görülmesi', 'Bilinç değişikliği', 'Uyku düzeni / düzensizliği'] },
@@ -83,6 +85,7 @@ interface Patient {
   assignedAt?: string;
   status?: string;
   updatedAt?: string;
+  appointmentType?: string;
 }
 
 interface TreatmentOptions {
@@ -192,6 +195,15 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
   const [anamnezSearchTerm, setAnamnezSearchTerm] = useState('');
   const [medicationOptions, setMedicationOptions] = useState<string[]>([]);
   const [applicationOptions, setApplicationOptions] = useState<string[]>([]);
+
+  // Sonraki Muayeneyi Planla
+  const [showNextAppointment, setShowNextAppointment] = useState(false);
+  const [nextAppDate, setNextAppDate] = useState<Date>(new Date());
+  const [nextAppHour, setNextAppHour] = useState(9);
+  const [nextAppMinute, setNextAppMinute] = useState(0);
+  const [nextAppSaving, setNextAppSaving] = useState(false);
+  const [nextAppSaved, setNextAppSaved] = useState(false);
+  const [nextAppConflict, setNextAppConflict] = useState<string | null>(null);
 
   console.log('🎬 TreatmentModal: Current state', {
     savedProtocolsCount: savedProtocols.length,
@@ -2237,6 +2249,152 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
           </div>
           </div>
         </div>
+
+        {/* Sonraki Muayeneyi Planla – sadece İlk Muayene hastası için */}
+        {patient?.appointmentType === 'ilk_muayene' && (
+          <div className="px-6 pb-4">
+            <div className="border border-green-200 rounded-xl p-4 bg-green-50/50">
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showNextAppointment}
+                  onChange={(e) => { setShowNextAppointment(e.target.checked); setNextAppSaved(false); }}
+                  className="w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                />
+                <span className="text-sm font-semibold text-gray-700">Sonraki Muayeneyi Planla</span>
+              </label>
+
+              {showNextAppointment && (
+                <div className="mt-4">
+                  {nextAppSaved ? (
+                    <div className="flex items-center gap-2 text-green-700 font-semibold text-sm py-2">
+                      <span>✅</span>
+                      <span>
+                        Muayene randevusu oluşturuldu —{' '}
+                        {nextAppDate.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })},{' '}
+                        {String(nextAppHour).padStart(2, '0')}:{String(nextAppMinute).padStart(2, '0')}
+                      </span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex flex-col md:flex-row gap-6 items-start">
+                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-2">
+                          <DayPicker
+                            mode="single"
+                            selected={nextAppDate}
+                            onSelect={(d) => { if (d) { setNextAppDate(d); setNextAppConflict(null); } }}
+                            fromDate={new Date()}
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-4 pt-2">
+                          <div>
+                            <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Saat</p>
+                            <div className="flex items-center gap-2">
+                              <div className="flex flex-col items-center">
+                                <button type="button" onClick={() => { setNextAppHour(h => Math.min(18, h + 1)); setNextAppConflict(null); }} className="px-2 py-0.5 text-gray-500 hover:text-gray-800">▲</button>
+                                <span className="w-10 text-center text-lg font-bold text-gray-800">{String(nextAppHour).padStart(2, '0')}</span>
+                                <button type="button" onClick={() => { setNextAppHour(h => Math.max(8, h - 1)); setNextAppConflict(null); }} className="px-2 py-0.5 text-gray-500 hover:text-gray-800">▼</button>
+                              </div>
+                              <span className="text-xl font-bold text-gray-400">:</span>
+                              <div className="flex flex-col items-center">
+                                <button type="button" onClick={() => { setNextAppMinute(m => (m + 5) % 60); setNextAppConflict(null); }} className="px-2 py-0.5 text-gray-500 hover:text-gray-800">▲</button>
+                                <span className="w-10 text-center text-lg font-bold text-gray-800">{String(nextAppMinute).padStart(2, '0')}</span>
+                                <button type="button" onClick={() => { setNextAppMinute(m => (m - 5 + 60) % 60); setNextAppConflict(null); }} className="px-2 py-0.5 text-gray-500 hover:text-gray-800">▼</button>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="text-sm text-gray-600 bg-white rounded-lg border border-gray-200 px-3 py-2">
+                            <p className="font-medium text-gray-800">{patient.fullName}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {nextAppDate.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                              {' — '}
+                              {String(nextAppHour).padStart(2, '0')}:{String(nextAppMinute).padStart(2, '0')}
+                            </p>
+                            <p className="text-xs text-green-600 font-semibold mt-0.5">Muayene</p>
+                          </div>
+
+                          {nextAppConflict && (
+                            <div className="text-red-600 text-xs bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                              ⚠️ {nextAppConflict}
+                            </div>
+                          )}
+
+                          <button
+                            type="button"
+                            disabled={nextAppSaving}
+                            onClick={async () => {
+                              if (!patient?.clinicId) return;
+                              setNextAppSaving(true);
+                              setNextAppConflict(null);
+                              try {
+                                const formatDateISO = (d: Date) =>
+                                  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                                const newDateISO = formatDateISO(nextAppDate);
+                                const newStart = `${String(nextAppHour).padStart(2, '0')}:${String(nextAppMinute).padStart(2, '0')}`;
+                                const newStartMins = nextAppHour * 60 + nextAppMinute;
+                                const newDur = 5;
+
+                                // Aynı klinik + tarihte aktif randevuları çek
+                                const snap = await getDocs(
+                                  query(
+                                    collection(db, 'appointments'),
+                                    where('clinicId', '==', patient.clinicId),
+                                    where('dateISO', '==', newDateISO),
+                                  )
+                                );
+
+                                const conflict = snap.docs
+                                  .map(d => d.data() as any)
+                                  .filter(a => a.status !== 'cancelled')
+                                  .find(a => {
+                                    const [h, m] = String(a.start || a.time || '0:0').split(':').map(Number);
+                                    const exStart = h * 60 + m;
+                                    const exEnd = exStart + (a.durationMinutes || 5);
+                                    const newEnd = newStartMins + newDur;
+                                    return newStartMins < exEnd && exStart < newEnd;
+                                  });
+
+                                if (conflict) {
+                                  setNextAppConflict(
+                                    `${conflict.start || conflict.time} saatinde "${conflict.patientName}" adlı hastanın randevusu mevcut. Lütfen farklı bir saat seçin.`
+                                  );
+                                  return;
+                                }
+
+                                await addDoc(collection(db, 'appointments'), {
+                                  patientId: patient.id,
+                                  patientName: patient.fullName,
+                                  patientPhone: patient.phone || '',
+                                  clinicId: patient.clinicId,
+                                  typeId: 'kontrol',
+                                  typeName: 'Muayene',
+                                  durationMinutes: newDur,
+                                  dateISO: newDateISO,
+                                  start: newStart,
+                                  status: 'pending',
+                                  createdAt: new Date().toISOString(),
+                                  updatedAt: new Date().toISOString(),
+                                });
+                                setNextAppSaved(true);
+                              } finally {
+                                setNextAppSaving(false);
+                              }
+                            }}
+                            className="px-5 py-2.5 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl hover:scale-105 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                          >
+                            {nextAppSaving ? 'Kontrol ediliyor...' : '📅 Randevu Oluştur'}
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="bg-white border-t border-gray-200 p-6 rounded-b-2xl">

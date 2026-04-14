@@ -325,7 +325,8 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
       // Muayene hastaları ödemeyi Tedavi Ekranı'ndan önce yaptığından tekrar Muhasebe'ye gitmez
       const isMuayeneSession =
         (selectedPatient as TreatmentSession)._sessionType === 'muayene' ||
-        selectedPatient.appointmentType === 'muayene';
+        selectedPatient.appointmentType === 'muayene' ||
+        selectedPatient.appointmentType === 'ilk_muayene';
 
       if (treatmentApplied) {
         if (hasUnselectedTreatments) {
@@ -601,11 +602,14 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
                       {(() => {
                         const apptType = (patient as TreatmentSession)._sessionType || patient.appointmentType;
                         if (!apptType) return null;
-                        const label = apptType === 'muayene' ? 'Muayene'
+                        const label = apptType === 'ilk_muayene' ? 'İlk Muayene'
+                          : apptType === 'muayene' ? 'Muayene'
                           : apptType === 'kontrol' ? 'Kontrol'
                           : apptType === 'rutin_tedavi' ? 'Rutin'
                           : 'Tedavi';
-                        const cls = apptType === 'muayene'
+                        const cls = apptType === 'ilk_muayene'
+                          ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300'
+                          : apptType === 'muayene'
                           ? 'bg-amber-500/20 border-amber-400/50 text-amber-300'
                           : apptType === 'kontrol'
                           ? 'bg-violet-500/20 border-violet-400/50 text-violet-300'
