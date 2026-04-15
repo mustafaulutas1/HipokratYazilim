@@ -97,6 +97,10 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [selectedHistoryRecord, setSelectedHistoryRecord] = useState<PatientHistoryRecord | null>(null);
   const [isHistoryViewModalOpen, setIsHistoryViewModalOpen] = useState(false);
+  const [historySourceFilter, setHistorySourceFilter] = useState<'all' | 'anamrez' | 'pastHistory'>('all');
+  const [historyDateFilter, setHistoryDateFilter] = useState<'all' | 'thisMonth' | 'last3Months' | 'thisYear'>('all');
+  const [historySearch, setHistorySearch] = useState('');
+  const [expandedHistoryIds, setExpandedHistoryIds] = useState<Set<string>>(new Set());
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [loadingMedia, setLoadingMedia] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
@@ -127,10 +131,31 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
           collection(db, 'anamrezRecords'),
           where('patientId', '==', patient.id)
         );
-        const anamrezSnapshot = await getDocs(anamrezQuery);
+        // Fetch appointments for this patient to get typeName (randevu tipi)
+        const appointmentsQuery = query(
+          collection(db, 'appointments'),
+          where('patientId', '==', patient.id)
+        );
+        const [anamrezSnapshot, appointmentsSnapshot] = await Promise.all([
+          getDocs(anamrezQuery),
+          getDocs(appointmentsQuery)
+        ]);
+
+        // Build a lookup map: appointmentId → { typeName, typeId }
+        const appointmentTypeMap = new Map<string, { typeName: string; typeId: string }>();
+        appointmentsSnapshot.docs.forEach(d => {
+          const data = d.data();
+          if (data.typeName || data.typeId) {
+            appointmentTypeMap.set(d.id, { typeName: data.typeName || '', typeId: data.typeId || '' });
+          }
+        });
 
         const anamrezRecords = anamrezSnapshot.docs.map(doc => {
           const data = doc.data();
+          // Get typeName from record itself (new records) or from appointments lookup (old records)
+          const apptType = appointmentTypeMap.get(data.appointmentId || '');
+          const typeName = data.typeName || apptType?.typeName || '';
+          const typeId = data.typeId || apptType?.typeId || '';
           return {
             id: doc.id,
             patientId: data.patientId,
@@ -139,7 +164,7 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
             historyDate: data.appointmentDate || data.createdAt || new Date().toISOString(),
             hasAnamnesis: true,
             hasTreatment: !!data.treatmentHistory,
-            hasMedications: !!data.medications,
+            hasMedications: !!(data.medications || data.conventionalTreatment?.currentMedications),
             anamnesis: {
               chiefComplaint: data.chiefComplaint,
               complaintDetails: data.historyOfPresentIllness || data.presentIllnessHistory
@@ -151,6 +176,8 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
             medications: data.medications,
             createdAt: data.createdAt,
             source: 'anamrez',
+            typeName,
+            typeId,
             // Keep original data for viewing
             ...data
           } as PatientHistoryRecord & { source: string };
@@ -893,151 +920,715 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
             )}
 
             {/* History Records Tab */}
-            {activeTab === 'history' && (
-              <div className="space-y-6">
-                <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                      📜 Geçmiş Kayıtları
-                    </h3>
-                    <span className="text-sm text-gray-500">
-                      {historyRecords.length} kayıt bulundu
-                    </span>
-                  </div>
+            {activeTab === 'history' && (() => {
+              // --- computed values (inlined to avoid hoisting issues) ---
+              const now = new Date();
+              const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+              const startOfLast3Months = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+              const startOfYear = new Date(now.getFullYear(), 0, 1);
 
-                  {loadingHistory ? (
-                    <div className="text-center py-8">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mx-auto"></div>
-                      <p className="text-gray-500 mt-2">Yükleniyor...</p>
-                    </div>
-                  ) : historyRecords.length === 0 ? (
-                    <div className="text-center py-12">
-                      <div className="text-6xl mb-4">📜</div>
-                      <h3 className="text-gray-900 text-xl font-semibold mb-2">Henüz Geçmiş Kaydı Yok</h3>
-                      <p className="text-gray-600">
-                        Bu hasta için henüz geçmiş tedavi/anamnez kaydı girilmemiş.
-                      </p>
-                      <p className="text-gray-500 text-sm mt-2">
-                        Hasta listesindeki 📜 butonunu kullanarak geçmiş kayıt ekleyebilirsiniz.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {/* Timeline */}
-                      <div className="relative">
-                        {historyRecords.map((record, index) => (
-                          <div key={record.id} className="relative pl-8 pb-6">
-                            {/* Timeline line */}
-                            {index !== historyRecords.length - 1 && (
-                              <div className="absolute left-3 top-6 bottom-0 w-0.5 bg-gray-200"></div>
-                            )}
+              const filteredRecords = historyRecords.filter((record: any) => {
+                if (historySourceFilter !== 'all' && record.source !== historySourceFilter) return false;
+                if (historyDateFilter !== 'all') {
+                  const d = new Date(record.historyDate || record.createdAt);
+                  if (historyDateFilter === 'thisMonth' && d < startOfMonth) return false;
+                  if (historyDateFilter === 'last3Months' && d < startOfLast3Months) return false;
+                  if (historyDateFilter === 'thisYear' && d < startOfYear) return false;
+                }
+                if (historySearch.trim()) {
+                  const q = historySearch.toLowerCase();
+                  const complaint = (record.anamnesis?.complaintDetails || record.anamnesis?.chiefComplaint || '').toLowerCase();
+                  const treatment = (record.treatment?.treatmentType || '').toLowerCase();
+                  const meds = (record.medications?.medicationList || []).map((m: any) => m.name).join(' ').toLowerCase();
+                  if (!complaint.includes(q) && !treatment.includes(q) && !meds.includes(q)) return false;
+                }
+                return true;
+              });
 
-                            {/* Timeline dot */}
-                            <div className={`absolute left-0 top-1 w-6 h-6 rounded-full flex items-center justify-center ${(record as any).source === 'anamrez' ? 'bg-blue-500' : 'bg-purple-500'}`}>
-                              <span className="text-white text-xs">{(record as any).source === 'anamrez' ? '📅' : '📜'}</span>
+              // Stats from ALL records (not filtered)
+              const totalVisits = historyRecords.length;
+              const lastVisitDate = historyRecords.length > 0
+                ? new Date(historyRecords[0].historyDate || historyRecords[0].createdAt)
+                : null;
+              const daysSinceLast = lastVisitDate
+                ? Math.floor((now.getTime() - lastVisitDate.getTime()) / (1000 * 60 * 60 * 24))
+                : null;
+
+              // Most common complaint word (simple top-word analysis)
+              const complaintWords: Record<string, number> = {};
+              historyRecords.forEach(r => {
+                const text = r.anamnesis?.chiefComplaint || r.anamnesis?.complaintDetails || '';
+                text.split(/\s+/).forEach(w => {
+                  const clean = w.toLowerCase().replace(/[^a-züğışöç]/gi, '');
+                  if (clean.length > 3) complaintWords[clean] = (complaintWords[clean] || 0) + 1;
+                });
+              });
+              const topComplaint = Object.entries(complaintWords).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+
+              // Active medication count (unique med names across all records)
+              const allMedNames = new Set<string>();
+              historyRecords.forEach(r => {
+                (r.medications?.medicationList || []).forEach((m: any) => {
+                  if (m.name) allMedNames.add(m.name);
+                });
+              });
+
+              // Repeated complaints map: complaint → count
+              const complaintCounts: Record<string, number> = {};
+              historyRecords.forEach(r => {
+                const c = (r.anamnesis?.chiefComplaint || '').trim();
+                if (c) complaintCounts[c] = (complaintCounts[c] || 0) + 1;
+              });
+
+              // Group filtered records by time period
+              type Group = { label: string; records: any[] };
+              const groups: Group[] = [];
+              const groupMap: Record<string, any[]> = {};
+              filteredRecords.forEach((record: any) => {
+                const d = new Date(record.historyDate || record.createdAt);
+                let label: string;
+                if (d >= startOfMonth) {
+                  label = 'Bu Ay';
+                } else if (d >= startOfLast3Months) {
+                  label = `${d.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}`;
+                } else {
+                  label = `${d.getFullYear()}`;
+                }
+                if (!groupMap[label]) { groupMap[label] = []; groups.push({ label, records: groupMap[label] }); }
+                groupMap[label].push(record);
+              });
+
+              const outcomeColor = (outcome?: string) => {
+                if (outcome === 'successful') return 'border-green-400';
+                if (outcome === 'partially_successful') return 'border-yellow-400';
+                if (outcome === 'unsuccessful') return 'border-red-400';
+                if (outcome === 'ongoing') return 'border-blue-400';
+                return '';
+              };
+              const outcomeBg = (outcome?: string) => {
+                if (outcome === 'successful') return 'bg-green-100 text-green-700';
+                if (outcome === 'partially_successful') return 'bg-yellow-100 text-yellow-700';
+                if (outcome === 'unsuccessful') return 'bg-red-100 text-red-700';
+                if (outcome === 'ongoing') return 'bg-blue-100 text-blue-700';
+                return 'bg-gray-100 text-gray-700';
+              };
+              const outcomeLabel = (outcome?: string) => {
+                if (outcome === 'successful') return 'Başarılı';
+                if (outcome === 'partially_successful') return 'Kısmen Başarılı';
+                if (outcome === 'unsuccessful') return 'Başarısız';
+                if (outcome === 'ongoing') return 'Devam Ediyor';
+                return 'Bilinmiyor';
+              };
+
+              const toggleExpand = (id: string) => {
+                setExpandedHistoryIds(prev => {
+                  const next = new Set(prev);
+                  next.has(id) ? next.delete(id) : next.add(id);
+                  return next;
+                });
+              };
+
+              // ── Paylaşılan yardımcılar ─────────────────────────────────────────
+              const patientLabel = patient?.fullName || 'Hasta';
+              const safeDate = (d: string) => {
+                if (!d) return '-';
+                const dt = new Date(d);
+                return isNaN(dt.getTime()) ? '-' : dt.toLocaleDateString('tr-TR');
+              };
+              const outcomeStr = (o?: string) =>
+                o === 'successful' ? 'Basarili'
+                : o === 'partially_successful' ? 'Kismen Basarili'
+                : o === 'unsuccessful' ? 'Basarisiz'
+                : o === 'ongoing' ? 'Devam Ediyor'
+                : o ? o : '-';
+
+              // jsPDF standart fontlar Latin-1 dışı karakterleri desteklemez.
+              // PDF'e giden tüm metinleri ASCII-safe hale getirir.
+              const tr2ascii = (s: string): string =>
+                String(s ?? '')
+                  .replace(/ş/g, 's').replace(/Ş/g, 'S')
+                  .replace(/ı/g, 'i').replace(/İ/g, 'I')
+                  .replace(/ğ/g, 'g').replace(/Ğ/g, 'G')
+                  .replace(/ü/g, 'u').replace(/Ü/g, 'U')
+                  .replace(/ö/g, 'o').replace(/Ö/g, 'O')
+                  .replace(/ç/g, 'c').replace(/Ç/g, 'C')
+                  .replace(/—/g, '-').replace(/…/g, '...');
+
+              // Excel satırları — Türkçe karakterler korunur (xlsx Unicode destekler)
+              const buildRows = (records: any[]) => records.map(r => ({
+                'Tarih': safeDate(r.historyDate),
+                'Kaynak': r.source === 'anamrez' ? 'Randevu' : 'Geçmiş Kayıt',
+                'Randevu Tipi': r.typeName || '-',
+                'Hekim': r.selectedDoctor?.name ? `Dr. ${r.selectedDoctor.name}` : '-',
+                'Şikayet': r.anamnesis?.chiefComplaint || r.anamnesis?.complaintDetails || '-',
+                'Tanı Sistemleri': (r.selectedDiagnosisSystems || []).join(', ') || '-',
+                'Güncel İlaçlar': r.conventionalTreatment?.currentMedications || '-',
+                'Diğer Tedaviler': r.conventionalTreatment?.otherTreatments || '-',
+                'İlaç Listesi': Array.isArray(r.medications?.medicationList)
+                  ? r.medications.medicationList.map((m: any) => m.name).join(', ')
+                  : '-',
+                'Alerjiler': r.allergies || '-',
+                'Geçmiş Hastalık': r.pastMedicalHistory || '-',
+                'Aile Geçmişi': r.familyHistory || '-',
+                'Ameliyat': r.hasSurgery === 'var' ? (r.surgicalHistory || 'Var') : 'Yok',
+                'Uygulanan Tedavi': r.treatment?.treatmentType || '-',
+                'Tedavi Sonucu': outcomeStr(r.treatment?.outcome),
+                'Toksisite Skoru': r.toxicityAssessment?.totalScore ?? '-',
+                'Eklendi': safeDate(r.createdAt),
+              }));
+
+              // PDF satırları — tüm değerler tr2ascii ile ASCII-safe hale getirilir
+              const buildPdfRows = (records: any[]) => records.map(r => ({
+                'Tarih': safeDate(r.historyDate),
+                'Kaynak': r.source === 'anamrez' ? 'Randevu' : 'Gecmis Kayit',
+                'Randevu Tipi': tr2ascii(r.typeName || '-'),
+                'Hekim': r.selectedDoctor?.name ? tr2ascii(`Dr. ${r.selectedDoctor.name}`) : '-',
+                'Sikayet': tr2ascii(r.anamnesis?.chiefComplaint || r.anamnesis?.complaintDetails || '-'),
+                'Tani Sistemleri': tr2ascii((r.selectedDiagnosisSystems || []).join(', ') || '-'),
+                'Guncel Ilaclar': tr2ascii(r.conventionalTreatment?.currentMedications || '-'),
+                'Diger Tedaviler': tr2ascii(r.conventionalTreatment?.otherTreatments || '-'),
+                'Ilac Listesi': tr2ascii(Array.isArray(r.medications?.medicationList)
+                  ? r.medications.medicationList.map((m: any) => m.name).join(', ')
+                  : '-'),
+                'Alerjiler': tr2ascii(r.allergies || '-'),
+                'Gecmis Hastalik': tr2ascii(r.pastMedicalHistory || '-'),
+                'Aile Gecmisi': tr2ascii(r.familyHistory || '-'),
+                'Ameliyat': r.hasSurgery === 'var' ? tr2ascii(r.surgicalHistory || 'Var') : 'Yok',
+                'Uygulanan Tedavi': tr2ascii(r.treatment?.treatmentType || '-'),
+                'Tedavi Sonucu': tr2ascii(outcomeStr(r.treatment?.outcome)),
+                'Toksisite Skoru': String(r.toxicityAssessment?.totalScore ?? '-'),
+                'Eklendi': safeDate(r.createdAt),
+              }));
+
+              // ── Excel indirme ──────────────────────────────────────────────────
+              const handleDownloadExcel = async () => {
+                const { utils, writeFile } = await import('xlsx');
+                const rows = buildRows(filteredRecords);
+                const ws = utils.json_to_sheet(rows);
+
+                // Sütun genişlikleri (başlık veya içerik, hangisi uzunsa)
+                const colKeys = Object.keys(rows[0] || {});
+                ws['!cols'] = colKeys.map(k => ({ wch: Math.max(k.length + 2, 20) }));
+
+                const wb = utils.book_new();
+                utils.book_append_sheet(wb, ws, 'Geçmiş Kayıtlar');
+
+                // İkinci sayfa: hasta özeti
+                const infoRows = [
+                  { Alan: 'Ad Soyad', Değer: patient?.fullName || '—' },
+                  { Alan: 'TC No', Değer: patient?.tcNo || '—' },
+                  { Alan: 'Doğum Tarihi', Değer: safeDate(patient?.birthDate || '') },
+                  { Alan: 'Cinsiyet', Değer: patient?.gender || '—' },
+                  { Alan: 'Toplam Kayıt', Değer: String(historyRecords.length) },
+                  { Alan: 'Gösterilen Kayıt', Değer: String(filteredRecords.length) },
+                  { Alan: 'İndirme Tarihi', Değer: new Date().toLocaleDateString('tr-TR') },
+                ];
+                const wsInfo = utils.json_to_sheet(infoRows);
+                wsInfo['!cols'] = [{ wch: 22 }, { wch: 32 }];
+                utils.book_append_sheet(wb, wsInfo, 'Hasta Bilgisi');
+
+                writeFile(wb, `${patientLabel}_gecmis_kayitlar.xlsx`);
+              };
+
+              // ── PDF indirme ────────────────────────────────────────────────────
+              const handleDownloadPDF = async () => {
+                const { default: jsPDF } = await import('jspdf');
+                const { default: autoTable } = await import('jspdf-autotable');
+
+                const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+                const pageW = doc.internal.pageSize.getWidth();
+
+                // Başlık bloğu
+                doc.setFillColor(109, 40, 217);
+                doc.rect(0, 0, pageW, 22, 'F');
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(14);
+                doc.setFont('helvetica', 'bold');
+                doc.text('Gecmis Kayitlar Raporu', 14, 10);
+                doc.setFontSize(9);
+                doc.setFont('helvetica', 'normal');
+                doc.text(tr2ascii(`${patient?.fullName || ''}  |  TC: ${patient?.tcNo || '-'}  |  Dogum: ${safeDate(patient?.birthDate || '')}  |  Cinsiyet: ${patient?.gender || '-'}`), 14, 17);
+                doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}  |  Toplam Kayit: ${historyRecords.length}  |  Gosterilen: ${filteredRecords.length}`, pageW - 14, 17, { align: 'right' });
+
+                const rows = buildPdfRows(filteredRecords);
+                const columns = Object.keys(rows[0] || {});
+                const body = rows.map(r => columns.map(c => String((r as any)[c])));
+
+                autoTable(doc as any, {
+                  startY: 26,
+                  head: [columns],
+                  body,
+                  styles: { fontSize: 7, cellPadding: 2, overflow: 'linebreak' },
+                  headStyles: { fillColor: [109, 40, 217], textColor: 255, fontStyle: 'bold', fontSize: 7.5 },
+                  alternateRowStyles: { fillColor: [245, 243, 255] },
+                  columnStyles: {
+                    0: { cellWidth: 20 }, // Tarih
+                    1: { cellWidth: 18 }, // Kaynak
+                    2: { cellWidth: 22 }, // Randevu Tipi
+                    3: { cellWidth: 25 }, // Hekim
+                    4: { cellWidth: 35 }, // Şikayet
+                  },
+                  didDrawPage: (data: any) => {
+                    // Sayfa numarası
+                    doc.setFontSize(7);
+                    doc.setTextColor(150);
+                    doc.text(
+                      `Sayfa ${data.pageNumber as number}`,
+                      pageW / 2,
+                      doc.internal.pageSize.getHeight() - 5,
+                      { align: 'center' }
+                    );
+                  },
+                });
+
+                doc.save(`${patientLabel}_gecmis_kayitlar.pdf`);
+              };
+
+              return (
+                <div className="space-y-4">
+                  {/* ── Özet İstatistik Paneli ── */}
+                  {!loadingHistory && historyRecords.length > 0 && (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-1 shadow-sm">
+                        <span className="text-2xl font-bold text-purple-600">{totalVisits}</span>
+                        <span className="text-xs text-gray-500">Toplam Kayıt</span>
+                      </div>
+                      <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-1 shadow-sm">
+                        <span className="text-2xl font-bold text-blue-600">
+                          {daysSinceLast === 0 ? 'Bugün' : daysSinceLast === 1 ? 'Dün' : daysSinceLast !== null ? `${daysSinceLast}g` : '—'}
+                        </span>
+                        <span className="text-xs text-gray-500">Son Ziyaret</span>
+                      </div>
+                      <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-1 shadow-sm overflow-hidden">
+                        <span className="text-2xl font-bold text-orange-500 truncate capitalize">{topComplaint || '—'}</span>
+                        <span className="text-xs text-gray-500">Sık Şikayet</span>
+                      </div>
+                      <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-1 shadow-sm">
+                        <span className="text-2xl font-bold text-green-600">{allMedNames.size}</span>
+                        <span className="text-xs text-gray-500">Farklı İlaç</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Ana Kart ── */}
+                  <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                    <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                      <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                        📜 Geçmiş Kayıtları
+                        <span className="text-sm font-normal text-gray-400">
+                          {filteredRecords.length}/{historyRecords.length} kayıt
+                        </span>
+                      </h3>
+                      {!loadingHistory && historyRecords.length > 0 && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={handleDownloadExcel}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition-colors shadow-sm"
+                            title="Geçmiş kayıtları Excel olarak indir"
+                          >
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                              <polyline points="14 2 14 8 20 8"/>
+                              <line x1="12" y1="18" x2="12" y2="12"/>
+                              <polyline points="9 15 12 18 15 15"/>
+                            </svg>
+                            Excel İndir
+                          </button>
+                          <button
+                            onClick={handleDownloadPDF}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-500 hover:bg-rose-600 active:bg-rose-700 text-white text-xs font-semibold rounded-lg transition-colors shadow-sm"
+                            title="Geçmiş kayıtları PDF olarak indir"
+                          >
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                              <polyline points="14 2 14 8 20 8"/>
+                              <line x1="12" y1="18" x2="12" y2="12"/>
+                              <polyline points="9 15 12 18 15 15"/>
+                            </svg>
+                            PDF İndir
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── Filtreler & Arama ── */}
+                    {!loadingHistory && historyRecords.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-5">
+                        {/* Kaynak filtresi */}
+                        <div className="flex rounded-lg overflow-hidden border border-gray-200 text-xs font-medium">
+                          {(['all', 'anamrez', 'pastHistory'] as const).map(f => (
+                            <button
+                              key={f}
+                              onClick={() => setHistorySourceFilter(f)}
+                              className={`px-3 py-1.5 transition-colors ${historySourceFilter === f ? 'bg-purple-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                            >
+                              {f === 'all' ? 'Tümü' : f === 'anamrez' ? 'Randevu' : 'Geçmiş Kayıt'}
+                            </button>
+                          ))}
+                        </div>
+                        {/* Tarih filtresi */}
+                        <div className="flex rounded-lg overflow-hidden border border-gray-200 text-xs font-medium">
+                          {(['all', 'thisMonth', 'last3Months', 'thisYear'] as const).map(f => (
+                            <button
+                              key={f}
+                              onClick={() => setHistoryDateFilter(f)}
+                              className={`px-3 py-1.5 transition-colors ${historyDateFilter === f ? 'bg-blue-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                            >
+                              {f === 'all' ? 'Tüm Zamanlar' : f === 'thisMonth' ? 'Bu Ay' : f === 'last3Months' ? 'Son 3 Ay' : 'Bu Yıl'}
+                            </button>
+                          ))}
+                        </div>
+                        {/* Arama */}
+                        <input
+                          type="text"
+                          placeholder="Şikayet, tedavi veya ilaç ara..."
+                          value={historySearch}
+                          onChange={e => setHistorySearch(e.target.value)}
+                          className="flex-1 min-w-[180px] px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-300"
+                        />
+                      </div>
+                    )}
+
+                    {loadingHistory ? (
+                      <div className="text-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mx-auto"></div>
+                        <p className="text-gray-500 mt-2">Yükleniyor...</p>
+                      </div>
+                    ) : historyRecords.length === 0 ? (
+                      <div className="text-center py-12">
+                        <div className="text-6xl mb-4">📜</div>
+                        <h3 className="text-gray-900 text-xl font-semibold mb-2">Henüz Geçmiş Kaydı Yok</h3>
+                        <p className="text-gray-600">Bu hasta için henüz geçmiş tedavi/anamnez kaydı girilmemiş.</p>
+                        <p className="text-gray-500 text-sm mt-2">Hasta listesindeki 📜 butonunu kullanarak geçmiş kayıt ekleyebilirsiniz.</p>
+                      </div>
+                    ) : filteredRecords.length === 0 ? (
+                      <div className="text-center py-10">
+                        <div className="text-4xl mb-3">🔍</div>
+                        <p className="text-gray-600">Seçilen filtrelere uygun kayıt bulunamadı.</p>
+                        <button
+                          className="mt-3 text-sm text-purple-600 underline"
+                          onClick={() => { setHistorySourceFilter('all'); setHistoryDateFilter('all'); setHistorySearch(''); }}
+                        >
+                          Filtreleri temizle
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {groups.map(({ label, records: groupRecords }) => (
+                          <div key={label}>
+                            {/* Grup başlığı */}
+                            <div className="flex items-center gap-2 mb-3">
+                              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{label}</span>
+                              <div className="flex-1 h-px bg-gray-100"></div>
+                              <span className="text-xs text-gray-400">{groupRecords.length} kayıt</span>
                             </div>
 
-                            {/* Record card */}
-                            <div className={`rounded-xl p-4 border ${(record as any).source === 'anamrez' ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
-                              <div className="flex items-center justify-between mb-3">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-semibold text-gray-800">
-                                    {new Date(record.historyDate).toLocaleDateString('tr-TR', {
-                                      day: '2-digit',
-                                      month: 'long',
-                                      year: 'numeric'
-                                    })}
-                                  </span>
-                                  {/* Source indicator */}
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${(record as any).source === 'anamrez' ? 'bg-blue-200 text-blue-700' : 'bg-purple-200 text-purple-700'}`}>
-                                    {(record as any).source === 'anamrez' ? 'Randevu' : 'Geçmiş Kayıt'}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  {record.hasAnamnesis && (
-                                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
-                                      📋 Anamnez
-                                    </span>
-                                  )}
-                                  {record.hasTreatment && (
-                                    <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
-                                      💊 Tedavi
-                                    </span>
-                                  )}
-                                  {record.hasMedications && (
-                                    <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-medium">
-                                      💉 İlaç
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
+                            {/* Timeline */}
+                            <div className="relative">
+                              {groupRecords.map((record: any, index: number) => {
+                                const isExpanded = expandedHistoryIds.has(record.id);
+                                const isAnamrez = record.source === 'anamrez';
+                                const outcome = record.treatment?.outcome;
+                                const borderColor = outcome ? outcomeColor(outcome) : (isAnamrez ? 'border-blue-200' : 'border-gray-200');
+                                const repeatCount = complaintCounts[record.anamnesis?.chiefComplaint || ''] || 0;
+                                // medications: pastHistory → { medicationList: [{name}] }, anamrez → string
+                                const medNames: string[] = Array.isArray(record.medications?.medicationList)
+                                  ? record.medications.medicationList.map((m: any) => m.name).filter(Boolean)
+                                  : [];
+                                const currentMedsText: string = record.conventionalTreatment?.currentMedications || '';
+                                const otherTreatmentsText: string = record.conventionalTreatment?.otherTreatments || '';
+                                // Yeni alanlar
+                                const doctorName: string = record.selectedDoctor?.name || '';
+                                const allergies: string = record.allergies || '';
+                                const hasAllergies = allergies && allergies.toLowerCase() !== 'yok' && allergies.toLowerCase() !== 'hayır' && allergies.trim() !== '-';
+                                const toxScore: number = record.toxicityAssessment?.totalScore ?? -1;
+                                const hasToxicity: boolean = record.toxicityAssessment?.hasToxicity ?? false;
+                                const diagSystems: string[] = record.selectedDiagnosisSystems || [];
+                                const pastMedHistory: string = record.pastMedicalHistory || '';
+                                const familyHistory: string = record.familyHistory || '';
+                                const hasSurgery: boolean = record.hasSurgery === 'var';
+                                const surgicalHistory: string = record.surgicalHistory || '';
+                                const aq = record.additionalQuestions || {};
+                                const lifestyleItems = [
+                                  aq.smokingFrequency && aq.smokingFrequency !== 'hiç' ? { label: 'Sigara', value: aq.smokingFrequency, warn: true } : null,
+                                  aq.alcoholFrequency && aq.alcoholFrequency !== 'hiç' ? { label: 'Alkol', value: aq.alcoholFrequency, warn: true } : null,
+                                  aq.dailySleepHours ? { label: 'Uyku', value: `${aq.dailySleepHours} saat`, warn: false } : null,
+                                  aq.exerciseFrequency ? { label: 'Egzersiz', value: aq.exerciseFrequency, warn: false } : null,
+                                ].filter(Boolean) as { label: string; value: string; warn: boolean }[];
 
-                              {/* Summary */}
-                              <div className="space-y-2 text-sm">
-                                {record.anamnesis?.complaintDetails && (
-                                  <div>
-                                    <span className="text-gray-600">Şikayet: </span>
-                                    <span className="text-gray-800">
-                                      {record.anamnesis.complaintDetails.length > 100
-                                        ? record.anamnesis.complaintDetails.substring(0, 100) + '...'
-                                        : record.anamnesis.complaintDetails}
-                                    </span>
-                                  </div>
-                                )}
-                                {record.treatment?.treatmentType && (
-                                  <div>
-                                    <span className="text-gray-600">Tedavi Türü: </span>
-                                    <span className="text-gray-800">{record.treatment.treatmentType}</span>
-                                    {record.treatment.outcome && (
-                                      <span className={`ml-2 px-2 py-0.5 rounded text-xs ${
-                                        record.treatment.outcome === 'successful' ? 'bg-green-100 text-green-700' :
-                                        record.treatment.outcome === 'partially_successful' ? 'bg-yellow-100 text-yellow-700' :
-                                        record.treatment.outcome === 'unsuccessful' ? 'bg-red-100 text-red-700' :
-                                        record.treatment.outcome === 'ongoing' ? 'bg-blue-100 text-blue-700' :
-                                        'bg-gray-100 text-gray-700'
-                                      }`}>
-                                        {record.treatment.outcome === 'successful' ? 'Başarılı' :
-                                         record.treatment.outcome === 'partially_successful' ? 'Kısmen Başarılı' :
-                                         record.treatment.outcome === 'unsuccessful' ? 'Başarısız' :
-                                         record.treatment.outcome === 'ongoing' ? 'Devam Ediyor' :
-                                         'Bilinmiyor'}
-                                      </span>
+                                return (
+                                  <div key={record.id} className="relative pl-8 pb-5">
+                                    {/* Bağlantı çizgisi */}
+                                    {index !== groupRecords.length - 1 && (
+                                      <div className="absolute left-3 top-6 bottom-0 w-0.5 bg-gray-100"></div>
                                     )}
-                                  </div>
-                                )}
-                                {record.medications?.medicationList && record.medications.medicationList.length > 0 && (
-                                  <div>
-                                    <span className="text-gray-600">İlaçlar: </span>
-                                    <span className="text-gray-800">
-                                      {record.medications.medicationList.map(m => m.name).join(', ')}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
 
-                              <div className="mt-3 pt-3 border-t border-gray-200 flex justify-between items-center">
-                                <span className="text-xs text-gray-500">
-                                  Eklendi: {new Date(record.createdAt).toLocaleDateString('tr-TR')}
-                                </span>
-                                <button
-                                  className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg text-sm font-medium transition-colors"
-                                  onClick={() => {
-                                    setSelectedHistoryRecord(record as any);
-                                    setIsHistoryViewModalOpen(true);
-                                  }}
-                                >
-                                  👁️ Görüntüle
-                                </button>
-                              </div>
+                                    {/* Zaman noktası */}
+                                    <div className={`absolute left-0 top-1 w-6 h-6 rounded-full flex items-center justify-center text-xs ${isAnamrez ? 'bg-blue-500' : 'bg-purple-500'}`}>
+                                      <span className="text-white">{isAnamrez ? '📅' : '📜'}</span>
+                                    </div>
+
+                                    {/* Kart — sol kenarlık outcome rengine göre */}
+                                    <div className={`rounded-xl border-l-4 ${borderColor} border border-gray-200 bg-white shadow-sm overflow-hidden`}>
+                                      {/* Kart başlığı */}
+                                      <div className={`px-4 py-3 flex items-center justify-between ${isAnamrez ? 'bg-blue-50' : 'bg-gray-50'}`}>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span className="font-semibold text-gray-800 text-sm">
+                                            {new Date(record.historyDate).toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                                          </span>
+                                          {/* Kaynak: Randevu veya Geçmiş Kayıt */}
+                                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${isAnamrez ? 'bg-blue-200 text-blue-700' : 'bg-purple-200 text-purple-700'}`}>
+                                            {isAnamrez ? 'Randevu' : 'Geçmiş Kayıt'}
+                                          </span>
+                                          {/* Randevu tipi (İlk Muayene / Kontrol / Tedavi vb.) */}
+                                          {(record as any).typeName && (
+                                            <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-[10px] font-semibold border border-indigo-200">
+                                              🏥 {(record as any).typeName}
+                                            </span>
+                                          )}
+                                          {record.hasAnamnesis && (
+                                            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px] font-medium">📋 Anamnez</span>
+                                          )}
+                                          {record.hasTreatment && (
+                                            <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[10px] font-medium">💊 Tedavi</span>
+                                          )}
+                                          {record.hasMedications && (
+                                            <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-[10px] font-medium">💉 İlaç</span>
+                                          )}
+                                          {outcome && (
+                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${outcomeBg(outcome)}`}>
+                                              {outcomeLabel(outcome)}
+                                            </span>
+                                          )}
+                                          {repeatCount > 1 && (
+                                            <span className="px-2 py-0.5 bg-red-50 text-red-500 border border-red-200 rounded-full text-[10px] font-medium">
+                                              🔁 {repeatCount}x tekrar
+                                            </span>
+                                          )}
+                                          {hasAllergies && (
+                                            <span className="px-2 py-0.5 bg-red-100 text-red-700 border border-red-300 rounded-full text-[10px] font-semibold">
+                                              ⚠️ Alerji
+                                            </span>
+                                          )}
+                                          {toxScore >= 0 && (
+                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border ${
+                                              hasToxicity
+                                                ? 'bg-amber-50 text-amber-700 border-amber-300'
+                                                : 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                                            }`}>
+                                              {hasToxicity ? `⚡ Toksisite ${toxScore}` : `✓ Toksisite ${toxScore}`}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <button
+                                          onClick={() => toggleExpand(record.id)}
+                                          className="ml-2 text-gray-400 hover:text-gray-600 transition-colors text-lg leading-none"
+                                          title={isExpanded ? 'Daralt' : 'Genişlet'}
+                                        >
+                                          {isExpanded ? '▲' : '▼'}
+                                        </button>
+                                      </div>
+
+                                      {/* ── Kart özet satırı (her zaman görünür) ── */}
+                                      <div className="px-4 pt-3 pb-2 space-y-2 text-sm">
+
+                                        {/* Şikayet */}
+                                        {(record.anamnesis?.chiefComplaint || record.anamnesis?.complaintDetails) && (
+                                          <div className="flex gap-2">
+                                            <span className="text-gray-400 shrink-0 w-28">Şikayet</span>
+                                            <span className="text-gray-700 leading-snug">
+                                              {(() => {
+                                                const text = record.anamnesis.chiefComplaint || record.anamnesis.complaintDetails || '';
+                                                return isExpanded || text.length <= 120 ? text : text.slice(0, 120) + '…';
+                                              })()}
+                                            </span>
+                                          </div>
+                                        )}
+
+                                        {/* Hekim */}
+                                        {doctorName && (
+                                          <div className="flex gap-2 items-center">
+                                            <span className="text-gray-400 shrink-0 w-28">Hekim</span>
+                                            <span className="text-gray-600 font-medium">Dr. {doctorName}</span>
+                                          </div>
+                                        )}
+
+                                        {/* Tanı sistemleri — pill listesi */}
+                                        {diagSystems.length > 0 && (
+                                          <div className="flex gap-2 items-start">
+                                            <span className="text-gray-400 shrink-0 w-28 pt-0.5">Tanı Sistemi</span>
+                                            <div className="flex flex-wrap gap-1">
+                                              {diagSystems.slice(0, 3).map((s: string, i: number) => (
+                                                <span key={i} className="px-2 py-0.5 bg-violet-50 text-violet-700 border border-violet-200 rounded-full text-xs">{s}</span>
+                                              ))}
+                                              {diagSystems.length > 3 && (
+                                                <span className="px-2 py-0.5 text-gray-400 text-xs">+{diagSystems.length - 3} daha</span>
+                                              )}
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* İlaçlar (pastHistory medicationList) */}
+                                        {medNames.length > 0 && (
+                                          <div className="flex gap-2 items-start">
+                                            <span className="text-gray-400 shrink-0 w-28 pt-0.5">İlaçlar</span>
+                                            <div className="flex flex-wrap gap-1">
+                                              {medNames.map((name: string, i: number) => (
+                                                <span key={i} className="px-2 py-0.5 bg-orange-50 text-orange-700 border border-orange-200 rounded-full text-xs">{name}</span>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Güncel ilaçlar (conventionalTreatment) */}
+                                        {currentMedsText && (
+                                          <div className="flex gap-2">
+                                            <span className="text-gray-400 shrink-0 w-28">Güncel İlaçlar</span>
+                                            <span className="text-gray-700">
+                                              {isExpanded || currentMedsText.length <= 100 ? currentMedsText : currentMedsText.slice(0, 100) + '…'}
+                                            </span>
+                                          </div>
+                                        )}
+
+                                        {/* Diğer tedaviler */}
+                                        {otherTreatmentsText && (
+                                          <div className="flex gap-2">
+                                            <span className="text-gray-400 shrink-0 w-28">Diğer Tedaviler</span>
+                                            <span className="text-gray-700">
+                                              {isExpanded || otherTreatmentsText.length <= 100 ? otherTreatmentsText : otherTreatmentsText.slice(0, 100) + '…'}
+                                            </span>
+                                          </div>
+                                        )}
+
+                                        {/* Uygulanan tedavi (pastHistory) */}
+                                        {record.treatment?.treatmentType && (
+                                          <div className="flex gap-2 items-center">
+                                            <span className="text-gray-400 shrink-0 w-28">Uygulanan Tedavi</span>
+                                            <span className="text-gray-700">{record.treatment.treatmentType}</span>
+                                          </div>
+                                        )}
+
+                                        {/* Alerji — sadece varsa, kırmızı kutu */}
+                                        {hasAllergies && !isExpanded && (
+                                          <div className="flex gap-2">
+                                            <span className="text-gray-400 shrink-0 w-28">Alerjiler</span>
+                                            <span className="text-red-600 font-medium">{allergies.slice(0, 80)}{allergies.length > 80 ? '…' : ''}</span>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {/* ── Genişletilmiş detaylar (accordion) ── */}
+                                      {isExpanded && (
+                                        <div className="border-t border-gray-100 divide-y divide-gray-50">
+
+                                          {/* Tıbbi geçmiş grubu */}
+                                          {(pastMedHistory || familyHistory || hasSurgery || hasAllergies) && (
+                                            <div className="px-4 py-3 space-y-2 text-sm">
+                                              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Tıbbi Geçmiş</p>
+                                              {hasAllergies && (
+                                                <div className="flex gap-2">
+                                                  <span className="text-gray-400 shrink-0 w-28">Alerjiler</span>
+                                                  <span className="text-red-600 font-medium">{allergies}</span>
+                                                </div>
+                                              )}
+                                              {pastMedHistory && (
+                                                <div className="flex gap-2">
+                                                  <span className="text-gray-400 shrink-0 w-28">Geçmiş Hastalık</span>
+                                                  <span className="text-gray-700">{pastMedHistory}</span>
+                                                </div>
+                                              )}
+                                              {familyHistory && (
+                                                <div className="flex gap-2">
+                                                  <span className="text-gray-400 shrink-0 w-28">Aile Geçmişi</span>
+                                                  <span className="text-gray-700">{familyHistory}</span>
+                                                </div>
+                                              )}
+                                              {hasSurgery && surgicalHistory && (
+                                                <div className="flex gap-2">
+                                                  <span className="text-gray-400 shrink-0 w-28">Ameliyat</span>
+                                                  <span className="text-gray-700">{surgicalHistory}</span>
+                                                </div>
+                                              )}
+                                            </div>
+                                          )}
+
+                                          {/* Yaşam tarzı grubu */}
+                                          {lifestyleItems.length > 0 && (
+                                            <div className="px-4 py-3 text-sm">
+                                              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Yaşam Tarzı</p>
+                                              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                                                {lifestyleItems.map((item, i) => (
+                                                  <div key={i} className="flex gap-1.5 items-center">
+                                                    <span className="text-gray-400 shrink-0">{item.label}:</span>
+                                                    <span className={item.warn ? 'text-amber-600 font-medium' : 'text-gray-700'}>{item.value}</span>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )}
+
+                                          {/* Ek bilgiler */}
+                                          {(record.weight || record.height || record.diagnosis || record.notes || record.anamnesis?.complaintDetails) && (
+                                            <div className="px-4 py-3 space-y-2 text-sm">
+                                              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Ek Bilgiler</p>
+                                              {record.anamnesis?.complaintDetails && record.anamnesis?.chiefComplaint && (
+                                                <div className="flex gap-2">
+                                                  <span className="text-gray-400 shrink-0 w-28">Şikayet Detayı</span>
+                                                  <span className="text-gray-700">{record.anamnesis.complaintDetails}</span>
+                                                </div>
+                                              )}
+                                              {record.weight && record.height && (
+                                                <div className="flex gap-4">
+                                                  <div className="flex gap-1.5"><span className="text-gray-400">Kilo:</span><span className="text-gray-700">{record.weight} kg</span></div>
+                                                  <div className="flex gap-1.5"><span className="text-gray-400">Boy:</span><span className="text-gray-700">{record.height} cm</span></div>
+                                                  <div className="flex gap-1.5"><span className="text-gray-400">BMI:</span><span className="text-gray-700 font-medium">{(record.weight / ((record.height / 100) ** 2)).toFixed(1)}</span></div>
+                                                </div>
+                                              )}
+                                              {record.diagnosis && (
+                                                <div className="flex gap-2">
+                                                  <span className="text-gray-400 shrink-0 w-28">Tanı</span>
+                                                  <span className="text-gray-700">{record.diagnosis}</span>
+                                                </div>
+                                              )}
+                                              {record.notes && (
+                                                <div className="flex gap-2">
+                                                  <span className="text-gray-400 shrink-0 w-28">Notlar</span>
+                                                  <span className="text-gray-500 italic">{record.notes}</span>
+                                                </div>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+
+                                      {/* Kart alt çubuğu */}
+                                      <div className="px-4 py-2.5 border-t border-gray-100 flex justify-between items-center bg-gray-50/50">
+                                        <span className="text-xs text-gray-400">
+                                          Eklendi: {new Date(record.createdAt).toLocaleDateString('tr-TR')}
+                                        </span>
+                                        <button
+                                          className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg text-xs font-medium transition-colors flex items-center gap-1"
+                                          onClick={() => {
+                                            setSelectedHistoryRecord(record as any);
+                                            setIsHistoryViewModalOpen(true);
+                                          }}
+                                        >
+                                          👁️ Görüntüle
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         ))}
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Media Tab - Photos and Videos */}
             {activeTab === 'media' && (
