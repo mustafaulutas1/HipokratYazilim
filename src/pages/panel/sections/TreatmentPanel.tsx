@@ -387,6 +387,38 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
 
       await updateDoc(patientRef, updateData);
 
+      // ── Uygulanan tedavileri ilgili anamrezRecord'a kaydet ─────────────────
+      try {
+        const anamrezQ = query(
+          collection(db, 'anamrezRecords'),
+          where('patientId', '==', selectedPatient.id)
+        );
+        const anamrezSnap = await getDocs(anamrezQ);
+        const nonRoutine = anamrezSnap.docs
+          .filter(d => !d.data().isRoutineAnamnez)
+          .sort((a, b) => {
+            const tA = new Date(a.data().createdAt || 0).getTime();
+            const tB = new Date(b.data().createdAt || 0).getTime();
+            return tB - tA; // en yeni önce
+          });
+        if (nonRoutine.length > 0) {
+          await updateDoc(doc(db, 'anamrezRecords', nonRoutine[0].id), {
+            appliedTreatments: updateData.appliedTreatments ?? [],
+            treatmentApplied: updateData.treatmentApplied ?? false,
+            treatmentPartiallyApplied: updateData.treatmentPartiallyApplied ?? false,
+            treatmentNotes: updateData.treatmentNotes ?? '',
+            treatmentNotAppliedReason: updateData.treatmentNotAppliedReason ?? '',
+            unselectedTreatments: updateData.unselectedTreatments ?? [],
+            protocolName: selectedPatient.treatmentOptions?.protocolName ?? '',
+            treatmentCompletedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+          console.log('✅ Applied treatments saved to anamrezRecord:', nonRoutine[0].id);
+        }
+      } catch (anamrezSaveError) {
+        console.error('❌ Error saving applied treatments to anamrezRecord:', anamrezSaveError);
+      }
+
       // Save routine anamnez if present
       if (pendingAnamrezRecord && pendingAnamrezRecord.routineAnamnezTemplates.length > 0) {
         const anamrezSaveData = {

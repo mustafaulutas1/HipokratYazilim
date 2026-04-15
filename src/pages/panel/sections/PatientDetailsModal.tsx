@@ -163,14 +163,14 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
             clinicId: data.clinicId,
             historyDate: data.appointmentDate || data.createdAt || new Date().toISOString(),
             hasAnamnesis: true,
-            hasTreatment: !!data.treatmentHistory,
+            hasTreatment: !!(data.treatmentHistory || data.appliedTreatments?.length),
             hasMedications: !!(data.medications || data.conventionalTreatment?.currentMedications),
             anamnesis: {
               chiefComplaint: data.chiefComplaint,
               complaintDetails: data.historyOfPresentIllness || data.presentIllnessHistory
             },
-            treatment: data.treatmentHistory ? {
-              treatmentType: 'Tedavi',
+            treatment: (data.treatmentHistory || data.appliedTreatments?.length) ? {
+              treatmentType: data.protocolName || 'Tedavi',
               outcome: ''
             } : undefined,
             medications: data.medications,
@@ -1062,6 +1062,10 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
                 'Hekim': r.selectedDoctor?.name ? `Dr. ${r.selectedDoctor.name}` : '-',
                 'Şikayet': r.anamnesis?.chiefComplaint || r.anamnesis?.complaintDetails || '-',
                 'Tanı Sistemleri': (r.selectedDiagnosisSystems || []).join(', ') || '-',
+                'Uygulanan Uygulamalar': Array.isArray(r.appliedTreatments) ? r.appliedTreatments.join(', ') : '-',
+                'Yapılmayan Uygulamalar': Array.isArray(r.unselectedTreatments) ? r.unselectedTreatments.join(', ') : '-',
+                'Tedavi Notu': r.treatmentNotes || '-',
+                'Protokol': r.protocolName || '-',
                 'Güncel İlaçlar': r.conventionalTreatment?.currentMedications || '-',
                 'Diğer Tedaviler': r.conventionalTreatment?.otherTreatments || '-',
                 'İlaç Listesi': Array.isArray(r.medications?.medicationList)
@@ -1071,7 +1075,6 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
                 'Geçmiş Hastalık': r.pastMedicalHistory || '-',
                 'Aile Geçmişi': r.familyHistory || '-',
                 'Ameliyat': r.hasSurgery === 'var' ? (r.surgicalHistory || 'Var') : 'Yok',
-                'Uygulanan Tedavi': r.treatment?.treatmentType || '-',
                 'Tedavi Sonucu': outcomeStr(r.treatment?.outcome),
                 'Toksisite Skoru': r.toxicityAssessment?.totalScore ?? '-',
                 'Eklendi': safeDate(r.createdAt),
@@ -1084,7 +1087,10 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
                 'Randevu Tipi': tr2ascii(r.typeName || '-'),
                 'Hekim': r.selectedDoctor?.name ? tr2ascii(`Dr. ${r.selectedDoctor.name}`) : '-',
                 'Sikayet': tr2ascii(r.anamnesis?.chiefComplaint || r.anamnesis?.complaintDetails || '-'),
-                'Tani Sistemleri': tr2ascii((r.selectedDiagnosisSystems || []).join(', ') || '-'),
+                'Uygulanan': tr2ascii(Array.isArray(r.appliedTreatments) ? r.appliedTreatments.join(', ') : '-'),
+                'Yapilmayan': tr2ascii(Array.isArray(r.unselectedTreatments) ? r.unselectedTreatments.join(', ') : '-'),
+                'Tedavi Notu': tr2ascii(r.treatmentNotes || '-'),
+                'Protokol': tr2ascii(r.protocolName || '-'),
                 'Guncel Ilaclar': tr2ascii(r.conventionalTreatment?.currentMedications || '-'),
                 'Diger Tedaviler': tr2ascii(r.conventionalTreatment?.otherTreatments || '-'),
                 'Ilac Listesi': tr2ascii(Array.isArray(r.medications?.medicationList)
@@ -1094,7 +1100,6 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
                 'Gecmis Hastalik': tr2ascii(r.pastMedicalHistory || '-'),
                 'Aile Gecmisi': tr2ascii(r.familyHistory || '-'),
                 'Ameliyat': r.hasSurgery === 'var' ? tr2ascii(r.surgicalHistory || 'Var') : 'Yok',
-                'Uygulanan Tedavi': tr2ascii(r.treatment?.treatmentType || '-'),
                 'Tedavi Sonucu': tr2ascii(outcomeStr(r.treatment?.outcome)),
                 'Toksisite Skoru': String(r.toxicityAssessment?.totalScore ?? '-'),
                 'Eklendi': safeDate(r.createdAt),
@@ -1500,8 +1505,40 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
                                           </div>
                                         )}
 
-                                        {/* Uygulanan tedavi (pastHistory) */}
-                                        {record.treatment?.treatmentType && (
+                                        {/* Uygulanan uygulamalar (TreatmentPanel'den kaydedilen appliedTreatments) */}
+                                        {Array.isArray((record as any).appliedTreatments) && (record as any).appliedTreatments.length > 0 && (
+                                          <div className="flex gap-2 items-start">
+                                            <span className="text-gray-400 shrink-0 w-28 pt-0.5">Uygulananlar</span>
+                                            <div className="flex flex-wrap gap-1">
+                                              {(record as any).appliedTreatments.map((t: string, i: number) => (
+                                                <span key={i} className="px-2 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded-full text-xs font-medium">{t}</span>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Yapılmayan uygulamalar */}
+                                        {Array.isArray((record as any).unselectedTreatments) && (record as any).unselectedTreatments.length > 0 && (
+                                          <div className="flex gap-2 items-start">
+                                            <span className="text-gray-400 shrink-0 w-28 pt-0.5">Yapılmayanlar</span>
+                                            <div className="flex flex-wrap gap-1">
+                                              {(record as any).unselectedTreatments.map((t: string, i: number) => (
+                                                <span key={i} className="px-2 py-0.5 bg-gray-100 text-gray-500 border border-gray-200 rounded-full text-xs line-through">{t}</span>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Tedavi notu */}
+                                        {(record as any).treatmentNotes && (record as any).treatmentNotes !== 'Tedavi Başarı İle Uygulandı' && (
+                                          <div className="flex gap-2">
+                                            <span className="text-gray-400 shrink-0 w-28">Tedavi Notu</span>
+                                            <span className="text-gray-600 italic">{(record as any).treatmentNotes}</span>
+                                          </div>
+                                        )}
+
+                                        {/* Protokol adı / uygulanan tedavi tipi (fallback) */}
+                                        {!(Array.isArray((record as any).appliedTreatments) && (record as any).appliedTreatments.length > 0) && record.treatment?.treatmentType && (
                                           <div className="flex gap-2 items-center">
                                             <span className="text-gray-400 shrink-0 w-28">Uygulanan Tedavi</span>
                                             <span className="text-gray-700">{record.treatment.treatmentType}</span>
