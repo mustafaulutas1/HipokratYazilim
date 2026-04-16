@@ -73,6 +73,10 @@ interface Patient {
     completedAt: string;
   } | null;
   dischargedAt?: string;
+  indirim_check?: boolean;
+  indirim_tipi?: 'yuzde' | 'tutar';
+  indirim_orani?: number;
+  indirim_tutar?: number;
 }
 
 interface MediaFile {
@@ -633,6 +637,45 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
                     </div>
                   </div>
                 </div>
+
+                {/* Discount Information */}
+                {patient.indirim_check && (
+                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border-2 border-green-200 shadow-sm">
+                    <h3 className="text-lg font-semibold text-green-800 mb-4 flex items-center gap-2">
+                      💚 İndirim Bilgileri
+                    </h3>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-green-700 font-medium">Sürekli İndirim Uygulanıyor:</span>
+                        <span className="inline-flex items-center gap-2 px-3 py-1 bg-green-500 text-white rounded-full text-sm font-semibold">
+                          <span>✓</span>
+                          Aktif
+                        </span>
+                      </div>
+                      <div className="border-t border-green-200 pt-3">
+                        <div className="flex justify-between">
+                          <span className="text-green-700 font-medium">İndirim Türü:</span>
+                          <span className="font-semibold text-green-900">
+                            {patient.indirim_tipi === 'yuzde' ? '% Yüzde' : '₺ Tutar'}
+                          </span>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex justify-between">
+                          <span className="text-green-700 font-medium">
+                            {patient.indirim_tipi === 'yuzde' ? 'İndirim Oranı:' : 'İndirim Tutarı:'}
+                          </span>
+                          <span className="font-semibold text-green-900">
+                            {patient.indirim_tipi === 'yuzde' 
+                              ? `%${patient.indirim_orani || 0}` 
+                              : `₺${(patient.indirim_tutar || 0).toFixed(2)}`
+                            }
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
                   <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">

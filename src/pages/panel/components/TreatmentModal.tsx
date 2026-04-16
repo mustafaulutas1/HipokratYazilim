@@ -204,6 +204,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
   const [nextAppSaving, setNextAppSaving] = useState(false);
   const [nextAppSaved, setNextAppSaved] = useState(false);
   const [nextAppConflict, setNextAppConflict] = useState<string | null>(null);
+  const [nextAppSentToOperator, setNextAppSentToOperator] = useState(false);
 
   console.log('🎬 TreatmentModal: Current state', {
     savedProtocolsCount: savedProtocols.length,
@@ -2275,6 +2276,15 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                         {String(nextAppHour).padStart(2, '0')}:{String(nextAppMinute).padStart(2, '0')}
                       </span>
                     </div>
+                  ) : nextAppSentToOperator ? (
+                    <div className="flex items-center gap-2 text-blue-700 font-semibold text-sm py-2">
+                      <span>📨</span>
+                      <span>
+                        Operatöre gönderildi — Önerilen:{' '}
+                        {nextAppDate.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })},{' '}
+                        {String(nextAppHour).padStart(2, '0')}:{String(nextAppMinute).padStart(2, '0')}
+                      </span>
+                    </div>
                   ) : (
                     <>
                       <div className="flex flex-col md:flex-row gap-6 items-start">
@@ -2321,71 +2331,103 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                             </div>
                           )}
 
-                          <button
-                            type="button"
-                            disabled={nextAppSaving}
-                            onClick={async () => {
-                              if (!patient?.clinicId) return;
-                              setNextAppSaving(true);
-                              setNextAppConflict(null);
-                              try {
-                                const formatDateISO = (d: Date) =>
-                                  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-                                const newDateISO = formatDateISO(nextAppDate);
-                                const newStart = `${String(nextAppHour).padStart(2, '0')}:${String(nextAppMinute).padStart(2, '0')}`;
-                                const newStartMins = nextAppHour * 60 + nextAppMinute;
-                                const newDur = 5;
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              disabled={nextAppSaving}
+                              onClick={async () => {
+                                if (!patient?.clinicId) return;
+                                setNextAppSaving(true);
+                                setNextAppConflict(null);
+                                try {
+                                  const formatDateISO = (d: Date) =>
+                                    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                                  const newDateISO = formatDateISO(nextAppDate);
+                                  const newStart = `${String(nextAppHour).padStart(2, '0')}:${String(nextAppMinute).padStart(2, '0')}`;
+                                  const newStartMins = nextAppHour * 60 + nextAppMinute;
+                                  const newDur = 5;
 
-                                // Aynı klinik + tarihte aktif randevuları çek
-                                const snap = await getDocs(
-                                  query(
-                                    collection(db, 'appointments'),
-                                    where('clinicId', '==', patient.clinicId),
-                                    where('dateISO', '==', newDateISO),
-                                  )
-                                );
-
-                                const conflict = snap.docs
-                                  .map(d => d.data() as any)
-                                  .filter(a => a.status !== 'cancelled')
-                                  .find(a => {
-                                    const [h, m] = String(a.start || a.time || '0:0').split(':').map(Number);
-                                    const exStart = h * 60 + m;
-                                    const exEnd = exStart + (a.durationMinutes || 5);
-                                    const newEnd = newStartMins + newDur;
-                                    return newStartMins < exEnd && exStart < newEnd;
-                                  });
-
-                                if (conflict) {
-                                  setNextAppConflict(
-                                    `${conflict.start || conflict.time} saatinde "${conflict.patientName}" adlı hastanın randevusu mevcut. Lütfen farklı bir saat seçin.`
+                                  // Aynı klinik + tarihte aktif randevuları çek
+                                  const snap = await getDocs(
+                                    query(
+                                      collection(db, 'appointments'),
+                                      where('clinicId', '==', patient.clinicId),
+                                      where('dateISO', '==', newDateISO),
+                                    )
                                   );
-                                  return;
-                                }
 
-                                await addDoc(collection(db, 'appointments'), {
-                                  patientId: patient.id,
-                                  patientName: patient.fullName,
-                                  patientPhone: patient.phone || '',
-                                  clinicId: patient.clinicId,
-                                  typeId: 'kontrol',
-                                  typeName: 'Muayene',
-                                  durationMinutes: newDur,
-                                  dateISO: newDateISO,
-                                  start: newStart,
-                                  status: 'pending',
-                                  createdAt: new Date().toISOString(),
-                                  updatedAt: new Date().toISOString(),
-                                });
-                                setNextAppSaved(true);
-                              } finally {
-                                setNextAppSaving(false);
-                              }
-                            }}
-                            className="px-5 py-2.5 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl hover:scale-105 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                          >
-                            {nextAppSaving ? 'Kontrol ediliyor...' : '📅 Randevu Oluştur'}
-                          </button>
+                                  const conflict = snap.docs
+                                    .map(d => d.data() as any)
+                                    .filter(a => a.status !== 'cancelled')
+                                    .find(a => {
+                                      const [h, m] = String(a.start || a.time || '0:0').split(':').map(Number);
+                                      const exStart = h * 60 + m;
+                                      const exEnd = exStart + (a.durationMinutes || 5);
+                                      const newEnd = newStartMins + newDur;
+                                      return newStartMins < exEnd && exStart < newEnd;
+                                    });
+
+                                  if (conflict) {
+                                    setNextAppConflict(
+                                      `${conflict.start || conflict.time} saatinde "${conflict.patientName}" adlı hastanın randevusu mevcut. Lütfen farklı bir saat seçin.`
+                                    );
+                                    return;
+                                  }
+
+                                  await addDoc(collection(db, 'appointments'), {
+                                    patientId: patient.id,
+                                    patientName: patient.fullName,
+                                    patientPhone: patient.phone || '',
+                                    clinicId: patient.clinicId,
+                                    typeId: 'kontrol',
+                                    typeName: 'Muayene',
+                                    durationMinutes: newDur,
+                                    dateISO: newDateISO,
+                                    start: newStart,
+                                    status: 'pending',
+                                    createdAt: new Date().toISOString(),
+                                    updatedAt: new Date().toISOString(),
+                                  });
+                                  setNextAppSaved(true);
+                                } finally {
+                                  setNextAppSaving(false);
+                                }
+                              }}
+                              className="px-5 py-2.5 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl hover:scale-105 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                            >
+                              {nextAppSaving ? 'Kontrol ediliyor...' : '📅 Randevu Oluştur'}
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={nextAppSaving}
+                              onClick={async () => {
+                                if (!patient?.clinicId) return;
+                                setNextAppSaving(true);
+                                try {
+                                  const formatDateISO = (d: Date) =>
+                                    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                                  await addDoc(collection(db, 'next_appointment_requests'), {
+                                    patientId: patient.id,
+                                    patientName: patient.fullName,
+                                    patientPhone: patient.phone || '',
+                                    clinicId: patient.clinicId,
+                                    suggestedDateISO: formatDateISO(nextAppDate),
+                                    suggestedHour: nextAppHour,
+                                    suggestedMinute: nextAppMinute,
+                                    status: 'pending',
+                                    createdAt: new Date().toISOString(),
+                                  });
+                                  setNextAppSentToOperator(true);
+                                } finally {
+                                  setNextAppSaving(false);
+                                }
+                              }}
+                              className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold rounded-xl hover:scale-105 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                            >
+                              {nextAppSaving ? 'Gönderiliyor...' : '📨 Operatöre Gönder'}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </>

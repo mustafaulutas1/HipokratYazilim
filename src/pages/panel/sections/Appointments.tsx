@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, query, where, updateDoc, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, updateDoc, doc, getDoc, addDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
+import { DayPicker } from 'react-day-picker';
+import 'react-day-picker/dist/style.css';
 import AppointmentModal from '../components/AppointmentModal';
 import AppointmentTypeManager from '../components/AppointmentTypeManager';
 import AppointmentDetailsModal from '../components/AppointmentDetailsModal';
@@ -36,12 +38,20 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
   const [calendarPatientFilter, setCalendarPatientFilter] = useState('');
 
   // Rutin Tedavi Programları
-  const [activeTab, setActiveTab] = useState<'calendar' | 'routinePrograms'>('calendar');
+  const [activeTab, setActiveTab] = useState<'calendar' | 'routinePrograms' | 'nextAppointments'>('calendar');
   const [routinePrograms, setRoutinePrograms] = useState<any[]>([]);
-  const [programsRefreshKey, setProgramsRefreshKey] = useState(0);
   const [preselectedPatientId, setPreselectedPatientId] = useState<string | undefined>();
   const [preselectedTypeId, setPreselectedTypeId] = useState<string | undefined>();
   const [schedulingProgramId, setSchedulingProgramId] = useState<string | null>(null);
+
+  // Sonraki Muayeneyi Planla (Operatör)
+  const [nextAppRequests, setNextAppRequests] = useState<any[]>([]);
+  const [schedulingReqId, setSchedulingReqId] = useState<string | null>(null);
+  const [reqDate, setReqDate] = useState<Date>(new Date());
+  const [reqHour, setReqHour] = useState(9);
+  const [reqMinute, setReqMinute] = useState(0);
+  const [reqSaving, setReqSaving] = useState(false);
+  const [reqConflict, setReqConflict] = useState<string | null>(null);
   
   // Utils for time math
   const timeToMinutes = (t: string) => {
@@ -212,22 +222,37 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
     }
   };
 
-  // Fetch routine programs
+  // Fetch routine programs (real-time)
   useEffect(() => {
     if (!doctorProfile?.clinicId) return;
-    const fetchRoutinePrograms = async () => {
-      const q = query(
-        collection(db, 'routine_programs'),
-        where('clinicId', '==', doctorProfile.clinicId),
-        where('status', '==', 'active')
-      );
-      const snap = await getDocs(q);
+    const q = query(
+      collection(db, 'routine_programs'),
+      where('clinicId', '==', doctorProfile.clinicId),
+      where('status', '==', 'active')
+    );
+    const unsub = onSnapshot(q, (snap) => {
       const programs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       programs.sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''));
       setRoutinePrograms(programs);
-    };
-    fetchRoutinePrograms();
-  }, [doctorProfile?.clinicId, programsRefreshKey]);
+    });
+    return () => unsub();
+  }, [doctorProfile?.clinicId]);
+
+  // Fetch next appointment requests (real-time)
+  useEffect(() => {
+    if (!doctorProfile?.clinicId) return;
+    const q = query(
+      collection(db, 'next_appointment_requests'),
+      where('clinicId', '==', doctorProfile.clinicId),
+      where('status', '==', 'pending')
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      const requests = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      requests.sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      setNextAppRequests(requests);
+    });
+    return () => unsub();
+  }, [doctorProfile?.clinicId]);
 
   const exportToExcel = async () => {
     if (!doctorProfile?.clinicId) return;
@@ -373,6 +398,21 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
             </span>
           )}
         </button>
+        <button
+          onClick={() => setActiveTab('nextAppointments')}
+          className={`px-5 py-2.5 rounded-xl font-semibold transition-all flex items-center gap-2 ${
+            activeTab === 'nextAppointments'
+              ? 'bg-white/20 text-white border border-white/30'
+              : 'bg-white/5 text-white/60 border border-white/10 hover:bg-white/10'
+          }`}
+        >
+          Sonraki Muayeneyi Planla
+          {nextAppRequests.length > 0 && (
+            <span className="bg-blue-500 text-white text-xs px-2 py-0.5 rounded-full">
+              {nextAppRequests.length}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* Routine Programs Tab */}
@@ -439,6 +479,193 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
                         style={{ width: `${(program.scheduledSessions / program.totalSessions) * 100}%` }}
                       />
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Sonraki Muayeneyi Planla Tab (Operatör) */}
+      {activeTab === 'nextAppointments' && (
+        <div className="space-y-4">
+          <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+            <h2 className="text-xl font-bold text-white mb-4">
+              Sonraki Muayeneyi Planla
+            </h2>
+            {nextAppRequests.length === 0 ? (
+              <p className="text-white/60 text-center py-8">Bekleyen muayene planı talebi bulunmuyor.</p>
+            ) : (
+              <div className="space-y-4">
+                {nextAppRequests.map((req: any) => (
+                  <div key={req.id} className="bg-white/10 border border-white/20 rounded-xl p-5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-white">{req.patientName}</h3>
+                        <div className="flex flex-wrap gap-3 mt-2">
+                          {req.suggestedDateISO && (
+                            <span className="text-sm text-blue-300 bg-blue-500/20 px-3 py-1 rounded-lg">
+                              Önerilen: {req.suggestedDateISO} — {String(req.suggestedHour ?? 9).padStart(2, '0')}:{String(req.suggestedMinute ?? 0).padStart(2, '0')}
+                            </span>
+                          )}
+                          <span className="text-sm text-green-300 bg-green-500/20 px-3 py-1 rounded-lg">
+                            Muayene
+                          </span>
+                        </div>
+                      </div>
+                      {schedulingReqId !== req.id && (
+                        <button
+                          onClick={() => {
+                            setSchedulingReqId(req.id);
+                            setReqConflict(null);
+                            // Pre-fill with doctor's suggestion if available
+                            if (req.suggestedDateISO) {
+                              const [y, mo, d] = req.suggestedDateISO.split('-').map(Number);
+                              setReqDate(new Date(y, mo - 1, d));
+                            } else {
+                              setReqDate(new Date());
+                            }
+                            setReqHour(req.suggestedHour ?? 9);
+                            setReqMinute(req.suggestedMinute ?? 0);
+                          }}
+                          className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold rounded-xl hover:scale-105 transition-all shadow-lg ml-4"
+                        >
+                          Muayene Planla
+                        </button>
+                      )}
+                    </div>
+
+                    {schedulingReqId === req.id && (
+                      <div className="mt-5 border-t border-white/10 pt-5">
+                        <div className="flex flex-col md:flex-row gap-6 items-start">
+                          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-2">
+                            <DayPicker
+                              mode="single"
+                              selected={reqDate}
+                              onSelect={(d) => { if (d) { setReqDate(d); setReqConflict(null); } }}
+                              fromDate={new Date()}
+                            />
+                          </div>
+
+                          <div className="flex flex-col gap-4 pt-2">
+                            <div>
+                              <p className="text-xs font-semibold text-white/60 mb-2 uppercase tracking-wide">Saat</p>
+                              <div className="flex items-center gap-2">
+                                <div className="flex flex-col items-center">
+                                  <button type="button" onClick={() => { setReqHour(h => Math.min(18, h + 1)); setReqConflict(null); }} className="px-2 py-0.5 text-white/60 hover:text-white">▲</button>
+                                  <span className="w-10 text-center text-lg font-bold text-white">{String(reqHour).padStart(2, '0')}</span>
+                                  <button type="button" onClick={() => { setReqHour(h => Math.max(8, h - 1)); setReqConflict(null); }} className="px-2 py-0.5 text-white/60 hover:text-white">▼</button>
+                                </div>
+                                <span className="text-xl font-bold text-white/40">:</span>
+                                <div className="flex flex-col items-center">
+                                  <button type="button" onClick={() => { setReqMinute(m => (m + 5) % 60); setReqConflict(null); }} className="px-2 py-0.5 text-white/60 hover:text-white">▲</button>
+                                  <span className="w-10 text-center text-lg font-bold text-white">{String(reqMinute).padStart(2, '0')}</span>
+                                  <button type="button" onClick={() => { setReqMinute(m => (m - 5 + 60) % 60); setReqConflict(null); }} className="px-2 py-0.5 text-white/60 hover:text-white">▼</button>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="text-sm text-white/80 bg-white/10 rounded-lg border border-white/20 px-3 py-2">
+                              <p className="font-medium text-white">{req.patientName}</p>
+                              <p className="text-xs text-white/60 mt-0.5">
+                                {reqDate.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                                {' — '}
+                                {String(reqHour).padStart(2, '0')}:{String(reqMinute).padStart(2, '0')}
+                              </p>
+                              <p className="text-xs text-green-400 font-semibold mt-0.5">Muayene</p>
+                            </div>
+
+                            {reqConflict && (
+                              <div className="text-red-300 text-xs bg-red-500/20 border border-red-500/30 rounded-lg px-3 py-2">
+                                ⚠️ {reqConflict}
+                              </div>
+                            )}
+
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                disabled={reqSaving}
+                                onClick={async () => {
+                                  if (!doctorProfile?.clinicId) return;
+                                  setReqSaving(true);
+                                  setReqConflict(null);
+                                  try {
+                                    const newDateISO = formatDateISO(reqDate);
+                                    const newStart = `${String(reqHour).padStart(2, '0')}:${String(reqMinute).padStart(2, '0')}`;
+                                    const newStartMins = reqHour * 60 + reqMinute;
+                                    const newDur = 5;
+
+                                    const snap = await getDocs(
+                                      query(
+                                        collection(db, 'appointments'),
+                                        where('clinicId', '==', doctorProfile.clinicId),
+                                        where('dateISO', '==', newDateISO),
+                                      )
+                                    );
+
+                                    const conflict = snap.docs
+                                      .map(d => d.data() as any)
+                                      .filter(a => a.status !== 'cancelled')
+                                      .find(a => {
+                                        const [h, m] = String(a.start || a.time || '0:0').split(':').map(Number);
+                                        const exStart = h * 60 + m;
+                                        const exEnd = exStart + (a.durationMinutes || 5);
+                                        const newEnd = newStartMins + newDur;
+                                        return newStartMins < exEnd && exStart < newEnd;
+                                      });
+
+                                    if (conflict) {
+                                      setReqConflict(
+                                        `${conflict.start || conflict.time} saatinde "${conflict.patientName}" adlı hastanın randevusu mevcut. Lütfen farklı bir saat seçin.`
+                                      );
+                                      return;
+                                    }
+
+                                    await addDoc(collection(db, 'appointments'), {
+                                      patientId: req.patientId,
+                                      patientName: req.patientName,
+                                      patientPhone: req.patientPhone || '',
+                                      clinicId: doctorProfile.clinicId,
+                                      typeId: 'kontrol',
+                                      typeName: 'Muayene',
+                                      durationMinutes: newDur,
+                                      dateISO: newDateISO,
+                                      start: newStart,
+                                      status: 'pending',
+                                      createdAt: new Date().toISOString(),
+                                      updatedAt: new Date().toISOString(),
+                                    });
+
+                                    await updateDoc(doc(db, 'next_appointment_requests', req.id), {
+                                      status: 'completed',
+                                      scheduledDateISO: newDateISO,
+                                      scheduledTime: newStart,
+                                      updatedAt: new Date().toISOString(),
+                                    });
+
+                                    setSchedulingReqId(null);
+                                  } finally {
+                                    setReqSaving(false);
+                                  }
+                                }}
+                                className="px-5 py-2.5 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl hover:scale-105 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                              >
+                                {reqSaving ? 'Kontrol ediliyor...' : '📅 Randevu Oluştur'}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={reqSaving}
+                                onClick={() => { setSchedulingReqId(null); setReqConflict(null); }}
+                                className="px-5 py-2.5 bg-white/10 border border-white/20 text-white/80 font-semibold rounded-xl hover:bg-white/20 transition-all text-sm"
+                              >
+                                İptal
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1089,7 +1316,6 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
                 console.error('Error updating routine program:', err);
               }
               setSchedulingProgramId(null);
-              setProgramsRefreshKey(k => k + 1);
             }
 
             setPreselectedPatientId(undefined);
