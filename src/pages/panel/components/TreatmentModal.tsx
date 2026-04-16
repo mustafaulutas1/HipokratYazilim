@@ -2280,7 +2280,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                     <div className="flex items-center gap-2 text-blue-700 font-semibold text-sm py-2">
                       <span>📨</span>
                       <span>
-                        Operatöre gönderildi — Önerilen:{' '}
+                        Resepsiyona gönderildi — Önerilen:{' '}
                         {nextAppDate.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })},{' '}
                         {String(nextAppHour).padStart(2, '0')}:{String(nextAppMinute).padStart(2, '0')}
                       </span>
@@ -2425,7 +2425,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                               }}
                               className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold rounded-xl hover:scale-105 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                             >
-                              {nextAppSaving ? 'Gönderiliyor...' : '📨 Operatöre Gönder'}
+                              {nextAppSaving ? 'Gönderiliyor...' : '📨 Resepsiyona Gönder'}
                             </button>
                           </div>
                         </div>
