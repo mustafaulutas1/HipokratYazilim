@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, query, where, updateDoc, doc, getDoc, addDoc, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, query, where, updateDoc, doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
-import { DayPicker } from 'react-day-picker';
 import 'react-day-picker/dist/style.css';
 import AppointmentModal from '../components/AppointmentModal';
 import AppointmentTypeManager from '../components/AppointmentTypeManager';
@@ -21,6 +20,9 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
   const [appointments, setAppointments] = useState<any[]>([]);
   const [openAddModal, setOpenAddModal] = useState(false);
   const [openTypeModal, setOpenTypeModal] = useState(false);
+  const [openExcelModal, setOpenExcelModal] = useState(false);
+  const [excelStartDate, setExcelStartDate] = useState('');
+  const [excelEndDate, setExcelEndDate] = useState('');
   const [openDetailsModal, setOpenDetailsModal] = useState(false);
   const [editedAppointment, setEditedAppointment] = useState<any | null>(null);
   const [viewedAppointment, setViewedAppointment] = useState<any | null>(null);
@@ -47,12 +49,8 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
   // Sonraki Muayeneyi Planla (Operatör)
   const [nextAppRequests, setNextAppRequests] = useState<any[]>([]);
   const [schedulingReqId, setSchedulingReqId] = useState<string | null>(null);
-  const [reqDate, setReqDate] = useState<Date>(new Date());
-  const [reqHour, setReqHour] = useState(9);
-  const [reqMinute, setReqMinute] = useState(0);
-  const [reqSaving, setReqSaving] = useState(false);
-  const [reqConflict, setReqConflict] = useState<string | null>(null);
-  
+
+
   // Utils for time math
   const timeToMinutes = (t: string) => {
     const [h, m] = t.split(':').map(Number);
@@ -254,13 +252,19 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
     return () => unsub();
   }, [doctorProfile?.clinicId]);
 
-  const exportToExcel = async () => {
+  const exportToExcel = async (startDate?: string, endDate?: string) => {
     if (!doctorProfile?.clinicId) return;
 
     const snap = await getDocs(
       query(collection(db, 'appointments'), where('clinicId', '==', doctorProfile.clinicId))
     );
-    const allAppointments = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+    let allAppointments = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+    if (startDate) {
+      allAppointments = allAppointments.filter(a => String(a.dateISO || '') >= startDate);
+    }
+    if (endDate) {
+      allAppointments = allAppointments.filter(a => String(a.dateISO || '') <= endDate);
+    }
     allAppointments.sort((a, b) => {
       const dateCompare = String(b.dateISO || '').localeCompare(String(a.dateISO || ''));
       if (dateCompare !== 0) return dateCompare;
@@ -347,7 +351,13 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={exportToExcel}
+            onClick={() => {
+              const today = new Date().toISOString().slice(0, 10);
+              const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+              setExcelStartDate(monthAgo);
+              setExcelEndDate(today);
+              setOpenExcelModal(true);
+            }}
             className="px-4 py-3 bg-emerald-700/80 text-white font-semibold rounded-xl hover:bg-emerald-600 transition-all duration-200 border border-emerald-500/40 flex items-center gap-2"
           >
             <span>📥</span> Excel İndir
@@ -514,158 +524,33 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
                           </span>
                         </div>
                       </div>
-                      {schedulingReqId !== req.id && (
-                        <button
-                          onClick={() => {
-                            setSchedulingReqId(req.id);
-                            setReqConflict(null);
-                            // Pre-fill with doctor's suggestion if available
-                            if (req.suggestedDateISO) {
-                              const [y, mo, d] = req.suggestedDateISO.split('-').map(Number);
-                              setReqDate(new Date(y, mo - 1, d));
-                            } else {
-                              setReqDate(new Date());
-                            }
-                            setReqHour(req.suggestedHour ?? 9);
-                            setReqMinute(req.suggestedMinute ?? 0);
-                          }}
-                          className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold rounded-xl hover:scale-105 transition-all shadow-lg ml-4"
-                        >
-                          Muayene Planla
-                        </button>
-                      )}
+                      <button
+                        onClick={() => {
+                          setPreselectedPatientId(req.patientId);
+                          setPreselectedTypeId('kontrol');
+                          setSchedulingReqId(req.id);
+                          if (req.suggestedDateISO) {
+                            const [y, mo, d] = req.suggestedDateISO.split('-').map(Number);
+                            setSelectedSlotDate(new Date(y, mo - 1, d));
+                          } else {
+                            setSelectedSlotDate(undefined);
+                          }
+                          if (req.suggestedHour !== undefined) {
+                            setSelectedSlotTime(
+                              `${String(req.suggestedHour).padStart(2, '0')}:${String(req.suggestedMinute ?? 0).padStart(2, '0')}`
+                            );
+                          } else {
+                            setSelectedSlotTime(undefined);
+                          }
+                          setEditedAppointment(null);
+                          setOpenAddModal(true);
+                        }}
+                        className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold rounded-xl hover:scale-105 transition-all shadow-lg ml-4"
+                      >
+                        Muayene Planla
+                      </button>
                     </div>
 
-                    {schedulingReqId === req.id && (
-                      <div className="mt-5 border-t border-white/10 pt-5">
-                        <div className="flex flex-col md:flex-row gap-6 items-start">
-                          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-2">
-                            <DayPicker
-                              mode="single"
-                              selected={reqDate}
-                              onSelect={(d) => { if (d) { setReqDate(d); setReqConflict(null); } }}
-                              fromDate={new Date()}
-                            />
-                          </div>
-
-                          <div className="flex flex-col gap-4 pt-2">
-                            <div>
-                              <p className="text-xs font-semibold text-white/60 mb-2 uppercase tracking-wide">Saat</p>
-                              <div className="flex items-center gap-2">
-                                <div className="flex flex-col items-center">
-                                  <button type="button" onClick={() => { setReqHour(h => Math.min(18, h + 1)); setReqConflict(null); }} className="px-2 py-0.5 text-white/60 hover:text-white">▲</button>
-                                  <span className="w-10 text-center text-lg font-bold text-white">{String(reqHour).padStart(2, '0')}</span>
-                                  <button type="button" onClick={() => { setReqHour(h => Math.max(8, h - 1)); setReqConflict(null); }} className="px-2 py-0.5 text-white/60 hover:text-white">▼</button>
-                                </div>
-                                <span className="text-xl font-bold text-white/40">:</span>
-                                <div className="flex flex-col items-center">
-                                  <button type="button" onClick={() => { setReqMinute(m => (m + 5) % 60); setReqConflict(null); }} className="px-2 py-0.5 text-white/60 hover:text-white">▲</button>
-                                  <span className="w-10 text-center text-lg font-bold text-white">{String(reqMinute).padStart(2, '0')}</span>
-                                  <button type="button" onClick={() => { setReqMinute(m => (m - 5 + 60) % 60); setReqConflict(null); }} className="px-2 py-0.5 text-white/60 hover:text-white">▼</button>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="text-sm text-white/80 bg-white/10 rounded-lg border border-white/20 px-3 py-2">
-                              <p className="font-medium text-white">{req.patientName}</p>
-                              <p className="text-xs text-white/60 mt-0.5">
-                                {reqDate.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })}
-                                {' — '}
-                                {String(reqHour).padStart(2, '0')}:{String(reqMinute).padStart(2, '0')}
-                              </p>
-                              <p className="text-xs text-green-400 font-semibold mt-0.5">Muayene</p>
-                            </div>
-
-                            {reqConflict && (
-                              <div className="text-red-300 text-xs bg-red-500/20 border border-red-500/30 rounded-lg px-3 py-2">
-                                ⚠️ {reqConflict}
-                              </div>
-                            )}
-
-                            <div className="flex gap-2">
-                              <button
-                                type="button"
-                                disabled={reqSaving}
-                                onClick={async () => {
-                                  if (!doctorProfile?.clinicId) return;
-                                  setReqSaving(true);
-                                  setReqConflict(null);
-                                  try {
-                                    const newDateISO = formatDateISO(reqDate);
-                                    const newStart = `${String(reqHour).padStart(2, '0')}:${String(reqMinute).padStart(2, '0')}`;
-                                    const newStartMins = reqHour * 60 + reqMinute;
-                                    const newDur = 5;
-
-                                    const snap = await getDocs(
-                                      query(
-                                        collection(db, 'appointments'),
-                                        where('clinicId', '==', doctorProfile.clinicId),
-                                        where('dateISO', '==', newDateISO),
-                                      )
-                                    );
-
-                                    const conflict = snap.docs
-                                      .map(d => d.data() as any)
-                                      .filter(a => a.status !== 'cancelled')
-                                      .find(a => {
-                                        const [h, m] = String(a.start || a.time || '0:0').split(':').map(Number);
-                                        const exStart = h * 60 + m;
-                                        const exEnd = exStart + (a.durationMinutes || 5);
-                                        const newEnd = newStartMins + newDur;
-                                        return newStartMins < exEnd && exStart < newEnd;
-                                      });
-
-                                    if (conflict) {
-                                      setReqConflict(
-                                        `${conflict.start || conflict.time} saatinde "${conflict.patientName}" adlı hastanın randevusu mevcut. Lütfen farklı bir saat seçin.`
-                                      );
-                                      return;
-                                    }
-
-                                    await addDoc(collection(db, 'appointments'), {
-                                      patientId: req.patientId,
-                                      patientName: req.patientName,
-                                      patientPhone: req.patientPhone || '',
-                                      clinicId: doctorProfile.clinicId,
-                                      typeId: 'kontrol',
-                                      typeName: 'Muayene',
-                                      durationMinutes: newDur,
-                                      dateISO: newDateISO,
-                                      start: newStart,
-                                      status: 'pending',
-                                      createdAt: new Date().toISOString(),
-                                      updatedAt: new Date().toISOString(),
-                                    });
-
-                                    await updateDoc(doc(db, 'next_appointment_requests', req.id), {
-                                      status: 'completed',
-                                      scheduledDateISO: newDateISO,
-                                      scheduledTime: newStart,
-                                      updatedAt: new Date().toISOString(),
-                                    });
-
-                                    setSchedulingReqId(null);
-                                  } finally {
-                                    setReqSaving(false);
-                                  }
-                                }}
-                                className="px-5 py-2.5 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl hover:scale-105 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                              >
-                                {reqSaving ? 'Kontrol ediliyor...' : '📅 Randevu Oluştur'}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={reqSaving}
-                                onClick={() => { setSchedulingReqId(null); setReqConflict(null); }}
-                                className="px-5 py-2.5 bg-white/10 border border-white/20 text-white/80 font-semibold rounded-xl hover:bg-white/20 transition-all text-sm"
-                              >
-                                İptal
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 ))}
               </div>
@@ -1281,6 +1166,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
           setPreselectedPatientId(undefined);
           setPreselectedTypeId(undefined);
           setSchedulingProgramId(null);
+          setSchedulingReqId(null);
         }}
         onAdded={() => {
           // refresh after add
@@ -1316,6 +1202,18 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
                 console.error('Error updating routine program:', err);
               }
               setSchedulingProgramId(null);
+            }
+
+            if (schedulingReqId) {
+              try {
+                await updateDoc(doc(db, 'next_appointment_requests', schedulingReqId), {
+                  status: 'completed',
+                  updatedAt: new Date().toISOString(),
+                });
+              } catch (err) {
+                console.error('Error updating next_appointment_request:', err);
+              }
+              setSchedulingReqId(null);
             }
 
             setPreselectedPatientId(undefined);
@@ -1375,6 +1273,72 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
         }}
         onNavigate={onSectionChange}
       />
+
+      {openExcelModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setOpenExcelModal(false)}
+        >
+          <div
+            className="bg-slate-900 border border-white/10 rounded-2xl p-6 w-full max-w-md shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-white">Excel İndir</h2>
+              <button
+                onClick={() => setOpenExcelModal(false)}
+                className="text-white/60 hover:text-white text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <p className="text-white/70 text-sm mb-4">
+              Randevuları indirmek istediğiniz tarih aralığını seçin.
+            </p>
+            <div className="space-y-3 mb-5">
+              <div>
+                <label className="block text-white/80 text-sm mb-1">Başlangıç Tarihi</label>
+                <input
+                  type="date"
+                  value={excelStartDate}
+                  onChange={(e) => setExcelStartDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+              <div>
+                <label className="block text-white/80 text-sm mb-1">Bitiş Tarihi</label>
+                <input
+                  type="date"
+                  value={excelEndDate}
+                  onChange={(e) => setExcelEndDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setOpenExcelModal(false)}
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg border border-white/20"
+              >
+                İptal
+              </button>
+              <button
+                onClick={async () => {
+                  if (excelStartDate && excelEndDate && excelStartDate > excelEndDate) {
+                    alert('Başlangıç tarihi bitiş tarihinden sonra olamaz.');
+                    return;
+                  }
+                  await exportToExcel(excelStartDate || undefined, excelEndDate || undefined);
+                  setOpenExcelModal(false);
+                }}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg"
+              >
+                İndir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
