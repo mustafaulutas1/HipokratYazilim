@@ -389,7 +389,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   const [digerFocused, setDigerFocused] = useState<Record<string, boolean>>({});
 
   // File upload states for optional scans
-  const [meridianScanFile, setMeridianScanFile] = useState<File | null>(null);
+  const [meridianScanFiles, setMeridianScanFiles] = useState<File[]>([]);
   const [thermalScanFile, setThermalScanFile] = useState<File | null>(null);
   const [toxicityScanFile, setToxicityScanFile] = useState<File | null>(null);
   const [deviceScanFile, setDeviceScanFile] = useState<File | null>(null);
@@ -516,7 +516,8 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
     optionalScans: {
       meridianScan: {
         enabled: false,
-        fileUrl: ''
+        fileUrl: '',
+        fileUrls: [] as string[]
       },
       thermalScan: {
         enabled: false,
@@ -794,7 +795,8 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         optionalScans: {
           meridianScan: {
             enabled: false,
-            fileUrl: ''
+            fileUrl: '',
+            fileUrls: [] as string[]
           },
           thermalScan: {
             enabled: false,
@@ -1028,18 +1030,11 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
   // File upload handlers for optional scans
   const handleMeridianScanFileUpload = (file: File) => {
-    setMeridianScanFile(file);
-    // Update form data to indicate file is selected
-    setFormData(prev => ({
-      ...prev,
-      optionalScans: {
-        ...prev.optionalScans,
-        meridianScan: {
-          ...prev.optionalScans.meridianScan,
-          fileUrl: 'pending' // Temporary indicator
-        }
-      }
-    }));
+    setMeridianScanFiles(prev => [...prev, file]);
+  };
+
+  const handleMeridianScanFileRemoveAt = (index: number) => {
+    setMeridianScanFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleThermalScanFileUpload = (file: File) => {
@@ -1072,20 +1067,6 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
     }));
   };
 
-  const handleMeridianScanFileRemove = () => {
-    setMeridianScanFile(null);
-    // Update form data to indicate file is removed
-    setFormData(prev => ({
-      ...prev,
-      optionalScans: {
-        ...prev.optionalScans,
-        meridianScan: {
-          ...prev.optionalScans.meridianScan,
-          fileUrl: ''
-        }
-      }
-    }));
-  };
 
   const handleThermalScanFileRemove = () => {
     setThermalScanFile(null);
@@ -1327,12 +1308,20 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
     let deviceScanFileUrl = '';
     try {
-      // Upload Meridian Scan file if selected
-      if (meridianScanFile && updatedOptionalScans.meridianScan.enabled) {
-        const meridianScanRef = ref(storage, `scans/${patient.id}/meridian_${Date.now()}_${meridianScanFile.name}`);
-        await uploadBytes(meridianScanRef, meridianScanFile);
-        const meridianScanUrl = await getDownloadURL(meridianScanRef);
-        updatedOptionalScans.meridianScan.fileUrl = meridianScanUrl;
+      // Upload Meridian Scan files if selected (supports multiple)
+      if (meridianScanFiles.length > 0 && updatedOptionalScans.meridianScan.enabled) {
+        const existingUrls: string[] = (updatedOptionalScans.meridianScan as any).fileUrls?.filter((u: string) => u && u !== 'pending') ||
+          (updatedOptionalScans.meridianScan.fileUrl && updatedOptionalScans.meridianScan.fileUrl !== 'pending' ? [updatedOptionalScans.meridianScan.fileUrl] : []);
+        const newUrls: string[] = [];
+        for (const file of meridianScanFiles) {
+          const meridianScanRef = ref(storage, `scans/${patient.id}/meridian_${Date.now()}_${file.name}`);
+          await uploadBytes(meridianScanRef, file);
+          const url = await getDownloadURL(meridianScanRef);
+          newUrls.push(url);
+        }
+        const allUrls = [...existingUrls, ...newUrls];
+        (updatedOptionalScans.meridianScan as any).fileUrls = allUrls;
+        updatedOptionalScans.meridianScan.fileUrl = allUrls[0] || '';
       }
 
       // Upload Thermal Scan file if selected
@@ -3203,12 +3192,56 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                       </div>
 
                       {formData.optionalScans.meridianScan.enabled && (
-                        <div className="ml-8 mt-4">
+                        <div className="ml-8 mt-4 space-y-3">
+                          {/* Already-uploaded files (edit mode) */}
+                          {(() => {
+                            const savedUrls: string[] = (formData.optionalScans.meridianScan as any).fileUrls?.filter((u: string) => u && u !== 'pending') ||
+                              (formData.optionalScans.meridianScan.fileUrl && formData.optionalScans.meridianScan.fileUrl !== 'pending'
+                                ? [formData.optionalScans.meridianScan.fileUrl] : []);
+                            return savedUrls.map((url: string, idx: number) => (
+                              <div key={idx} className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                                <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-800 truncate">Kayıtlı Dosya {idx + 1}</p>
+                                  <p className="text-xs text-gray-500">Yüklendi</p>
+                                </div>
+                                <a href={url} target="_blank" rel="noopener noreferrer"
+                                  className="text-xs px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex-shrink-0">
+                                  Görüntüle
+                                </a>
+                              </div>
+                            ));
+                          })()}
+                          {/* Newly selected local files (not yet uploaded) */}
+                          {meridianScanFiles.map((file, idx) => (
+                            <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                              <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-800 truncate">{file.name}</p>
+                                <p className="text-xs text-gray-500">Dosya yüklendi</p>
+                              </div>
+                              <button type="button" onClick={() => handleMeridianScanFileRemoveAt(idx)}
+                                className="text-red-500 hover:text-red-700 transition-colors flex-shrink-0">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          ))}
+                          {/* Add new file */}
                           <FileUpload
                             onFileUpload={handleMeridianScanFileUpload}
-                            onFileRemove={handleMeridianScanFileRemove}
-                            uploadedFileUrl={formData.optionalScans.meridianScan.fileUrl}
-                            fileName={meridianScanFile ? meridianScanFile.name : ''}
+                            onFileRemove={() => {}}
+                            uploadedFileUrl=""
+                            fileName=""
                           />
                         </div>
                       )}
