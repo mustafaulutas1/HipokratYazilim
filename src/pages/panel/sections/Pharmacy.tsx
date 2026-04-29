@@ -2799,11 +2799,17 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                         {/* Medicines List */}
                         <div className="max-h-[200px] overflow-y-auto space-y-2">
                           {savedMedications
-                            .filter(med =>
-                              extraMedicineSearch === '' ||
-                              med.name.toLowerCase().includes(extraMedicineSearch.toLowerCase()) ||
-                              med.category.toLowerCase().includes(extraMedicineSearch.toLowerCase())
-                            )
+                            .filter(med => {
+                              if (extraMedicineSearch === '') return true;
+                              const q = extraMedicineSearch.toLowerCase();
+                              return (
+                                med.name.toLowerCase().includes(q) ||
+                                med.category.toLowerCase().includes(q) ||
+                                getMedicationDisplayName(med).toLowerCase().includes(q) ||
+                                (med.protocolName || '').toLowerCase().includes(q) ||
+                                (med.description || '').toLowerCase().includes(q)
+                              );
+                            })
                             .map((med) => {
                               const alreadyAdded = pendingSoldItems.find(item => item.medicationId === med.id);
                               const pickerQty = pickerQuantities[med.id!] || 1;
@@ -2852,11 +2858,17 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                               );
                             })
                           }
-                          {savedMedications.filter(med =>
-                            extraMedicineSearch === '' ||
-                            med.name.toLowerCase().includes(extraMedicineSearch.toLowerCase()) ||
-                            med.category.toLowerCase().includes(extraMedicineSearch.toLowerCase())
-                          ).length === 0 && (
+                          {savedMedications.filter(med => {
+                            if (extraMedicineSearch === '') return true;
+                            const q = extraMedicineSearch.toLowerCase();
+                            return (
+                              med.name.toLowerCase().includes(q) ||
+                              med.category.toLowerCase().includes(q) ||
+                              getMedicationDisplayName(med).toLowerCase().includes(q) ||
+                              (med.protocolName || '').toLowerCase().includes(q) ||
+                              (med.description || '').toLowerCase().includes(q)
+                            );
+                          }).length === 0 && (
                             <div className="text-center py-4 text-gray-500 text-sm">
                               {savedMedications.length === 0
                                 ? 'Henüz ilaç tanımlanmamış. İlaçlar sekmesinden ilaç ekleyin.'

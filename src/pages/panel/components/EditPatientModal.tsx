@@ -29,6 +29,10 @@ interface Patient {
   createdAt: string;
   updatedAt: string;
   clinicId?: string;
+  indirim_check?: boolean;
+  indirim_tipi?: 'yuzde' | 'tutar';
+  indirim_orani?: number;
+  indirim_tutar?: number;
 }
 
 interface EditPatientModalProps {
@@ -59,7 +63,11 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
     visitReason: '',
     education: '',
     profession: '',
-    referans: ''
+    referans: '',
+    indirim_check: false,
+    indirim_tipi: 'yuzde' as 'yuzde' | 'tutar',
+    indirim_orani: 20,
+    indirim_tutar: 0
   });
 
   const [loading, setLoading] = useState(false);
@@ -87,24 +95,29 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
         visitReason: patient.visitReason || '',
         education: patient.education || '',
         profession: patient.profession || '',
-        referans: patient.referans || ''
+        referans: patient.referans || '',
+        indirim_check: patient.indirim_check ?? false,
+        indirim_tipi: (patient.indirim_tipi as 'yuzde' | 'tutar') || 'yuzde',
+        indirim_orani: patient.indirim_orani ?? 20,
+        indirim_tutar: patient.indirim_tutar ?? 0
       });
       setErrors({});
     }
   }, [patient]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    let newValue = value;
-    
-    // Special handling for TC Kimlik No to ensure only numeric input
+    const target = e.target as HTMLInputElement;
+    const { name } = target;
+    let newValue: any = target.type === 'checkbox' ? target.checked : target.value;
+
     if (name === 'tcNo') {
-      // Remove any non-numeric characters
-      newValue = newValue.toString().replace(/\D/g, '');
-      // Limit to 11 characters
-      newValue = newValue.slice(0, 11);
+      newValue = String(newValue).replace(/\D/g, '').slice(0, 11);
     }
-    
+
+    if (name === 'indirim_orani' || name === 'indirim_tutar') {
+      newValue = Number(newValue) || 0;
+    }
+
     setFormData(prev => ({
       ...prev,
       [name]: newValue
@@ -627,6 +640,104 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
               <option value="Yakın Çevre">Yakın Çevre</option>
               <option value="Diğer">Diğer</option>
             </select>
+          </div>
+
+          {/* Discount Option */}
+          <div className="p-4 bg-green-50 border border-green-200 rounded-xl space-y-4">
+            <div className="flex items-start gap-3">
+              <input
+                id="indirim_check"
+                name="indirim_check"
+                type="checkbox"
+                checked={formData.indirim_check}
+                onChange={handleInputChange}
+                className="mt-1 h-5 w-5 rounded border-green-300 text-green-600 focus:ring-green-500"
+                aria-label="Her zaman indirim uygula"
+              />
+              <label htmlFor="indirim_check" className="text-sm text-green-900">
+                <span className="font-semibold">Her zaman indirim uygula</span>
+                <span className="block text-green-800/80">
+                  Bu seçenek aktifken hastanın işlemlerinde otomatik olarak belirlenen oranda
+                  indirim işaretlenecektir.
+                </span>
+              </label>
+            </div>
+
+            {formData.indirim_check && (
+              <div className="ml-8 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-green-800 mb-2">
+                    İndirim Türü
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, indirim_tipi: 'yuzde' }))}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        formData.indirim_tipi === 'yuzde'
+                          ? 'bg-green-500 text-white'
+                          : 'bg-white border border-green-300 text-green-700 hover:bg-green-100'
+                      }`}
+                    >
+                      % Yüzde
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, indirim_tipi: 'tutar' }))}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        formData.indirim_tipi === 'tutar'
+                          ? 'bg-green-500 text-white'
+                          : 'bg-white border border-green-300 text-green-700 hover:bg-green-100'
+                      }`}
+                    >
+                      ₺ Tutar
+                    </button>
+                  </div>
+                </div>
+
+                {formData.indirim_tipi === 'yuzde' && (
+                  <div>
+                    <label className="block text-sm font-medium text-green-800 mb-2">
+                      İndirim Oranı (%)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        name="indirim_orani"
+                        value={formData.indirim_orani}
+                        onChange={handleInputChange}
+                        min="0"
+                        max="100"
+                        className="w-32 px-3 py-2 bg-white border border-green-300 rounded-lg text-green-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        placeholder="20"
+                      />
+                      <span className="text-sm text-green-700">%</span>
+                    </div>
+                  </div>
+                )}
+
+                {formData.indirim_tipi === 'tutar' && (
+                  <div>
+                    <label className="block text-sm font-medium text-green-800 mb-2">
+                      İndirim Tutarı (TL)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        name="indirim_tutar"
+                        value={formData.indirim_tutar}
+                        onChange={handleInputChange}
+                        min="0"
+                        step="0.01"
+                        className="w-32 px-3 py-2 bg-white border border-green-300 rounded-lg text-green-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        placeholder="100"
+                      />
+                      <span className="text-sm text-green-700">TL</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Action Buttons */}
