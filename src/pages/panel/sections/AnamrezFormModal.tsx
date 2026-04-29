@@ -1560,7 +1560,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
       }, 3000);
 
       // Reset file states
-      setMeridianScanFile(null);
+      setMeridianScanFiles([]);
       setThermalScanFile(null);
       setToxicityScanFile(null);
       setDeviceScanFile(null);
@@ -1635,7 +1635,8 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         optionalScans: {
           meridianScan: {
             enabled: false,
-            fileUrl: ''
+            fileUrl: '',
+            fileUrls: [] as string[]
           },
           thermalScan: {
             enabled: false,
