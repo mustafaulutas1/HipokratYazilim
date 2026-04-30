@@ -5,6 +5,20 @@ import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { TURKIYE_CITIES } from '../../../types/TurkiyeCities';
 
+const COUNTRIES = [
+  'Türkiye', 'Afganistan', 'Almanya', 'Amerika Birleşik Devletleri', 'Arnavutluk',
+  'Avustralya', 'Avusturya', 'Azerbaycan', 'Belçika', 'Bosna Hersek',
+  'Bulgaristan', 'Cezayir', 'Çin', 'Danimarka', 'Fas',
+  'Finlandiya', 'Fransa', 'Gürcistan', 'Hollanda', 'Irak',
+  'İngiltere', 'İran', 'İspanya', 'İsveç', 'İsviçre',
+  'İtalya', 'Japonya', 'Kanada', 'Katar', 'Kazakistan',
+  'Kıbrıs', 'Kosova', 'Kuveyt', 'Libya', 'Lübnan',
+  'Makedonya', 'Mısır', 'Moldova', 'Norveç', 'Özbekistan',
+  'Pakistan', 'Polonya', 'Portekiz', 'Romanya', 'Rusya',
+  'Suudi Arabistan', 'Sırbistan', 'Suriye', 'Tacikistan', 'Tunus',
+  'Türkmenistan', 'Ukrayna', 'Ürdün', 'Yemen', 'Yunanistan', 'Diğer',
+];
+
 interface AddPatientModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -21,7 +35,10 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
   const [formData, setFormData] = useState({
     dosyaNo: '',
     fullName: '',
+    isForeigner: false,
     tcNo: '',
+    passportNo: '',
+    nationality: '',
     phone: '',
     email: '',
     birthDate: '',
@@ -45,6 +62,20 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
 
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const handleForeignerToggle = () => {
+    setFormData((prev) => ({
+      ...prev,
+      isForeigner: !prev.isForeigner,
+      tcNo: '',
+      passportNo: '',
+      nationality: '',
+      country: !prev.isForeigner ? '' : 'Türkiye',
+      registeredProvince: '',
+      residenceCity: '',
+    }));
+    setErrors({});
+  };
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -76,8 +107,13 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
 
     if (!formData.dosyaNo.trim()) newErrors.dosyaNo = 'Hasta dosya numarası gereklidir';
     if (!formData.fullName.trim()) newErrors.fullName = 'Ad soyad gereklidir';
-    if (!formData.tcNo.trim()) newErrors.tcNo = 'TC kimlik numarası gereklidir';
-    else if (formData.tcNo.length !== 11) newErrors.tcNo = 'TC kimlik numarası 11 haneli olmalıdır';
+    if (formData.isForeigner) {
+      if (!formData.passportNo.trim()) newErrors.passportNo = 'Pasaport numarası gereklidir';
+      if (!formData.nationality.trim()) newErrors.nationality = 'Uyruk gereklidir';
+    } else {
+      if (!formData.tcNo.trim()) newErrors.tcNo = 'TC kimlik numarası gereklidir';
+      else if (formData.tcNo.length !== 11) newErrors.tcNo = 'TC kimlik numarası 11 haneli olmalıdır';
+    }
 
     if (!formData.phone.trim()) newErrors.phone = 'Telefon numarası gereklidir';
     else if (!/^\+\d{6,15}$/.test(formData.phone.replace(/\s/g, ''))) newErrors.phone = 'Geçerli bir telefon numarası giriniz';
@@ -90,8 +126,9 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
     if (!formData.address.trim()) newErrors.address = 'Adres gereklidir';
     if (!formData.fatherName.trim()) newErrors.fatherName = 'Baba adı gereklidir';
     if (!formData.birthPlace.trim()) newErrors.birthPlace = 'Doğum yeri gereklidir';
-    if (!formData.registeredProvince.trim()) newErrors.registeredProvince = 'Kayıtlı il gereklidir';
-    if (!formData.residenceCity.trim()) newErrors.residenceCity = 'İkamet ili gereklidir';
+    if (!formData.isForeigner && !formData.registeredProvince.trim()) newErrors.registeredProvince = 'Kayıtlı il gereklidir';
+    if (!formData.country.trim()) newErrors.country = 'Ülke gereklidir';
+    if (!formData.residenceCity.trim()) newErrors.residenceCity = 'İkamet ili/şehri gereklidir';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -120,14 +157,16 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
         return;
       }
 
-      const tcSnap = await getDocs(
-        query(collection(db, 'patients'), where('tcNo', '==', formData.tcNo))
-      );
-      if (!tcSnap.empty) {
-        setErrors((prev) => ({ ...prev, tcNo: 'Bu TC Kimlik No ile kayıt zaten mevcut' }));
-        toast.error('Bu TC Kimlik No ile kayıt zaten mevcut');
-        setLoading(false);
-        return;
+      if (!formData.isForeigner) {
+        const tcSnap = await getDocs(
+          query(collection(db, 'patients'), where('tcNo', '==', formData.tcNo))
+        );
+        if (!tcSnap.empty) {
+          setErrors((prev) => ({ ...prev, tcNo: 'Bu TC Kimlik No ile kayıt zaten mevcut' }));
+          toast.error('Bu TC Kimlik No ile kayıt zaten mevcut');
+          setLoading(false);
+          return;
+        }
       }
 
       await addDoc(collection(db, 'patients'), {
@@ -144,7 +183,10 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
       setFormData({
         dosyaNo: '',
         fullName: '',
+        isForeigner: false,
         tcNo: '',
+        passportNo: '',
+        nationality: '',
         phone: '',
         email: '',
         birthDate: '',
@@ -194,6 +236,28 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6 bg-white">
+          {/* Yabancı Uyruklu Toggle */}
+          <div className="flex items-center gap-3 p-4 bg-orange-50 border border-orange-200 rounded-xl">
+            <button
+              type="button"
+              onClick={handleForeignerToggle}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 ${
+                formData.isForeigner ? 'bg-orange-500' : 'bg-gray-300'
+              }`}
+              aria-pressed={formData.isForeigner}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-md transition-transform ${
+                  formData.isForeigner ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+            <div>
+              <span className="font-semibold text-gray-800 text-sm">TC vatandaşı değil (Yabancı Uyruklu)</span>
+              <p className="text-xs text-gray-500 mt-0.5">Aktif edildiğinde TC Kimlik No yerine Pasaport No ve Uyruk bilgisi alınır.</p>
+            </div>
+          </div>
+
           {/* Hasta Dosya Numarası */}
           <div>
             <label className="block text-gray-700 text-sm font-medium mb-2">
@@ -231,29 +295,67 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
               {errors.fullName && <p className="text-red-500 text-sm mt-1">{errors.fullName}</p>}
             </div>
 
-            <div>
-              <label className="block text-gray-700 text-sm font-medium mb-2">
-                TC Kimlik No *
-              </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                name="tcNo"
-                value={formData.tcNo}
-                onChange={handleInputChange}
-                maxLength={11}
-                className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
-                  errors.tcNo ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="11 haneli TC kimlik numarası"
-                onKeyDown={(e) => {
-                  if (!/[0-9]/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key)) {
-                    e.preventDefault();
-                  }
-                }}
-              />
-              {errors.tcNo && <p className="text-red-500 text-sm mt-1">{errors.tcNo}</p>}
-            </div>
+            {formData.isForeigner ? (
+              <>
+                <div>
+                  <label className="block text-gray-700 text-sm font-medium mb-2">
+                    Pasaport No *
+                  </label>
+                  <input
+                    type="text"
+                    name="passportNo"
+                    value={formData.passportNo}
+                    onChange={handleInputChange}
+                    className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+                      errors.passportNo ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                    placeholder="Pasaport numarası"
+                  />
+                  {errors.passportNo && <p className="text-red-500 text-sm mt-1">{errors.passportNo}</p>}
+                </div>
+
+                <div>
+                  <label className="block text-gray-700 text-sm font-medium mb-2">
+                    Uyruk *
+                  </label>
+                  <input
+                    type="text"
+                    name="nationality"
+                    value={formData.nationality}
+                    onChange={handleInputChange}
+                    className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+                      errors.nationality ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                    placeholder="Örn: Alman, Rus, İngiliz..."
+                  />
+                  {errors.nationality && <p className="text-red-500 text-sm mt-1">{errors.nationality}</p>}
+                </div>
+              </>
+            ) : (
+              <div>
+                <label className="block text-gray-700 text-sm font-medium mb-2">
+                  TC Kimlik No *
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  name="tcNo"
+                  value={formData.tcNo}
+                  onChange={handleInputChange}
+                  maxLength={11}
+                  className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+                    errors.tcNo ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                  placeholder="11 haneli TC kimlik numarası"
+                  onKeyDown={(e) => {
+                    if (!/[0-9]/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key)) {
+                      e.preventDefault();
+                    }
+                  }}
+                />
+                {errors.tcNo && <p className="text-red-500 text-sm mt-1">{errors.tcNo}</p>}
+              </div>
+            )}
 
             <div>
               <label className="block text-gray-700 text-sm font-medium mb-2">
@@ -385,40 +487,75 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
               {errors.birthPlace && <p className="text-red-500 text-sm mt-1">{errors.birthPlace}</p>}
             </div>
 
+            {!formData.isForeigner && (
+              <div>
+                <label className="block text-gray-700 text-sm font-medium mb-2">
+                  Kayıtlı İl *
+                </label>
+                <input
+                  type="text"
+                  name="registeredProvince"
+                  value={formData.registeredProvince}
+                  onChange={handleInputChange}
+                  className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+                    errors.registeredProvince ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                  placeholder="Kayıtlı il"
+                />
+                {errors.registeredProvince && <p className="text-red-500 text-sm mt-1">{errors.registeredProvince}</p>}
+              </div>
+            )}
+
             <div>
               <label className="block text-gray-700 text-sm font-medium mb-2">
-                Kayıtlı İl *
+                Ülke *
               </label>
-              <input
-                type="text"
-                name="registeredProvince"
-                value={formData.registeredProvince}
+              <select
+                name="country"
+                value={formData.country}
                 onChange={handleInputChange}
-                className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
-                  errors.registeredProvince ? 'border-red-500' : 'border-gray-300'
+                className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+                  errors.country ? 'border-red-500' : 'border-gray-300'
                 }`}
-                placeholder="Kayıtlı il"
-              />
-              {errors.registeredProvince && <p className="text-red-500 text-sm mt-1">{errors.registeredProvince}</p>}
+              >
+                <option value="">Ülke seçiniz</option>
+                {COUNTRIES.map((countryName) => (
+                  <option key={countryName} value={countryName}>{countryName}</option>
+                ))}
+              </select>
+              {errors.country && <p className="text-red-500 text-sm mt-1">{errors.country}</p>}
             </div>
 
             <div>
               <label className="block text-gray-700 text-sm font-medium mb-2">
-                İkamet İli *
+                {formData.isForeigner ? 'İkamet Şehri / Bölgesi *' : 'İkamet İli *'}
               </label>
-              <select
-                name="residenceCity"
-                value={formData.residenceCity}
-                onChange={handleInputChange}
-                className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
-                  errors.residenceCity ? 'border-red-500' : 'border-gray-300'
-                }`}
-              >
-                <option value="">İkamet ili seçiniz</option>
-                {TURKIYE_CITIES.map((city) => (
-                  <option key={city.id} value={city.name}>{city.name}</option>
-                ))}
-              </select>
+              {formData.isForeigner ? (
+                <input
+                  type="text"
+                  name="residenceCity"
+                  value={formData.residenceCity}
+                  onChange={handleInputChange}
+                  className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+                    errors.residenceCity ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                  placeholder="İkamet ettiği şehir veya bölge"
+                />
+              ) : (
+                <select
+                  name="residenceCity"
+                  value={formData.residenceCity}
+                  onChange={handleInputChange}
+                  className={`w-full px-4 py-3 bg-gray-50 border rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 ${
+                    errors.residenceCity ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                >
+                  <option value="">İkamet ili seçiniz</option>
+                  {TURKIYE_CITIES.map((city) => (
+                    <option key={city.id} value={city.name}>{city.name}</option>
+                  ))}
+                </select>
+              )}
               {errors.residenceCity && <p className="text-red-500 text-sm mt-1">{errors.residenceCity}</p>}
             </div>
           </div>
