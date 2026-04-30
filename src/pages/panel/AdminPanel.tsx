@@ -21,6 +21,7 @@ import { loggingService } from '../../services/loggingService';
 type PanelSection = 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
 
 interface DoctorProfile {
+  uid?: string;
   fullName: string;
   email: string;
   specialization: string;
@@ -89,7 +90,7 @@ export default function AdminPanel() {
           const doctorSnap = await getDoc(doctorRef);
           
           if (doctorSnap.exists()) {
-            const data = doctorSnap.data() as DoctorProfile;
+            const data = { ...doctorSnap.data() as DoctorProfile, uid: user.uid };
             setDoctorProfile(data);
             setIsDoctor(true);
             // Doctor access confirmed
@@ -97,9 +98,9 @@ export default function AdminPanel() {
             // Check if user is a clinic user
             const clinicUserRef = doc(db, "clinicUsers", user.uid);
             const clinicUserSnap = await getDoc(clinicUserRef);
-            
+
             if (clinicUserSnap.exists()) {
-              const data = clinicUserSnap.data() as DoctorProfile;
+              const data = { ...clinicUserSnap.data() as DoctorProfile, uid: user.uid };
               setDoctorProfile(data);
               setIsDoctor(true);
               // Clinic user access confirmed

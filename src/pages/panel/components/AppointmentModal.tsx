@@ -197,21 +197,22 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
   // Gün randevularını çek (disable için). Edit modda mevcut id'yi hariç tut.
   useEffect(() => {
     if (!isOpen) return;
-    // Use local date instead of UTC to avoid timezone issues
     const year = selectedDate.getFullYear();
     const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
     const day = String(selectedDate.getDate()).padStart(2, '0');
     const dateISO = `${year}-${month}-${day}`;
+    const ownerUid = doctorProfile?.uid || doctorId;
     (async () => {
       const qDay = query(collection(db, 'appointments'), where('dateISO', '==', dateISO));
       const snap = await getDocs(qDay);
-      const list = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+      const list = snap.docs
+        .map(d => ({ id: d.id, ...(d.data() as any) }))
+        .filter(x => !ownerUid || x.doctorId === ownerUid);
       const filtered = editedAppointment ? list.filter(x => x.id !== editedAppointment.id) : list;
-      // start'a göre sırala
       filtered.sort((a,b)=>String(a.start||'').localeCompare(String(b.start||'')));
       setDayAppointments(filtered);
     })();
-  }, [isOpen, selectedDate, editedAppointment]);
+  }, [isOpen, selectedDate, editedAppointment, doctorProfile?.uid, doctorId]);
 
   const selectedTypeObj = useMemo(() => types.find(t => t.id === selectedType), [types, selectedType]);
 
@@ -349,12 +350,11 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
   */
 
   const checkOverlap = async () => {
-    // fetch same-day appointments to check overlap
-    // Use local date instead of UTC
     const year = selectedDate.getFullYear();
     const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
     const day = String(selectedDate.getDate()).padStart(2, '0');
     const dateISO = `${year}-${month}-${day}`;
+    const ownerUid = doctorProfile?.uid || doctorId;
     const qDay = query(collection(db, 'appointments'), where('dateISO', '==', dateISO));
     const snap = await getDocs(qDay);
     const start = timeToMinutes(startTime);
@@ -362,8 +362,10 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
     const end = start + dur;
     for (const d of snap.docs) {
       const data = d.data() as any;
-      // Skip cancelled appointments - they don't block time slots
       if (data.status === 'cancelled') continue;
+      // Sadece aynı yöneticiye ait randevularla çakışmayı kontrol et
+      if (ownerUid && data.doctorId !== ownerUid) continue;
+      if (editedAppointment?.id && d.id === editedAppointment.id) continue;
       const s = timeToMinutes(data.start ?? data.time);
       const apptDuration = data.durationMinutes ?? data.duration ?? 30;
       const e = s + apptDuration;
@@ -413,7 +415,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
             dateISO,
             start: startTime,
             status: editedAppointment.status || 'confirmed',
-            doctorId: doctorId || editedAppointment.doctorId || null,
+            doctorId: doctorProfile?.uid || doctorId || editedAppointment.doctorId || null,
             notes: notes || '',
             clinicId: doctorProfile?.clinicId || editedAppointment.clinicId || 'default-clinic',
           });
@@ -426,7 +428,7 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
             dateISO,
             start: startTime,
             status: 'pending',
-            doctorId: doctorId || null,
+            doctorId: doctorProfile?.uid || doctorId || null,
             notes: notes || '',
             clinicId: doctorProfile?.clinicId || 'default-clinic',
             ...(routineProgramId ? { routineProgramId } : {}),
