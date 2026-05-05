@@ -77,11 +77,17 @@ export const AVAILABLE_PERMISSIONS: Permission[] = [
     name: 'Tedavi Ekranı',
     description: 'Tedavi uygulamaları ve takibi',
     icon: '🏥'
+  },
+  {
+    id: 'treatment-report',
+    name: 'Tedavi Raporu',
+    description: 'Hasta tedavi geçmişi ve raporlama',
+    icon: '📊'
   }
 ];
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
-  admin: ['patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'prescriptions', 'assistant-panel', 'doctor-panel', 'treatment-panel'],
+  admin: ['patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'prescriptions', 'assistant-panel', 'doctor-panel', 'treatment-panel', 'treatment-report'],
   doctor: ['patients', 'appointments', 'anamnez', 'treatment-protocols', 'assistant-panel', 'doctor-panel'],
   nurse: ['patients', 'appointments', 'anamnez'],
   assistant: ['patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'accounting', 'pharmacy', 'prescriptions', 'assistant-panel', 'doctor-panel', 'treatment-panel'],
@@ -90,7 +96,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
   accounting: ['patients', 'appointments', 'accounting'],
   pharmacy: ['patients', 'appointments', 'pharmacy', 'prescriptions'],
   treatment: ['patients', 'appointments', 'treatment-protocols', 'anamnez', 'treatment-panel'],
-  'call-center': ['patients', 'appointments']
+  'call-center': ['patients', 'appointments'],
+  bashemshire: ['patients', 'appointments', 'anamnez', 'treatment-report']
 };
 
 export const ROLE_TRANSLATIONS: Record<string, string> = {
@@ -104,7 +111,8 @@ export const ROLE_TRANSLATIONS: Record<string, string> = {
   pharmacy: 'Eczane Sorumlusu',
   treatment: 'Tedavi Uzmanı',
   'call-center': 'Call Center',
-  patient: 'Hasta'
+  patient: 'Hasta',
+  bashemshire: 'BaşHemşire'
 };
 
 export const getRoleDisplayName = (userType: string): string => {

@@ -15,10 +15,11 @@ import DoctorPanel from './sections/DoctorPanel';
 import AccountingScreen from './sections/AccountingScreen';
 import TreatmentPanel from './sections/TreatmentPanel';
 import Pharmacy from './sections/Pharmacy';
+import TreatmentReport from './sections/TreatmentReport';
 import { getUserPermissions } from '../../constants/permissions';
 import { loggingService } from '../../services/loggingService';
 
-type PanelSection = 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
+type PanelSection = 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel' | 'treatment-report';
 
 interface DoctorProfile {
   uid?: string;
@@ -56,6 +57,7 @@ export default function AdminPanel() {
       'accounting': 'Muhasebe',
       'pharmacy': 'Eczane',
       'treatment-panel': 'Tedavi Ekranı',
+      'treatment-report': 'Tedavi Raporu',
       'settings': 'Ayarlar'
     };
 
@@ -219,6 +221,8 @@ export default function AdminPanel() {
         return <TreatmentPanel doctorProfile={doctorProfile} />;
       case 'pharmacy':
         return <Pharmacy doctorProfile={doctorProfile} />;
+      case 'treatment-report':
+        return <TreatmentReport doctorProfile={doctorProfile} />;
       default:
         return null;
     }
@@ -277,6 +281,7 @@ export default function AdminPanel() {
                     {currentSection === 'assistant-panel' && 'Asistan Ekranı'}
                     {currentSection === 'doctor-panel' && 'Doktor Ekranı'}
                     {currentSection === 'treatment-panel' && 'Tedavi Ekranı'}
+                    {currentSection === 'treatment-report' && 'Tedavi Raporu'}
                   </h1>
                   <p className="text-white/70 text-sm">
                     {doctorProfile?.specialization} • {doctorProfile?.hospital}

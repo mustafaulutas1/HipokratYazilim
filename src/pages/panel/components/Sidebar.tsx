@@ -4,7 +4,7 @@ import { rtmLogo } from '../../../assets';
 import { getRoleDisplayName } from '../../../constants/permissions';
 import { useUserPermissions } from '../../../hooks/useUserPermissions';
 
-type PanelSection = 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
+type PanelSection = 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel' | 'treatment-report';
 
 interface SidebarProps {
   currentSection: PanelSection | null;
@@ -73,7 +73,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
       pharmacy: '💊',
       treatment: '🩺',
       'call-center': '📞',
-      patient: '👤'
+      patient: '👤',
+      bashemshire: '👩‍⚕️'
     };
     return icons[userType] || '👨‍⚕️';
   };
@@ -155,6 +156,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
       label: 'Tedavi Ekranı',
       icon: '🏥',
       description: 'Tedavi uygulamaları ve takibi'
+    },
+    {
+      id: 'treatment-report',
+      label: 'Tedavi Raporu',
+      icon: '📊',
+      description: 'Hasta tedavi geçmişi ve raporlama'
     },
     {
       id: 'settings',

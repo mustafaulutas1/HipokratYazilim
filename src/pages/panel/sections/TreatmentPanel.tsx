@@ -387,6 +387,34 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
 
       await updateDoc(patientRef, updateData);
 
+      // ── Tedavi Raporu kaydı oluştur ────────────────────────────────────────
+      try {
+        const now = new Date();
+        const sessionType = (selectedPatient as TreatmentSession)._sessionType || selectedPatient.appointmentType || '';
+        const reportClinicId = selectedPatient.clinicId || doctorProfile?.clinicId || '';
+        if (!reportClinicId) throw new Error('clinicId bulunamadı, rapor kaydedilemedi');
+        await addDoc(collection(db, 'treatmentReports'), {
+          patientId: selectedPatient.id,
+          patientName: selectedPatient.fullName,
+          clinicId: reportClinicId,
+          date: now.toISOString().split('T')[0],
+          time: now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+          doctorId: selectedPatient.assignedDoctorId || '',
+          doctorName: selectedPatient.assignedDoctorName || '',
+          visitType: sessionType,
+          complaint: selectedPatient.visitReason || '',
+          appliedTreatments: updateData.appliedTreatments ?? [],
+          treatmentApplied: updateData.treatmentApplied ?? false,
+          treatmentNotes: updateData.treatmentNotes ?? '',
+          notAppliedReason: updateData.treatmentNotAppliedReason ?? '',
+          protocolName: selectedPatient.treatmentOptions?.protocolName ?? '',
+          createdAt: now.toISOString(),
+        });
+        console.log('✅ Tedavi raporu oluşturuldu:', selectedPatient.fullName);
+      } catch (reportErr) {
+        console.error('❌ Tedavi raporu oluşturulamadı:', reportErr);
+      }
+
       // ── Uygulanan tedavileri ilgili anamrezRecord'a kaydet ─────────────────
       try {
         const anamrezQ = query(

@@ -80,5 +80,12 @@ export const DEFAULT_ROLES: Omit<Role, 'id' | 'createdAt' | 'updatedAt'>[] = [
     description: 'Hasta görüntüleme ve hızlı randevu verme işlemleri',
     permissions: ['dashboard', 'patients', 'appointments'],
     isDefault: true
+  },
+  {
+    name: 'bashemshire',
+    displayName: 'BaşHemşire',
+    description: 'Hemşirelik hizmetleri yönetimi ve tedavi raporlama',
+    permissions: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-report'],
+    isDefault: true
   }
 ];
