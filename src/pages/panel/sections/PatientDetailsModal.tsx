@@ -140,10 +140,43 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
           collection(db, 'appointments'),
           where('patientId', '==', patient.id)
         );
-        const [anamrezSnapshot, appointmentsSnapshot] = await Promise.all([
+        // Fetch treatmentReports to get performerName for each treatment day
+        const treatmentReportsQuery = query(
+          collection(db, 'treatmentReports'),
+          where('patientId', '==', patient.id)
+        );
+        const [anamrezSnapshot, appointmentsSnapshot, treatmentReportsSnapshot] = await Promise.all([
           getDocs(anamrezQuery),
-          getDocs(appointmentsQuery)
+          getDocs(appointmentsQuery),
+          getDocs(treatmentReportsQuery)
         ]);
+
+        // Helper: any date value → YYYY-MM-DD string (handles strings and Firestore Timestamps)
+        const toDateStr = (val: any): string => {
+          if (!val) return '';
+          if (typeof val === 'string') return val.split('T')[0];
+          if (typeof val === 'object' && val.seconds) return new Date(val.seconds * 1000).toISOString().split('T')[0];
+          return '';
+        };
+
+        // Build date → performerName map AND a list for closest-date fallback
+        const performerByDate = new Map<string, string>();
+        const treatmentReportsList: Array<{ dateMs: number; performerName: string; appliedTreatments: string[] }> = [];
+
+        treatmentReportsSnapshot.docs.forEach(d => {
+          const rData = d.data();
+          if (!rData.performerName) return;
+          const performer = rData.performerName as string;
+          // Index by date field
+          const dateKey = toDateStr(rData.date) || toDateStr(rData.createdAt);
+          if (dateKey) performerByDate.set(dateKey, performer);
+          // Also index by createdAt if different
+          const createdKey = toDateStr(rData.createdAt);
+          if (createdKey && createdKey !== dateKey) performerByDate.set(createdKey, performer);
+          // Add to list for closest-date fallback
+          const dateMs = dateKey ? new Date(dateKey).getTime() : 0;
+          treatmentReportsList.push({ dateMs, performerName: performer, appliedTreatments: (rData.appliedTreatments as string[]) || [] });
+        });
 
         // Build a lookup map: appointmentId → { typeName, typeId }
         const appointmentTypeMap = new Map<string, { typeName: string; typeId: string }>();
@@ -160,6 +193,33 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
           const apptType = appointmentTypeMap.get(data.appointmentId || '');
           const typeName = data.typeName || apptType?.typeName || '';
           const typeId = data.typeId || apptType?.typeId || '';
+          // Resolve performerName: multi-step fallback strategy
+          let resolvedPerformerName: string = data.performerName || '';
+          if (!resolvedPerformerName) {
+            // Step 1: try all available date keys for exact map match
+            const dateKeys = [
+              toDateStr(data.treatmentCompletedAt),
+              toDateStr(data.appointmentDate),
+              toDateStr(data.updatedAt),
+              toDateStr(data.createdAt),
+            ].filter(Boolean);
+            for (const key of dateKeys) {
+              const found = performerByDate.get(key);
+              if (found) { resolvedPerformerName = found; break; }
+            }
+            // Step 2: if still empty and record has applied treatments, find closest report within 7 days
+            if (!resolvedPerformerName && data.appliedTreatments?.length && treatmentReportsList.length > 0) {
+              const refMs = dateKeys.length > 0 ? new Date(dateKeys[0]).getTime() : 0;
+              if (refMs > 0) {
+                const closest = treatmentReportsList.reduce((best, r) =>
+                  Math.abs(r.dateMs - refMs) < Math.abs(best.dateMs - refMs) ? r : best
+                );
+                if (Math.abs(closest.dateMs - refMs) <= 7 * 24 * 60 * 60 * 1000) {
+                  resolvedPerformerName = closest.performerName;
+                }
+              }
+            }
+          }
           return {
             id: doc.id,
             patientId: data.patientId,
@@ -183,7 +243,9 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
             typeName,
             typeId,
             // Keep original data for viewing
-            ...data
+            ...data,
+            // Override performerName after spread so fallback lookup wins for old records
+            performerName: resolvedPerformerName,
           } as PatientHistoryRecord & { source: string };
         });
 
@@ -1498,6 +1560,14 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
                                           <div className="flex gap-2 items-center">
                                             <span className="text-gray-400 shrink-0 w-28">Hekim</span>
                                             <span className="text-gray-600 font-medium">Dr. {doctorName}</span>
+                                          </div>
+                                        )}
+
+                                        {/* Tedaviyi Yapan */}
+                                        {(record as any).performerName && (
+                                          <div className="flex gap-2 items-center">
+                                            <span className="text-gray-400 shrink-0 w-28">Tedaviyi Yapan</span>
+                                            <span className="text-gray-600 font-medium">{(record as any).performerName}</span>
                                           </div>
                                         )}
 

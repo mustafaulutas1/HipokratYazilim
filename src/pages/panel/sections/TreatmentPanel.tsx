@@ -438,6 +438,7 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
             treatmentNotAppliedReason: updateData.treatmentNotAppliedReason ?? '',
             unselectedTreatments: updateData.unselectedTreatments ?? [],
             protocolName: selectedPatient.treatmentOptions?.protocolName ?? '',
+            performerName: doctorProfile?.fullName || '',
             treatmentCompletedAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           });
