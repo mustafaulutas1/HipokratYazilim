@@ -84,8 +84,8 @@ export const DEFAULT_ROLES: Omit<Role, 'id' | 'createdAt' | 'updatedAt'>[] = [
   {
     name: 'bashemshire',
     displayName: 'BaşHemşire',
-    description: 'Hemşirelik hizmetleri yönetimi ve tedavi raporlama',
-    permissions: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-report'],
+    description: 'Hemşirelik hizmetleri yönetimi, tedavi uygulama ve raporlama',
+    permissions: ['dashboard', 'patients', 'appointments', 'anamnez', 'treatment-protocols', 'treatment-panel', 'treatment-report'],
     isDefault: true
   }
 ];

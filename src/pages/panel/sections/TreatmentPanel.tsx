@@ -83,6 +83,9 @@ interface TreatmentStats {
 }
 
 const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
+  const userRole = doctorProfile?.role || doctorProfile?.userType || '';
+  const canApplyTreatment = userRole === 'admin' || userRole === 'bashemshire';
+
   const [stats, setStats] = useState<TreatmentStats>({
     totalPendingTreatments: 0,
     todayTreatments: 0,
@@ -748,6 +751,7 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
 
                 {activeListType === 'pending_treatment' && (
                   <div className="flex items-center gap-2 ml-4">
+                    {canApplyTreatment ? (
                     <button
                       onClick={() => {
                         setSelectedPatient(patient);
@@ -769,6 +773,12 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
                       <span className="text-lg">{patient.additionalTreatmentPending ? '💊' : '🏥'}</span>
                       {patient.additionalTreatmentPending ? 'Ek Tedaviye Başla' : 'Tedavi Uygula'}
                     </button>
+                    ) : (
+                      <div className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-white/40 text-sm flex items-center gap-2">
+                        <span>🔒</span>
+                        <span>Yalnızca Sistem Yöneticisi veya BaşHemşire uygulayabilir</span>
+                      </div>
+                    )}
                     <button
                       onClick={() => handleMarkAsEmergency(patient)}
                       disabled={loading}
