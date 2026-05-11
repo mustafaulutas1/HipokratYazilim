@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, updateDoc, doc, onSnapshot, getDocs, addDoc, getDoc } from 'firebase/firestore';
+import { collection, query, where, updateDoc, doc, onSnapshot, getDocs, addDoc, getDoc, increment } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import AdditionalTreatmentRequestModal from '../components/AdditionalTreatmentRequestModal';
 
@@ -82,6 +82,21 @@ interface TreatmentStats {
   inProgressTreatments: number;
 }
 
+interface KatDepoUrun {
+  id: string;
+  productName: string;
+  stockCode: string;
+  quantity: number;
+  clinicId: string;
+}
+
+interface SelectedMaterial {
+  productId: string;
+  productName: string;
+  stockCode: string;
+  quantity: number;
+}
+
 const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
   const userRole = doctorProfile?.role || doctorProfile?.userType || '';
   const canApplyTreatment = userRole === 'admin' || userRole === 'bashemshire';
@@ -117,6 +132,12 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
   const [routineSymptomRatings, setRoutineSymptomRatings] = useState<Record<string, number>>({});
   const [routineSymptomNotes, setRoutineSymptomNotes] = useState<Record<string, string>>({});
   const [_anamrezFetchLoading, setAnamrezFetchLoading] = useState(false);
+
+  // Kat Depo malzeme state
+  const [katDepoItems, setKatDepoItems] = useState<KatDepoUrun[]>([]);
+  const [selectedMaterials, setSelectedMaterials] = useState<SelectedMaterial[]>([]);
+  const [katDepoLoading, setKatDepoLoading] = useState(false);
+  const [materialSearch, setMaterialSearch] = useState('');
 
   useEffect(() => {
     if (!doctorProfile?.clinicId) return;
@@ -253,6 +274,44 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
       setAnamrezFetchLoading(false);
     }
   };
+
+  const fetchKatDepoItems = async () => {
+    if (!doctorProfile?.clinicId) return;
+    setKatDepoLoading(true);
+    try {
+      const q = query(
+        collection(db, 'katDepoUrunler'),
+        where('clinicId', '==', doctorProfile.clinicId)
+      );
+      const snap = await getDocs(q);
+      const items = snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as KatDepoUrun))
+        .filter(item => item.quantity > 0);
+      setKatDepoItems(items);
+    } catch (err) {
+      console.error('❌ Kat depo ürünleri yüklenemedi:', err);
+    } finally {
+      setKatDepoLoading(false);
+    }
+  };
+
+  const handleMaterialQuantityChange = (item: KatDepoUrun, qty: number) => {
+    if (qty <= 0) {
+      setSelectedMaterials(prev => prev.filter(m => m.productId !== item.id));
+      return;
+    }
+    const maxQty = Math.min(qty, item.quantity);
+    setSelectedMaterials(prev => {
+      const existing = prev.find(m => m.productId === item.id);
+      if (existing) {
+        return prev.map(m => m.productId === item.id ? { ...m, quantity: maxQty } : m);
+      }
+      return [...prev, { productId: item.id, productName: item.productName, stockCode: item.stockCode, quantity: maxQty }];
+    });
+  };
+
+  const getMaterialQty = (productId: string) =>
+    selectedMaterials.find(m => m.productId === productId)?.quantity ?? 0;
 
   const handleMarkAsEmergency = (patient: TreatmentPatient) => {
     setEmergencyPatient(patient);
@@ -482,6 +541,39 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
         console.log(`⚠️ Unselected treatments (refund required): ${unselectedTreatments.join(', ')}`);
       }
 
+      // ── Kat Depo malzeme düşümü ve kullanım kaydı ──────────────────────────
+      if (selectedMaterials.length > 0) {
+        try {
+          for (const material of selectedMaterials) {
+            const urunRef = doc(db, 'katDepoUrunler', material.productId);
+            await updateDoc(urunRef, {
+              quantity: increment(-material.quantity),
+              updatedAt: new Date().toISOString(),
+            });
+          }
+
+          await addDoc(collection(db, 'katDepoKullanimlar'), {
+            nurseName: doctorProfile?.fullName || '',
+            nurseId: doctorProfile?.clinicId || '',
+            patientName: selectedPatient.fullName,
+            treatmentName: selectedPatient.treatmentOptions?.protocolName || selectedTreatments.join(', ') || 'Tedavi',
+            items: selectedMaterials.map(m => ({
+              productId: m.productId,
+              productName: m.productName,
+              plannedQty: m.quantity,
+              usedQty: m.quantity,
+            })),
+            clinicId: selectedPatient.clinicId || doctorProfile?.clinicId || '',
+            date: new Date().toISOString().split('T')[0],
+            createdAt: new Date().toISOString(),
+          });
+
+          console.log('✅ Kat depo malzemeleri düşüldü:', selectedMaterials);
+        } catch (depoErr) {
+          console.error('❌ Kat depo güncelleme hatası:', depoErr);
+        }
+      }
+
       // Reset modal state
       setIsTreatmentModalOpen(false);
       setSelectedPatient(null);
@@ -493,6 +585,9 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
       setPendingAnamrezRecord(null);
       setRoutineSymptomRatings({});
       setRoutineSymptomNotes({});
+      setSelectedMaterials([]);
+      setKatDepoItems([]);
+      setMaterialSearch('');
 
       // Refetch data
       window.location.reload(); // Simple refresh for now
@@ -761,7 +856,9 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
                         const allTreatments = patient.treatmentOptions?.selectedMainApplications || [];
                         setSelectedTreatments([...allTreatments]);
                         setUnselectedTreatmentReason('');
+                        setSelectedMaterials([]);
                         fetchPendingAnamrez(patient);
+                        fetchKatDepoItems();
                         setIsTreatmentModalOpen(true);
                       }}
                       className={`px-4 py-2 border rounded-xl transition-all duration-200 flex items-center gap-2 ${
@@ -1036,6 +1133,85 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
                 />
               </div>
 
+              {/* Kat Depo Malzeme Seçimi */}
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+                <h4 className="font-semibold text-emerald-900 mb-3 flex items-center gap-2">
+                  <span className="text-lg">🏪</span>
+                  Kullanılan Malzemeler
+                  <span className="text-xs font-normal text-emerald-600 ml-2">(Kat Deposu'ndan düşülecek)</span>
+                </h4>
+                {katDepoLoading ? (
+                  <div className="flex items-center gap-2 text-emerald-700 text-sm">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-emerald-600"></div>
+                    Kat deposu yükleniyor...
+                  </div>
+                ) : katDepoItems.length === 0 ? (
+                  <p className="text-emerald-700 text-sm">Kat deposunda stokta ürün bulunmuyor.</p>
+                ) : (
+                  <>
+                  <div className="mb-2 relative">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+                    <input
+                      type="text"
+                      value={materialSearch}
+                      onChange={e => setMaterialSearch(e.target.value)}
+                      placeholder="Ürün ara..."
+                      className="w-full pl-8 pr-3 py-1.5 text-sm border border-emerald-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white"
+                    />
+                  </div>
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {[...katDepoItems]
+                      .filter(item => item.productName.toLowerCase().includes(materialSearch.toLowerCase()) || item.stockCode.toLowerCase().includes(materialSearch.toLowerCase()))
+                      .sort((a, b) => a.productName.localeCompare(b.productName, 'tr'))
+                      .map(item => {
+                      const selected = getMaterialQty(item.id);
+                      return (
+                        <div key={item.id} className={`flex items-center gap-3 p-2 rounded-lg border transition-all ${selected > 0 ? 'bg-emerald-100 border-emerald-400' : 'bg-white border-gray-200'}`}>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-800 truncate">{item.productName}</p>
+                            <p className="text-xs text-gray-500">Kod: {item.stockCode} &nbsp;|&nbsp; Stok: {item.quantity}</p>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleMaterialQuantityChange(item, selected - 1)}
+                              className="w-6 h-6 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold text-sm flex items-center justify-center"
+                            >−</button>
+                            <input
+                              type="number"
+                              min={0}
+                              max={item.quantity}
+                              value={selected}
+                              onChange={e => handleMaterialQuantityChange(item, parseInt(e.target.value) || 0)}
+                              className="w-12 text-center text-sm border border-gray-300 rounded px-1 py-0.5"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleMaterialQuantityChange(item, selected + 1)}
+                              disabled={selected >= item.quantity}
+                              className="w-6 h-6 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold text-sm flex items-center justify-center disabled:opacity-40"
+                            >+</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  </>
+                )}
+                {selectedMaterials.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-emerald-300">
+                    <p className="text-xs font-semibold text-emerald-800 mb-1">Seçilenler:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {selectedMaterials.map(m => (
+                        <span key={m.productId} className="text-xs bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-full">
+                          {m.productName} × {m.quantity}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Patient Info Summary */}
               <div className="bg-gray-50 p-4 rounded-lg">
                 <h4 className="font-medium text-gray-900 mb-2">Hasta Bilgileri</h4>
@@ -1063,6 +1239,8 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
                   setPendingAnamrezRecord(null);
                   setRoutineSymptomRatings({});
                   setRoutineSymptomNotes({});
+                  setSelectedMaterials([]);
+                  setKatDepoItems([]);
                 }}
                 className="px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg text-gray-700 hover:text-gray-900 font-medium transition-all duration-200"
               >
