@@ -83,13 +83,19 @@ export const AVAILABLE_PERMISSIONS: Permission[] = [
     name: 'Tedavi Raporu',
     description: 'Hasta tedavi geçmişi ve raporlama',
     icon: '📊'
+  },
+  {
+    id: 'depo',
+    name: 'Depo',
+    description: 'Ana depo ve kat deposu yönetimi',
+    icon: '📦'
   }
 ];
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
-  admin: ['patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'prescriptions', 'assistant-panel', 'doctor-panel', 'treatment-panel', 'treatment-report'],
+  admin: ['patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'settings', 'accounting', 'pharmacy', 'prescriptions', 'assistant-panel', 'doctor-panel', 'treatment-panel', 'treatment-report', 'depo'],
   doctor: ['patients', 'appointments', 'anamnez', 'treatment-protocols', 'assistant-panel', 'doctor-panel'],
-  nurse: ['patients', 'appointments', 'anamnez'],
+  nurse: ['patients', 'appointments', 'anamnez', 'depo'],
   assistant: ['patients', 'appointments', 'anamnez', 'treatment-protocols', 'users', 'accounting', 'pharmacy', 'prescriptions', 'assistant-panel', 'doctor-panel', 'treatment-panel'],
   desk: ['patients', 'appointments'],
   anamnez: ['patients', 'appointments', 'anamnez'],
@@ -97,7 +103,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
   pharmacy: ['patients', 'appointments', 'pharmacy', 'prescriptions'],
   treatment: ['patients', 'appointments', 'treatment-protocols', 'anamnez', 'treatment-panel'],
   'call-center': ['patients', 'appointments'],
-  bashemshire: ['patients', 'appointments', 'anamnez', 'treatment-protocols', 'treatment-panel', 'treatment-report']
+  bashemshire: ['patients', 'appointments', 'anamnez', 'treatment-protocols', 'treatment-panel', 'treatment-report', 'depo'],
+  depoyonetici: ['patients', 'appointments', 'depo']
 };
 
 export const ROLE_TRANSLATIONS: Record<string, string> = {
@@ -112,7 +119,8 @@ export const ROLE_TRANSLATIONS: Record<string, string> = {
   treatment: 'Tedavi Uzmanı',
   'call-center': 'Call Center',
   patient: 'Hasta',
-  bashemshire: 'BaşHemşire'
+  bashemshire: 'BaşHemşire',
+  depoyonetici: 'Depo Yöneticisi'
 };
 
 export const getRoleDisplayName = (userType: string): string => {

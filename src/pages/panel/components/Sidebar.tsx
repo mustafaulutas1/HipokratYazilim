@@ -4,7 +4,7 @@ import { rtmLogo } from '../../../assets';
 import { getRoleDisplayName } from '../../../constants/permissions';
 import { useUserPermissions } from '../../../hooks/useUserPermissions';
 
-type PanelSection = 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel' | 'treatment-report';
+type PanelSection = 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel' | 'treatment-report' | 'depo';
 
 interface SidebarProps {
   currentSection: PanelSection | null;
@@ -74,7 +74,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
       treatment: '🩺',
       'call-center': '📞',
       patient: '👤',
-      bashemshire: '👩‍⚕️'
+      bashemshire: '👩‍⚕️',
+      depoyonetici: '📦'
     };
     return icons[userType] || '👨‍⚕️';
   };
@@ -162,6 +163,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
       label: 'Tedavi Raporu',
       icon: '📊',
       description: 'Hasta tedavi geçmişi ve raporlama'
+    },
+    {
+      id: 'depo',
+      label: 'Depo',
+      icon: '📦',
+      description: 'Ana depo ve kat deposu yönetimi'
     },
     {
       id: 'settings',

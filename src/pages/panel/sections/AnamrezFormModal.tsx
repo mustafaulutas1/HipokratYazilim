@@ -806,27 +806,33 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
           },
           thermalScan: {
             enabled: false,
-            fileUrl: ''
+            fileUrl: '',
+            fileUrls: [] as string[]
           },
           toxicityScan: {
             enabled: false,
-            fileUrl: ''
+            fileUrl: '',
+            fileUrls: [] as string[]
           },
           biyokimya: {
             enabled: false,
-            fileUrl: ''
+            fileUrl: '',
+            fileUrls: [] as string[]
           },
           radyoloji: {
             enabled: false,
-            fileUrl: ''
+            fileUrl: '',
+            fileUrls: [] as string[]
           },
           patoloji: {
             enabled: false,
-            fileUrl: ''
+            fileUrl: '',
+            fileUrls: [] as string[]
           },
           epikriz: {
             enabled: false,
-            fileUrl: ''
+            fileUrl: '',
+            fileUrls: [] as string[]
           },
           hasMediaGallery: false
         }
@@ -1484,8 +1490,8 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
       // Reset file states
       setMeridianScanFiles([]);
-      setThermalScanFile(null);
-      setToxicityScanFile(null);
+      setThermalScanFiles([]);
+      setToxicityScanFiles([]);
       setDeviceScanFile(null);
 
       // Reset symptom notes and custom symptom questions
@@ -1563,27 +1569,33 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
           },
           thermalScan: {
             enabled: false,
-            fileUrl: ''
+            fileUrl: '',
+            fileUrls: [] as string[]
           },
           toxicityScan: {
             enabled: false,
-            fileUrl: ''
+            fileUrl: '',
+            fileUrls: [] as string[]
           },
           biyokimya: {
             enabled: false,
-            fileUrl: ''
+            fileUrl: '',
+            fileUrls: [] as string[]
           },
           radyoloji: {
             enabled: false,
-            fileUrl: ''
+            fileUrl: '',
+            fileUrls: [] as string[]
           },
           patoloji: {
             enabled: false,
-            fileUrl: ''
+            fileUrl: '',
+            fileUrls: [] as string[]
           },
           epikriz: {
             enabled: false,
-            fileUrl: ''
+            fileUrl: '',
+            fileUrls: [] as string[]
           },
           hasMediaGallery: false
         }

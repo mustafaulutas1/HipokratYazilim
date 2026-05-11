@@ -16,10 +16,11 @@ import AccountingScreen from './sections/AccountingScreen';
 import TreatmentPanel from './sections/TreatmentPanel';
 import Pharmacy from './sections/Pharmacy';
 import TreatmentReport from './sections/TreatmentReport';
+import DepoPanel from './sections/DepoPanel';
 import { getUserPermissions } from '../../constants/permissions';
 import { loggingService } from '../../services/loggingService';
 
-type PanelSection = 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel' | 'treatment-report';
+type PanelSection = 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel' | 'treatment-report' | 'depo';
 
 interface DoctorProfile {
   uid?: string;
@@ -58,7 +59,8 @@ export default function AdminPanel() {
       'pharmacy': 'Eczane',
       'treatment-panel': 'Tedavi Ekranı',
       'treatment-report': 'Tedavi Raporu',
-      'settings': 'Ayarlar'
+      'settings': 'Ayarlar',
+      'depo': 'Depo'
     };
 
     const sectionName = sectionNames[newSection] || newSection;
@@ -223,6 +225,8 @@ export default function AdminPanel() {
         return <Pharmacy doctorProfile={doctorProfile} />;
       case 'treatment-report':
         return <TreatmentReport doctorProfile={doctorProfile} />;
+      case 'depo':
+        return <DepoPanel doctorProfile={doctorProfile} />;
       default:
         return null;
     }
@@ -282,6 +286,7 @@ export default function AdminPanel() {
                     {currentSection === 'doctor-panel' && 'Doktor Ekranı'}
                     {currentSection === 'treatment-panel' && 'Tedavi Ekranı'}
                     {currentSection === 'treatment-report' && 'Tedavi Raporu'}
+                    {currentSection === 'depo' && 'Depo'}
                   </h1>
                   <p className="text-white/70 text-sm">
                     {doctorProfile?.specialization} • {doctorProfile?.hospital}

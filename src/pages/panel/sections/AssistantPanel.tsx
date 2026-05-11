@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { collection, query, where, getDocs, onSnapshot, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot, orderBy, limit, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { todayLocalDate } from '../../../utils/dateUtils';
 import AnamrezViewModal from './AnamrezViewModal';
@@ -98,7 +98,7 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
   const [isDoctorSelectionModalOpen, setIsDoctorSelectionModalOpen] = useState(false);
   const [patientToAssign, setPatientToAssign] = useState<WaitingPatient | null>(null);
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
-  const [activeListType, setActiveListType] = useState<'anamnez_completed' | 'with_doctor' | 'waiting_accounting' | 'treatment_continue' | 'pharmacy_waiting' | 'treatment_completed' | 'emergency'>('anamnez_completed');
+  const [activeListType, setActiveListType] = useState<'anamnez_completed' | 'with_doctor' | 'waiting_accounting' | 'treatment_continue' | 'pharmacy_waiting' | 'treatment_completed' | 'emergency' | 'formulasyonlar'>('anamnez_completed');
   const [withDoctorPatients, setWithDoctorPatients] = useState<WaitingPatient[]>([]);
   const [treatmentContinuePatients, setTreatmentContinuePatients] = useState<WaitingPatient[]>([]);
   // Doctor replies state
@@ -106,6 +106,14 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
   const [repliesUnreadCount, setRepliesUnreadCount] = useState(0);
   const [isRepliesExpanded, setIsRepliesExpanded] = useState(false);
   const [pharmacyWaitingPatients, setPharmacyWaitingPatients] = useState<WaitingPatient[]>([]);
+
+  // Formülasyon state
+  interface FormulasyonItem { productName: string; defaultQty: number; }
+  interface Formulasyon { id?: string; treatmentName: string; items: FormulasyonItem[]; clinicId: string; createdBy: string; createdAt: string; updatedAt?: string; }
+  const [formulasyonlar, setFormulasyonlar] = useState<Formulasyon[]>([]);
+  const [showFormulasyonModal, setShowFormulasyonModal] = useState(false);
+  const [editingFormulasyon, setEditingFormulasyon] = useState<Formulasyon | null>(null);
+  const [formulasyonForm, setFormulasyonForm] = useState<{ treatmentName: string; items: FormulasyonItem[] }>({ treatmentName: '', items: [{ productName: '', defaultQty: 1 }] });
 
   // Process patients data and update all state - used by real-time listener
   const processPatientData = useCallback(async (allClinicPatients: WaitingPatient[], isInitialLoad: boolean = false) => {
@@ -362,6 +370,57 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
 
     return () => unsubscribe();
   }, [user?.uid, doctorProfile?.clinicId]);
+
+  // Formülasyonları yükle
+  useEffect(() => {
+    if (!doctorProfile?.clinicId) return;
+    const q = query(collection(db, 'tedaviFormulasyonlari'), where('clinicId', '==', doctorProfile.clinicId));
+    const unsub = onSnapshot(q, snap => {
+      setFormulasyonlar(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Formulasyon));
+    });
+    return () => unsub();
+  }, [doctorProfile?.clinicId]);
+
+  const handleFormulasyonSave = async () => {
+    if (!doctorProfile?.clinicId) return;
+    if (!formulasyonForm.treatmentName.trim()) { alert('Tedavi adı zorunludur.'); return; }
+    if (formulasyonForm.items.some(i => !i.productName.trim())) { alert('Tüm ürün adları zorunludur.'); return; }
+    try {
+      if (editingFormulasyon?.id) {
+        await updateDoc(doc(db, 'tedaviFormulasyonlari', editingFormulasyon.id), {
+          treatmentName: formulasyonForm.treatmentName,
+          items: formulasyonForm.items,
+          updatedAt: new Date().toISOString(),
+        });
+      } else {
+        await addDoc(collection(db, 'tedaviFormulasyonlari'), {
+          treatmentName: formulasyonForm.treatmentName,
+          items: formulasyonForm.items,
+          clinicId: doctorProfile.clinicId,
+          createdBy: doctorProfile.fullName || '',
+          createdAt: new Date().toISOString(),
+        });
+      }
+      setShowFormulasyonModal(false);
+      setEditingFormulasyon(null);
+      setFormulasyonForm({ treatmentName: '', items: [{ productName: '', defaultQty: 1 }] });
+    } catch (e) {
+      console.error(e);
+      alert('Kayıt sırasında hata oluştu.');
+    }
+  };
+
+  const handleFormulasyonDelete = async (f: Formulasyon) => {
+    if (!f.id) return;
+    if (!confirm(`"${f.treatmentName}" formülasyonu silinecek. Emin misiniz?`)) return;
+    await deleteDoc(doc(db, 'tedaviFormulasyonlari', f.id));
+  };
+
+  const openEditFormulasyon = (f: Formulasyon) => {
+    setEditingFormulasyon(f);
+    setFormulasyonForm({ treatmentName: f.treatmentName, items: f.items.map(i => ({ ...i })) });
+    setShowFormulasyonModal(true);
+  };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -740,10 +799,129 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
             Acil Durumlar ({emergencyPatients.length})
           </button>
 
+          <button
+            onClick={() => setActiveListType('formulasyonlar')}
+            className={`px-4 py-2 rounded-xl font-medium text-sm transition-all duration-200 flex items-center gap-2 ${
+              activeListType === 'formulasyonlar'
+                ? 'bg-indigo-500/30 border-2 border-indigo-400 text-indigo-200'
+                : 'bg-white/5 border border-white/20 text-white/70 hover:bg-white/10'
+            }`}
+          >
+            <span className="text-lg">🧪</span>
+            Tedavi Formülasyonları ({formulasyonlar.length})
+          </button>
+
         </div>
       </div>
 
+      {/* Formülasyon Yönetimi */}
+      {activeListType === 'formulasyonlar' && (
+        <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl overflow-hidden">
+          <div className="p-5 border-b border-white/20 flex items-center justify-between">
+            <h3 className="text-white font-bold text-lg flex items-center gap-2">
+              <span className="text-2xl">🧪</span>
+              Tedavi Formülasyonları
+            </h3>
+            <button
+              onClick={() => { setEditingFormulasyon(null); setFormulasyonForm({ treatmentName: '', items: [{ productName: '', defaultQty: 1 }] }); setShowFormulasyonModal(true); }}
+              className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 rounded-xl text-white font-semibold text-sm transition-all"
+            >
+              + Yeni Formülasyon
+            </button>
+          </div>
+          {formulasyonlar.length === 0 ? (
+            <div className="p-10 text-center text-white/40">
+              <div className="text-4xl mb-3">🧪</div>
+              <p>Henüz formülasyon eklenmemiş.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-white/10">
+              {formulasyonlar.map(f => (
+                <div key={f.id} className="p-5 hover:bg-white/5 transition-all">
+                  <div className="flex items-start justify-between mb-3">
+                    <h4 className="text-white font-semibold text-base">{f.treatmentName}</h4>
+                    <div className="flex gap-2">
+                      <button onClick={() => openEditFormulasyon(f)} className="px-3 py-1 bg-blue-500/20 border border-blue-400/50 rounded-lg text-blue-300 hover:bg-blue-500/30 text-xs transition-all">Düzenle</button>
+                      <button onClick={() => handleFormulasyonDelete(f)} className="px-3 py-1 bg-red-500/20 border border-red-400/50 rounded-lg text-red-300 hover:bg-red-500/30 text-xs transition-all">Sil</button>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {f.items.map((item, i) => (
+                      <span key={i} className="px-3 py-1 bg-white/10 rounded-full text-white/70 text-xs">
+                        {item.productName} <span className="text-white font-semibold">×{item.defaultQty}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Formülasyon Modal */}
+      {showFormulasyonModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-white/20 rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-5 border-b border-white/20">
+              <h3 className="text-white font-bold text-lg">{editingFormulasyon ? 'Formülasyon Düzenle' : 'Yeni Formülasyon'}</h3>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-white/70 text-sm mb-1">Tedavi Adı *</label>
+                <input
+                  type="text"
+                  value={formulasyonForm.treatmentName}
+                  onChange={e => setFormulasyonForm(prev => ({ ...prev, treatmentName: e.target.value }))}
+                  placeholder="Örn: Majör Ozon, Akupunktur..."
+                  className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-white/70 text-sm">Kullanılan Ürünler *</label>
+                  <button
+                    onClick={() => setFormulasyonForm(prev => ({ ...prev, items: [...prev.items, { productName: '', defaultQty: 1 }] }))}
+                    className="px-2 py-1 bg-green-500/20 border border-green-400/50 rounded-lg text-green-300 text-xs hover:bg-green-500/30 transition-all"
+                  >
+                    + Ürün Ekle
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {formulasyonForm.items.map((item, i) => (
+                    <div key={i} className="flex gap-2 items-center">
+                      <input
+                        type="text"
+                        value={item.productName}
+                        onChange={e => setFormulasyonForm(prev => ({ ...prev, items: prev.items.map((it, idx) => idx === i ? { ...it, productName: e.target.value } : it) }))}
+                        placeholder="Ürün adı (ör. Kelebek valfi)"
+                        className="flex-1 px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+                      />
+                      <input
+                        type="number"
+                        min={1}
+                        value={item.defaultQty}
+                        onChange={e => setFormulasyonForm(prev => ({ ...prev, items: prev.items.map((it, idx) => idx === i ? { ...it, defaultQty: Number(e.target.value) } : it) }))}
+                        className="w-20 px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      />
+                      {formulasyonForm.items.length > 1 && (
+                        <button onClick={() => setFormulasyonForm(prev => ({ ...prev, items: prev.items.filter((_, idx) => idx !== i) }))} className="text-red-400 hover:text-red-300 text-lg">×</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="p-5 border-t border-white/20 flex gap-3 justify-end">
+              <button onClick={() => { setShowFormulasyonModal(false); setEditingFormulasyon(null); }} className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-white transition-all">İptal</button>
+              <button onClick={handleFormulasyonSave} className="px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 rounded-xl text-white font-semibold transition-all">Kaydet</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content Grid */}
+      {activeListType !== 'formulasyonlar' && (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Patients Waiting for Treatment */}
         <div className="lg:col-span-2 bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
@@ -940,6 +1118,7 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
           </div>
         </div>
       </div>
+      )} {/* end activeListType !== 'formulasyonlar' */}
 
       {/* Additional Information */}
       <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
