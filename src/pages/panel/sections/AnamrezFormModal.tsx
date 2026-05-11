@@ -390,13 +390,13 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
 
   // File upload states for optional scans
   const [meridianScanFiles, setMeridianScanFiles] = useState<File[]>([]);
-  const [thermalScanFile, setThermalScanFile] = useState<File | null>(null);
-  const [toxicityScanFile, setToxicityScanFile] = useState<File | null>(null);
+  const [thermalScanFiles, setThermalScanFiles] = useState<File[]>([]);
+  const [toxicityScanFiles, setToxicityScanFiles] = useState<File[]>([]);
   const [deviceScanFile, setDeviceScanFile] = useState<File | null>(null);
-  const [biyokimyaFile, setBiyokimyaFile] = useState<File | null>(null);
-  const [radyolojiFile, setRadyolojiFile] = useState<File | null>(null);
-  const [patolojiFile, setPatolojiFile] = useState<File | null>(null);
-  const [epikrizFile, setEpikrizFile] = useState<File | null>(null);
+  const [biyokimyaFiles, setBiyokimyaFiles] = useState<File[]>([]);
+  const [radyolojiFiles, setRadyolojiFiles] = useState<File[]>([]);
+  const [patolojiFiles, setPatolojiFiles] = useState<File[]>([]);
+  const [epikrizFiles, setEpikrizFiles] = useState<File[]>([]);
 
   const [usePreviousAnamnez, setUsePreviousAnamnez] = useState(false);
   const [previousAnamnez, setPreviousAnamnez] = useState<any | null>(null);
@@ -521,27 +521,33 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
       },
       thermalScan: {
         enabled: false,
-        fileUrl: ''
+        fileUrl: '',
+        fileUrls: [] as string[]
       },
       toxicityScan: {
         enabled: false,
-        fileUrl: ''
+        fileUrl: '',
+        fileUrls: [] as string[]
       },
       biyokimya: {
         enabled: false,
-        fileUrl: ''
+        fileUrl: '',
+        fileUrls: [] as string[]
       },
       radyoloji: {
         enabled: false,
-        fileUrl: ''
+        fileUrl: '',
+        fileUrls: [] as string[]
       },
       patoloji: {
         enabled: false,
-        fileUrl: ''
+        fileUrl: '',
+        fileUrls: [] as string[]
       },
       epikriz: {
         enabled: false,
-        fileUrl: ''
+        fileUrl: '',
+        fileUrls: [] as string[]
       },
       hasMediaGallery: false
     }
@@ -1038,179 +1044,54 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   };
 
   const handleThermalScanFileUpload = (file: File) => {
-    setThermalScanFile(file);
-    // Update form data to indicate file is selected
-    setFormData(prev => ({
-      ...prev,
-      optionalScans: {
-        ...prev.optionalScans,
-        thermalScan: {
-          ...prev.optionalScans.thermalScan,
-          fileUrl: 'pending' // Temporary indicator
-        }
-      }
-    }));
+    setThermalScanFiles(prev => [...prev, file]);
+  };
+
+  const handleThermalScanFileRemoveAt = (index: number) => {
+    setThermalScanFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleToxicityScanFileUpload = (file: File) => {
-    setToxicityScanFile(file);
-    // Update form data to indicate file is selected
-    setFormData(prev => ({
-      ...prev,
-      optionalScans: {
-        ...prev.optionalScans,
-        toxicityScan: {
-          ...prev.optionalScans.toxicityScan,
-          fileUrl: 'pending' // Temporary indicator
-        }
-      }
-    }));
+    setToxicityScanFiles(prev => [...prev, file]);
   };
 
-
-  const handleThermalScanFileRemove = () => {
-    setThermalScanFile(null);
-    // Update form data to indicate file is removed
-    setFormData(prev => ({
-      ...prev,
-      optionalScans: {
-        ...prev.optionalScans,
-        thermalScan: {
-          ...prev.optionalScans.thermalScan,
-          fileUrl: ''
-        }
-      }
-    }));
-  };
-
-  const handleToxicityScanFileRemove = () => {
-    setToxicityScanFile(null);
-    // Update form data to indicate file is removed
-    setFormData(prev => ({
-      ...prev,
-      optionalScans: {
-        ...prev.optionalScans,
-        toxicityScan: {
-          ...prev.optionalScans.toxicityScan,
-          fileUrl: ''
-        }
-      }
-    }));
+  const handleToxicityScanFileRemoveAt = (index: number) => {
+    setToxicityScanFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   // Biyokimya file handlers
   const handleBiyokimyaFileUpload = (file: File) => {
-    setBiyokimyaFile(file);
-    setFormData(prev => ({
-      ...prev,
-      optionalScans: {
-        ...prev.optionalScans,
-        biyokimya: {
-          ...(prev.optionalScans.biyokimya || { enabled: false, fileUrl: '' }),
-          fileUrl: 'pending'
-        }
-      }
-    }));
+    setBiyokimyaFiles(prev => [...prev, file]);
   };
 
-  const handleBiyokimyaFileRemove = () => {
-    setBiyokimyaFile(null);
-    setFormData(prev => ({
-      ...prev,
-      optionalScans: {
-        ...prev.optionalScans,
-        biyokimya: {
-          ...(prev.optionalScans.biyokimya || { enabled: false, fileUrl: '' }),
-          fileUrl: ''
-        }
-      }
-    }));
+  const handleBiyokimyaFileRemoveAt = (index: number) => {
+    setBiyokimyaFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   // Radyoloji file handlers
   const handleRadyolojiFileUpload = (file: File) => {
-    setRadyolojiFile(file);
-    setFormData(prev => ({
-      ...prev,
-      optionalScans: {
-        ...prev.optionalScans,
-        radyoloji: {
-          ...(prev.optionalScans.radyoloji || { enabled: false, fileUrl: '' }),
-          fileUrl: 'pending'
-        }
-      }
-    }));
+    setRadyolojiFiles(prev => [...prev, file]);
   };
 
-  const handleRadyolojiFileRemove = () => {
-    setRadyolojiFile(null);
-    setFormData(prev => ({
-      ...prev,
-      optionalScans: {
-        ...prev.optionalScans,
-        radyoloji: {
-          ...(prev.optionalScans.radyoloji || { enabled: false, fileUrl: '' }),
-          fileUrl: ''
-        }
-      }
-    }));
+  const handleRadyolojiFileRemoveAt = (index: number) => {
+    setRadyolojiFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   // Patoloji file handlers
   const handlePatolojiFileUpload = (file: File) => {
-    setPatolojiFile(file);
-    setFormData(prev => ({
-      ...prev,
-      optionalScans: {
-        ...prev.optionalScans,
-        patoloji: {
-          ...(prev.optionalScans.patoloji || { enabled: false, fileUrl: '' }),
-          fileUrl: 'pending'
-        }
-      }
-    }));
+    setPatolojiFiles(prev => [...prev, file]);
   };
 
-  const handlePatolojiFileRemove = () => {
-    setPatolojiFile(null);
-    setFormData(prev => ({
-      ...prev,
-      optionalScans: {
-        ...prev.optionalScans,
-        patoloji: {
-          ...(prev.optionalScans.patoloji || { enabled: false, fileUrl: '' }),
-          fileUrl: ''
-        }
-      }
-    }));
+  const handlePatolojiFileRemoveAt = (index: number) => {
+    setPatolojiFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleEpikrizFileUpload = (file: File) => {
-    setEpikrizFile(file);
-    setFormData(prev => ({
-      ...prev,
-      optionalScans: {
-        ...prev.optionalScans,
-        epikriz: {
-          ...(prev.optionalScans.epikriz || { enabled: false, fileUrl: '' }),
-          fileUrl: 'pending'
-        }
-      }
-    }));
+    setEpikrizFiles(prev => [...prev, file]);
   };
 
-  const handleEpikrizFileRemove = () => {
-    setEpikrizFile(null);
-    setFormData(prev => ({
-      ...prev,
-      optionalScans: {
-        ...prev.optionalScans,
-        epikriz: {
-          ...(prev.optionalScans.epikriz || { enabled: false, fileUrl: '' }),
-          fileUrl: ''
-        }
-      }
-    }));
+  const handleEpikrizFileRemoveAt = (index: number) => {
+    setEpikrizFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const validateCurrentPage = () => {
@@ -1324,52 +1205,94 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         updatedOptionalScans.meridianScan.fileUrl = allUrls[0] || '';
       }
 
-      // Upload Thermal Scan file if selected
-      if (thermalScanFile && updatedOptionalScans.thermalScan.enabled) {
-        const thermalScanRef = ref(storage, `scans/${patient.id}/thermal_${Date.now()}_${thermalScanFile.name}`);
-        await uploadBytes(thermalScanRef, thermalScanFile);
-        const thermalScanUrl = await getDownloadURL(thermalScanRef);
-        updatedOptionalScans.thermalScan.fileUrl = thermalScanUrl;
+      // Upload Thermal Scan files if selected (supports multiple)
+      if (thermalScanFiles.length > 0 && updatedOptionalScans.thermalScan.enabled) {
+        const existingUrls: string[] = (updatedOptionalScans.thermalScan as any).fileUrls?.filter((u: string) => u && u !== 'pending') ||
+          (updatedOptionalScans.thermalScan.fileUrl && updatedOptionalScans.thermalScan.fileUrl !== 'pending' ? [updatedOptionalScans.thermalScan.fileUrl] : []);
+        const newUrls: string[] = [];
+        for (const file of thermalScanFiles) {
+          const fileRef = ref(storage, `scans/${patient.id}/thermal_${Date.now()}_${file.name}`);
+          await uploadBytes(fileRef, file);
+          newUrls.push(await getDownloadURL(fileRef));
+        }
+        const allUrls = [...existingUrls, ...newUrls];
+        (updatedOptionalScans.thermalScan as any).fileUrls = allUrls;
+        updatedOptionalScans.thermalScan.fileUrl = allUrls[0] || '';
       }
 
-      // Upload Toxicity Scan file if selected
-      if (toxicityScanFile && updatedOptionalScans.toxicityScan.enabled) {
-        const toxicityScanRef = ref(storage, `scans/${patient.id}/toxicity_${Date.now()}_${toxicityScanFile.name}`);
-        await uploadBytes(toxicityScanRef, toxicityScanFile);
-        const toxicityScanUrl = await getDownloadURL(toxicityScanRef);
-        updatedOptionalScans.toxicityScan.fileUrl = toxicityScanUrl;
+      // Upload Toxicity Scan files if selected (supports multiple)
+      if (toxicityScanFiles.length > 0 && updatedOptionalScans.toxicityScan.enabled) {
+        const existingUrls: string[] = (updatedOptionalScans.toxicityScan as any).fileUrls?.filter((u: string) => u && u !== 'pending') ||
+          (updatedOptionalScans.toxicityScan.fileUrl && updatedOptionalScans.toxicityScan.fileUrl !== 'pending' ? [updatedOptionalScans.toxicityScan.fileUrl] : []);
+        const newUrls: string[] = [];
+        for (const file of toxicityScanFiles) {
+          const fileRef = ref(storage, `scans/${patient.id}/toxicity_${Date.now()}_${file.name}`);
+          await uploadBytes(fileRef, file);
+          newUrls.push(await getDownloadURL(fileRef));
+        }
+        const allUrls = [...existingUrls, ...newUrls];
+        (updatedOptionalScans.toxicityScan as any).fileUrls = allUrls;
+        updatedOptionalScans.toxicityScan.fileUrl = allUrls[0] || '';
       }
 
-      // Upload Biyokimya file if selected
-      if (biyokimyaFile && updatedOptionalScans.biyokimya?.enabled) {
-        const biyokimyaRef = ref(storage, `scans/${patient.id}/biyokimya_${Date.now()}_${biyokimyaFile.name}`);
-        await uploadBytes(biyokimyaRef, biyokimyaFile);
-        const biyokimyaUrl = await getDownloadURL(biyokimyaRef);
-        updatedOptionalScans.biyokimya.fileUrl = biyokimyaUrl;
+      // Upload Biyokimya files if selected (supports multiple)
+      if (biyokimyaFiles.length > 0 && updatedOptionalScans.biyokimya?.enabled) {
+        const existingUrls: string[] = (updatedOptionalScans.biyokimya as any).fileUrls?.filter((u: string) => u && u !== 'pending') ||
+          (updatedOptionalScans.biyokimya.fileUrl && updatedOptionalScans.biyokimya.fileUrl !== 'pending' ? [updatedOptionalScans.biyokimya.fileUrl] : []);
+        const newUrls: string[] = [];
+        for (const file of biyokimyaFiles) {
+          const fileRef = ref(storage, `scans/${patient.id}/biyokimya_${Date.now()}_${file.name}`);
+          await uploadBytes(fileRef, file);
+          newUrls.push(await getDownloadURL(fileRef));
+        }
+        const allUrls = [...existingUrls, ...newUrls];
+        (updatedOptionalScans.biyokimya as any).fileUrls = allUrls;
+        updatedOptionalScans.biyokimya.fileUrl = allUrls[0] || '';
       }
 
-      // Upload Radyoloji file if selected
-      if (radyolojiFile && updatedOptionalScans.radyoloji?.enabled) {
-        const radyolojiRef = ref(storage, `scans/${patient.id}/radyoloji_${Date.now()}_${radyolojiFile.name}`);
-        await uploadBytes(radyolojiRef, radyolojiFile);
-        const radyolojiUrl = await getDownloadURL(radyolojiRef);
-        updatedOptionalScans.radyoloji.fileUrl = radyolojiUrl;
+      // Upload Radyoloji files if selected (supports multiple)
+      if (radyolojiFiles.length > 0 && updatedOptionalScans.radyoloji?.enabled) {
+        const existingUrls: string[] = (updatedOptionalScans.radyoloji as any).fileUrls?.filter((u: string) => u && u !== 'pending') ||
+          (updatedOptionalScans.radyoloji.fileUrl && updatedOptionalScans.radyoloji.fileUrl !== 'pending' ? [updatedOptionalScans.radyoloji.fileUrl] : []);
+        const newUrls: string[] = [];
+        for (const file of radyolojiFiles) {
+          const fileRef = ref(storage, `scans/${patient.id}/radyoloji_${Date.now()}_${file.name}`);
+          await uploadBytes(fileRef, file);
+          newUrls.push(await getDownloadURL(fileRef));
+        }
+        const allUrls = [...existingUrls, ...newUrls];
+        (updatedOptionalScans.radyoloji as any).fileUrls = allUrls;
+        updatedOptionalScans.radyoloji.fileUrl = allUrls[0] || '';
       }
 
-      // Upload Patoloji file if selected
-      if (patolojiFile && updatedOptionalScans.patoloji?.enabled) {
-        const patolojiRef = ref(storage, `scans/${patient.id}/patoloji_${Date.now()}_${patolojiFile.name}`);
-        await uploadBytes(patolojiRef, patolojiFile);
-        const patolojiUrl = await getDownloadURL(patolojiRef);
-        updatedOptionalScans.patoloji.fileUrl = patolojiUrl;
+      // Upload Patoloji files if selected (supports multiple)
+      if (patolojiFiles.length > 0 && updatedOptionalScans.patoloji?.enabled) {
+        const existingUrls: string[] = (updatedOptionalScans.patoloji as any).fileUrls?.filter((u: string) => u && u !== 'pending') ||
+          (updatedOptionalScans.patoloji.fileUrl && updatedOptionalScans.patoloji.fileUrl !== 'pending' ? [updatedOptionalScans.patoloji.fileUrl] : []);
+        const newUrls: string[] = [];
+        for (const file of patolojiFiles) {
+          const fileRef = ref(storage, `scans/${patient.id}/patoloji_${Date.now()}_${file.name}`);
+          await uploadBytes(fileRef, file);
+          newUrls.push(await getDownloadURL(fileRef));
+        }
+        const allUrls = [...existingUrls, ...newUrls];
+        (updatedOptionalScans.patoloji as any).fileUrls = allUrls;
+        updatedOptionalScans.patoloji.fileUrl = allUrls[0] || '';
       }
 
-      // Upload Epikriz file if selected
-      if (epikrizFile && updatedOptionalScans.epikriz?.enabled) {
-        const epikrizRef = ref(storage, `scans/${patient.id}/epikriz_${Date.now()}_${epikrizFile.name}`);
-        await uploadBytes(epikrizRef, epikrizFile);
-        const epikrizUrl = await getDownloadURL(epikrizRef);
-        updatedOptionalScans.epikriz.fileUrl = epikrizUrl;
+      // Upload Epikriz files if selected (supports multiple)
+      if (epikrizFiles.length > 0 && updatedOptionalScans.epikriz?.enabled) {
+        const existingUrls: string[] = (updatedOptionalScans.epikriz as any).fileUrls?.filter((u: string) => u && u !== 'pending') ||
+          (updatedOptionalScans.epikriz.fileUrl && updatedOptionalScans.epikriz.fileUrl !== 'pending' ? [updatedOptionalScans.epikriz.fileUrl] : []);
+        const newUrls: string[] = [];
+        for (const file of epikrizFiles) {
+          const fileRef = ref(storage, `scans/${patient.id}/epikriz_${Date.now()}_${file.name}`);
+          await uploadBytes(fileRef, file);
+          newUrls.push(await getDownloadURL(fileRef));
+        }
+        const allUrls = [...existingUrls, ...newUrls];
+        (updatedOptionalScans.epikriz as any).fileUrls = allUrls;
+        updatedOptionalScans.epikriz.fileUrl = allUrls[0] || '';
       }
 
       // Upload Device Scan file if selected
@@ -3275,12 +3198,53 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                       </div>
 
                       {formData.optionalScans.thermalScan.enabled && (
-                        <div className="ml-8 mt-4">
+                        <div className="ml-8 mt-4 space-y-3">
+                          {(() => {
+                            const savedUrls: string[] = (formData.optionalScans.thermalScan as any).fileUrls?.filter((u: string) => u && u !== 'pending') ||
+                              (formData.optionalScans.thermalScan.fileUrl && formData.optionalScans.thermalScan.fileUrl !== 'pending'
+                                ? [formData.optionalScans.thermalScan.fileUrl] : []);
+                            return savedUrls.map((url: string, idx: number) => (
+                              <div key={idx} className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                                <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-800 truncate">Kayıtlı Dosya {idx + 1}</p>
+                                  <p className="text-xs text-gray-500">Yüklendi</p>
+                                </div>
+                                <a href={url} target="_blank" rel="noopener noreferrer"
+                                  className="text-xs px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex-shrink-0">
+                                  Görüntüle
+                                </a>
+                              </div>
+                            ));
+                          })()}
+                          {thermalScanFiles.map((file, idx) => (
+                            <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                              <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-800 truncate">{file.name}</p>
+                                <p className="text-xs text-gray-500">Dosya yüklendi</p>
+                              </div>
+                              <button type="button" onClick={() => handleThermalScanFileRemoveAt(idx)}
+                                className="text-red-500 hover:text-red-700 transition-colors flex-shrink-0">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          ))}
                           <FileUpload
                             onFileUpload={handleThermalScanFileUpload}
-                            onFileRemove={handleThermalScanFileRemove}
-                            uploadedFileUrl={formData.optionalScans.thermalScan.fileUrl}
-                            fileName={thermalScanFile ? thermalScanFile.name : ''}
+                            onFileRemove={() => {}}
+                            uploadedFileUrl=""
+                            fileName=""
                           />
                         </div>
                       )}
@@ -3313,12 +3277,53 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                       </div>
 
                       {formData.optionalScans.toxicityScan.enabled && (
-                        <div className="ml-8 mt-4">
+                        <div className="ml-8 mt-4 space-y-3">
+                          {(() => {
+                            const savedUrls: string[] = (formData.optionalScans.toxicityScan as any).fileUrls?.filter((u: string) => u && u !== 'pending') ||
+                              (formData.optionalScans.toxicityScan.fileUrl && formData.optionalScans.toxicityScan.fileUrl !== 'pending'
+                                ? [formData.optionalScans.toxicityScan.fileUrl] : []);
+                            return savedUrls.map((url: string, idx: number) => (
+                              <div key={idx} className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                                <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-800 truncate">Kayıtlı Dosya {idx + 1}</p>
+                                  <p className="text-xs text-gray-500">Yüklendi</p>
+                                </div>
+                                <a href={url} target="_blank" rel="noopener noreferrer"
+                                  className="text-xs px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex-shrink-0">
+                                  Görüntüle
+                                </a>
+                              </div>
+                            ));
+                          })()}
+                          {toxicityScanFiles.map((file, idx) => (
+                            <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                              <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-800 truncate">{file.name}</p>
+                                <p className="text-xs text-gray-500">Dosya yüklendi</p>
+                              </div>
+                              <button type="button" onClick={() => handleToxicityScanFileRemoveAt(idx)}
+                                className="text-red-500 hover:text-red-700 transition-colors flex-shrink-0">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          ))}
                           <FileUpload
                             onFileUpload={handleToxicityScanFileUpload}
-                            onFileRemove={handleToxicityScanFileRemove}
-                            uploadedFileUrl={formData.optionalScans.toxicityScan.fileUrl}
-                            fileName={toxicityScanFile ? toxicityScanFile.name : ''}
+                            onFileRemove={() => {}}
+                            uploadedFileUrl=""
+                            fileName=""
                           />
                         </div>
                       )}
@@ -3351,12 +3356,53 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                       </div>
 
                       {formData.optionalScans.biyokimya?.enabled && (
-                        <div className="ml-8 mt-4">
+                        <div className="ml-8 mt-4 space-y-3">
+                          {(() => {
+                            const savedUrls: string[] = (formData.optionalScans.biyokimya as any).fileUrls?.filter((u: string) => u && u !== 'pending') ||
+                              (formData.optionalScans.biyokimya?.fileUrl && formData.optionalScans.biyokimya.fileUrl !== 'pending'
+                                ? [formData.optionalScans.biyokimya.fileUrl] : []);
+                            return savedUrls.map((url: string, idx: number) => (
+                              <div key={idx} className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                                <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-800 truncate">Kayıtlı Dosya {idx + 1}</p>
+                                  <p className="text-xs text-gray-500">Yüklendi</p>
+                                </div>
+                                <a href={url} target="_blank" rel="noopener noreferrer"
+                                  className="text-xs px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex-shrink-0">
+                                  Görüntüle
+                                </a>
+                              </div>
+                            ));
+                          })()}
+                          {biyokimyaFiles.map((file, idx) => (
+                            <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                              <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-800 truncate">{file.name}</p>
+                                <p className="text-xs text-gray-500">Dosya yüklendi</p>
+                              </div>
+                              <button type="button" onClick={() => handleBiyokimyaFileRemoveAt(idx)}
+                                className="text-red-500 hover:text-red-700 transition-colors flex-shrink-0">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          ))}
                           <FileUpload
                             onFileUpload={handleBiyokimyaFileUpload}
-                            onFileRemove={handleBiyokimyaFileRemove}
-                            uploadedFileUrl={formData.optionalScans.biyokimya?.fileUrl || ''}
-                            fileName={biyokimyaFile ? biyokimyaFile.name : ''}
+                            onFileRemove={() => {}}
+                            uploadedFileUrl=""
+                            fileName=""
                           />
                         </div>
                       )}
@@ -3389,12 +3435,53 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                       </div>
 
                       {formData.optionalScans.radyoloji?.enabled && (
-                        <div className="ml-8 mt-4">
+                        <div className="ml-8 mt-4 space-y-3">
+                          {(() => {
+                            const savedUrls: string[] = (formData.optionalScans.radyoloji as any).fileUrls?.filter((u: string) => u && u !== 'pending') ||
+                              (formData.optionalScans.radyoloji?.fileUrl && formData.optionalScans.radyoloji.fileUrl !== 'pending'
+                                ? [formData.optionalScans.radyoloji.fileUrl] : []);
+                            return savedUrls.map((url: string, idx: number) => (
+                              <div key={idx} className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                                <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-800 truncate">Kayıtlı Dosya {idx + 1}</p>
+                                  <p className="text-xs text-gray-500">Yüklendi</p>
+                                </div>
+                                <a href={url} target="_blank" rel="noopener noreferrer"
+                                  className="text-xs px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex-shrink-0">
+                                  Görüntüle
+                                </a>
+                              </div>
+                            ));
+                          })()}
+                          {radyolojiFiles.map((file, idx) => (
+                            <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                              <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-800 truncate">{file.name}</p>
+                                <p className="text-xs text-gray-500">Dosya yüklendi</p>
+                              </div>
+                              <button type="button" onClick={() => handleRadyolojiFileRemoveAt(idx)}
+                                className="text-red-500 hover:text-red-700 transition-colors flex-shrink-0">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          ))}
                           <FileUpload
                             onFileUpload={handleRadyolojiFileUpload}
-                            onFileRemove={handleRadyolojiFileRemove}
-                            uploadedFileUrl={formData.optionalScans.radyoloji?.fileUrl || ''}
-                            fileName={radyolojiFile ? radyolojiFile.name : ''}
+                            onFileRemove={() => {}}
+                            uploadedFileUrl=""
+                            fileName=""
                           />
                         </div>
                       )}
@@ -3427,12 +3514,53 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                       </div>
 
                       {formData.optionalScans.patoloji?.enabled && (
-                        <div className="ml-8 mt-4">
+                        <div className="ml-8 mt-4 space-y-3">
+                          {(() => {
+                            const savedUrls: string[] = (formData.optionalScans.patoloji as any).fileUrls?.filter((u: string) => u && u !== 'pending') ||
+                              (formData.optionalScans.patoloji?.fileUrl && formData.optionalScans.patoloji.fileUrl !== 'pending'
+                                ? [formData.optionalScans.patoloji.fileUrl] : []);
+                            return savedUrls.map((url: string, idx: number) => (
+                              <div key={idx} className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                                <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-800 truncate">Kayıtlı Dosya {idx + 1}</p>
+                                  <p className="text-xs text-gray-500">Yüklendi</p>
+                                </div>
+                                <a href={url} target="_blank" rel="noopener noreferrer"
+                                  className="text-xs px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex-shrink-0">
+                                  Görüntüle
+                                </a>
+                              </div>
+                            ));
+                          })()}
+                          {patolojiFiles.map((file, idx) => (
+                            <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                              <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-800 truncate">{file.name}</p>
+                                <p className="text-xs text-gray-500">Dosya yüklendi</p>
+                              </div>
+                              <button type="button" onClick={() => handlePatolojiFileRemoveAt(idx)}
+                                className="text-red-500 hover:text-red-700 transition-colors flex-shrink-0">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          ))}
                           <FileUpload
                             onFileUpload={handlePatolojiFileUpload}
-                            onFileRemove={handlePatolojiFileRemove}
-                            uploadedFileUrl={formData.optionalScans.patoloji?.fileUrl || ''}
-                            fileName={patolojiFile ? patolojiFile.name : ''}
+                            onFileRemove={() => {}}
+                            uploadedFileUrl=""
+                            fileName=""
                           />
                         </div>
                       )}
@@ -3465,12 +3593,53 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                       </div>
 
                       {formData.optionalScans.epikriz?.enabled && (
-                        <div className="ml-8 mt-4">
+                        <div className="ml-8 mt-4 space-y-3">
+                          {(() => {
+                            const savedUrls: string[] = (formData.optionalScans.epikriz as any).fileUrls?.filter((u: string) => u && u !== 'pending') ||
+                              (formData.optionalScans.epikriz?.fileUrl && formData.optionalScans.epikriz.fileUrl !== 'pending'
+                                ? [formData.optionalScans.epikriz.fileUrl] : []);
+                            return savedUrls.map((url: string, idx: number) => (
+                              <div key={idx} className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                                <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-800 truncate">Kayıtlı Dosya {idx + 1}</p>
+                                  <p className="text-xs text-gray-500">Yüklendi</p>
+                                </div>
+                                <a href={url} target="_blank" rel="noopener noreferrer"
+                                  className="text-xs px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex-shrink-0">
+                                  Görüntüle
+                                </a>
+                              </div>
+                            ));
+                          })()}
+                          {epikrizFiles.map((file, idx) => (
+                            <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                              <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-800 truncate">{file.name}</p>
+                                <p className="text-xs text-gray-500">Dosya yüklendi</p>
+                              </div>
+                              <button type="button" onClick={() => handleEpikrizFileRemoveAt(idx)}
+                                className="text-red-500 hover:text-red-700 transition-colors flex-shrink-0">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          ))}
                           <FileUpload
                             onFileUpload={handleEpikrizFileUpload}
-                            onFileRemove={handleEpikrizFileRemove}
-                            uploadedFileUrl={formData.optionalScans.epikriz?.fileUrl || ''}
-                            fileName={epikrizFile ? epikrizFile.name : ''}
+                            onFileRemove={() => {}}
+                            uploadedFileUrl=""
+                            fileName=""
                           />
                         </div>
                       )}
