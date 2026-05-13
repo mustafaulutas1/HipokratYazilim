@@ -674,10 +674,10 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   };
 
   // Update quantity of a pending item
-  const handleUpdateQuantity = (itemName: string, delta: number) => {
+  const handleUpdateQuantity = (itemIndex: number, delta: number) => {
     setPendingSoldItems(prev => {
-      const updated = prev.map(item => {
-        if (item.name === itemName) {
+      const updated = prev.map((item, idx) => {
+        if (idx === itemIndex) {
           const newQty = Math.max(1, (item.quantity || 1) + delta);
           return { ...item, quantity: newQty };
         }
@@ -755,10 +755,11 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   };
 
   // Remove extra medicine from pending items
-  const handleRemoveExtraMedicine = (medicineName: string) => {
-    setPendingSoldItems(prev => prev.filter(item => item.name !== medicineName));
+  const handleRemoveExtraMedicine = (itemIndex: number) => {
+    setPendingSoldItems(prev => prev.filter((item, idx) => idx !== itemIndex));
     setSelectedMedicines(prev => {
-      const newSelection = prev.filter(name => name !== medicineName);
+      const removedItem = pendingSoldItems[itemIndex];
+      const newSelection = prev.filter(name => name !== removedItem.name);
       recalculatePharmacyTotal(newSelection);
       return newSelection;
     });
@@ -2713,7 +2714,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                               {/* Quantity controls */}
                               <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                                 <button
-                                  onClick={() => handleUpdateQuantity(item.name, -1)}
+                                  onClick={() => handleUpdateQuantity(index, -1)}
                                   className="w-5 h-5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded flex items-center justify-center text-xs font-bold transition-colors"
                                   title="Azalt"
                                 >
@@ -2723,7 +2724,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                                   {item.quantity || 1}
                                 </span>
                                 <button
-                                  onClick={() => handleUpdateQuantity(item.name, 1)}
+                                  onClick={() => handleUpdateQuantity(index, 1)}
                                   className="w-5 h-5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded flex items-center justify-center text-xs font-bold transition-colors"
                                   title="Artır"
                                 >
@@ -2737,7 +2738,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handleRemoveExtraMedicine(item.name);
+                                    handleRemoveExtraMedicine(index);
                                   }}
                                   className="w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded flex items-center justify-center text-xs transition-colors"
                                   title="Ek ilacı kaldır"
