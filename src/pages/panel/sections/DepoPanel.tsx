@@ -18,6 +18,7 @@ interface DepoUrun {
   id?: string;
   productName: string;
   stockCode: string;
+  companyName?: string;
   cost: number;
   purchaseDate: string;
   quantity: number;
@@ -105,6 +106,7 @@ interface MalzemeTalebi {
 
 const emptyUrun = (): Omit<DepoUrun, 'id' | 'clinicId' | 'createdBy' | 'createdAt'> => ({
   productName: '',
+  companyName: '',
   stockCode: '',
   cost: 0,
   purchaseDate: new Date().toISOString().split('T')[0],
@@ -222,7 +224,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
   const openEdit = (urun: DepoUrun, depo: 'ana' | 'kat') => {
     setActiveDepo(depo);
     setEditingUrun(urun);
-    setFormData({ productName: urun.productName, stockCode: urun.stockCode, cost: urun.cost, purchaseDate: urun.purchaseDate, quantity: urun.quantity });
+    setFormData({ productName: urun.productName, stockCode: urun.stockCode, companyName: (urun as any).companyName || '', cost: urun.cost, purchaseDate: urun.purchaseDate, quantity: urun.quantity });
     setShowAddModal(true);
   };
 
@@ -576,6 +578,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
               <tr className="border-b border-white/20 bg-white/5">
                 <th className="px-4 py-3 text-left text-white/70">Ürün Adı</th>
                 <th className="px-4 py-3 text-left text-white/70">Stok Kodu</th>
+                <th className="px-4 py-3 text-left text-white/70">Firma Adı</th>
                 <th className="px-4 py-3 text-left text-white/70">Maliyet</th>
                 <th className="px-4 py-3 text-left text-white/70">Alım Tarihi</th>
                 <th className="px-4 py-3 text-left text-white/70">Adet</th>
@@ -587,6 +590,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                 <tr key={u.id} className="border-b border-white/10 hover:bg-white/5 transition-all">
                   <td className="px-4 py-3 text-white font-medium">{u.productName}</td>
                   <td className="px-4 py-3 text-white/70">{u.stockCode}</td>
+                  <td className="px-4 py-3 text-white/70">{u.companyName || '—'}</td>
                   <td className="px-4 py-3 text-white/70">{formatCurrency(u.cost)}</td>
                   <td className="px-4 py-3 text-white/70">{new Date(u.purchaseDate).toLocaleDateString('tr-TR')}</td>
                   <td className="px-4 py-3">
@@ -832,6 +836,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                         <tr className="border-b border-white/20 bg-white/5">
                           <th className="px-4 py-3 text-left text-white/70 font-semibold">Ürün Adı</th>
                           <th className="px-4 py-3 text-left text-white/70 font-semibold">Stok Kodu</th>
+                          <th className="px-4 py-3 text-left text-white/70 font-semibold">Firma Adı</th>
                           <th className="px-4 py-3 text-left text-white/70 font-semibold">Adet</th>
                           <th className="px-4 py-3 text-left text-white/70 font-semibold">Maliyet</th>
                           <th className="px-4 py-3 text-left text-white/70 font-semibold">Alım Tarihi</th>
@@ -845,6 +850,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                             <tr key={u.id} className="hover:bg-white/5 transition-all">
                               <td className="px-4 py-3 text-white font-medium">{u.productName}</td>
                               <td className="px-4 py-3 text-white/60">{u.stockCode}</td>
+                              <td className="px-4 py-3 text-white/60">{u.companyName || '—'}</td>
                               <td className="px-4 py-3 text-white">{u.quantity}</td>
                               <td className="px-4 py-3 text-white/60">{u.cost > 0 ? `₺${u.cost.toLocaleString('tr-TR')}` : '—'}</td>
                               <td className="px-4 py-3 text-white/60">{u.purchaseDate ? new Date(u.purchaseDate).toLocaleDateString('tr-TR') : '—'}</td>
@@ -1292,6 +1298,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
               {[
                 { label: 'Ürün Adı *', key: 'productName', type: 'text', placeholder: 'Kelebek valfi, Ozon filtresi...' },
                 { label: 'Stok Kodu *', key: 'stockCode', type: 'text', placeholder: 'STK-001' },
+                { label: 'Firma Adı', key: 'companyName', type: 'text', placeholder: 'Firma veya tedarikçi adı' },
                 { label: 'Maliyet (₺)', key: 'cost', type: 'number', placeholder: '0' },
                 { label: 'Alım Tarihi', key: 'purchaseDate', type: 'date', placeholder: '' },
                 { label: 'Adet', key: 'quantity', type: 'number', placeholder: '0' },
