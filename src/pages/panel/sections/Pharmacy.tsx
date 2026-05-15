@@ -756,7 +756,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
 
   // Remove extra medicine from pending items
   const handleRemoveExtraMedicine = (itemIndex: number) => {
-    setPendingSoldItems(prev => prev.filter((item, idx) => idx !== itemIndex));
+    setPendingSoldItems(prev => prev.filter((_item, idx) => idx !== itemIndex));
     setSelectedMedicines(prev => {
       const removedItem = pendingSoldItems[itemIndex];
       const newSelection = prev.filter(name => name !== removedItem.name);
