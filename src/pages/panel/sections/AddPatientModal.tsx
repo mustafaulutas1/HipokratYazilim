@@ -118,8 +118,7 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
     if (!formData.phone.trim()) newErrors.phone = 'Telefon numarası gereklidir';
     else if (!/^\+\d{6,15}$/.test(formData.phone.replace(/\s/g, ''))) newErrors.phone = 'Geçerli bir telefon numarası giriniz';
 
-    if (!formData.email.trim()) newErrors.email = 'Email adresi gereklidir';
-    else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = 'Geçerli bir email adresi giriniz';
+    if (formData.email.trim() && !/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = 'Geçerli bir email adresi giriniz';
 
     if (!formData.birthDate) newErrors.birthDate = 'Doğum tarihi gereklidir';
     if (!formData.gender) newErrors.gender = 'Cinsiyet seçimi gereklidir';
@@ -374,7 +373,7 @@ const AddPatientModal: React.FC<AddPatientModalProps> = ({
 
             <div>
               <label className="block text-gray-700 text-sm font-medium mb-2">
-                Email *
+                Email
               </label>
               <input
                 type="email"

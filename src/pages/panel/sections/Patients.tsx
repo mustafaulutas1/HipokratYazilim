@@ -274,7 +274,6 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {[
           { title: 'Toplam Hasta', value: patients.length.toString(), icon: '👥', color: 'from-blue-500 to-cyan-500' },
-          { title: 'Aktif Hasta', value: patients.filter(p => p.status !== 'passive').length.toString(), icon: '✅', color: 'from-green-500 to-emerald-500' },
           {
             title: 'Bu Ay Yeni', value: patients.filter(p => {
               const createdAt = new Date(p.createdAt);
@@ -523,7 +522,6 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
                 <th className="px-6 py-4 text-left text-white/80 font-semibold">Telefon</th>
                 <th className="px-6 py-4 text-left text-white/80 font-semibold">Email</th>
                 <th className="px-6 py-4 text-left text-white/80 font-semibold">İkamet</th>
-                <th className="px-6 py-4 text-left text-white/80 font-semibold">Durum</th>
                 <th className="px-6 py-4 text-left text-white/80 font-semibold">İşlemler</th>
               </tr>
             </thead>
@@ -566,14 +564,6 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
                           : '-'}
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${patient.status === 'passive'
-                        ? 'bg-gray-500/20 text-gray-300'
-                        : 'bg-green-500/20 text-green-300'
-                        }`}>
-                        {patient.status === 'passive' ? 'Pasif' : 'Aktif'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => {
@@ -602,16 +592,6 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
                           className="p-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg text-green-300 hover:text-green-200 transition-all duration-200"
                         >
                           ✏️
-                        </button>
-                        <button
-                          onClick={() => togglePatientStatus(patient)}
-                          className={`p-2 rounded-lg transition-all duration-200 ${patient.status === 'passive'
-                            ? 'bg-gray-500/20 hover:bg-gray-500/30 border border-gray-500/30 text-gray-300 hover:text-gray-200'
-                            : 'bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 text-green-300 hover:text-green-200'
-                            }`}
-                          title={patient.status === 'passive' ? 'Aktif Yap' : 'Pasif Yap'}
-                        >
-                          {patient.status === 'passive' ? '🔴' : '🟢'}
                         </button>
                         <button
                           onClick={() => handleDeletePatient(patient)}

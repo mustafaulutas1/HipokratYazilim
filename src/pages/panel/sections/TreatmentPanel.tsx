@@ -275,7 +275,7 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
     }
   };
 
-  const fetchKatDepoItems = async () => {
+  const fetchKatDepoItems = async (patient?: TreatmentPatient | null) => {
     if (!doctorProfile?.clinicId) return;
     setKatDepoLoading(true);
     try {
@@ -288,6 +288,35 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
         .map(d => ({ id: d.id, ...d.data() } as KatDepoUrun))
         .filter(item => item.quantity > 0);
       setKatDepoItems(items);
+
+      // Tedaviye bağlı varsayılan malzemeleri yükle
+      const applications = patient?.treatmentOptions?.selectedMainApplications;
+      if (applications && applications.length > 0) {
+        const eslQ = query(
+          collection(db, 'tedaviMalzemeEslestirme'),
+          where('clinicId', '==', doctorProfile.clinicId)
+        );
+        const eslSnap = await getDocs(eslQ);
+        const allMappings = eslSnap.docs.map(d => d.data() as { applicationName: string; materials: { productId: string; productName: string; stockCode: string; defaultQuantity: number }[] });
+
+        const preloaded: SelectedMaterial[] = [];
+        const seen = new Set<string>();
+        for (const appName of applications) {
+          const mapping = allMappings.find(m => m.applicationName === appName);
+          if (!mapping) continue;
+          for (const mat of mapping.materials) {
+            if (seen.has(mat.productId)) continue;
+            seen.add(mat.productId);
+            const stockItem = items.find(i => i.id === mat.productId);
+            if (!stockItem) continue;
+            const qty = Math.min(mat.defaultQuantity, stockItem.quantity);
+            if (qty > 0) {
+              preloaded.push({ productId: mat.productId, productName: mat.productName, stockCode: mat.stockCode, quantity: qty });
+            }
+          }
+        }
+        if (preloaded.length > 0) setSelectedMaterials(preloaded);
+      }
     } catch (err) {
       console.error('❌ Kat depo ürünleri yüklenemedi:', err);
     } finally {
@@ -858,7 +887,7 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
                         setUnselectedTreatmentReason('');
                         setSelectedMaterials([]);
                         fetchPendingAnamrez(patient);
-                        fetchKatDepoItems();
+                        fetchKatDepoItems(patient);
                         setIsTreatmentModalOpen(true);
                       }}
                       className={`px-4 py-2 border rounded-xl transition-all duration-200 flex items-center gap-2 ${
