@@ -38,6 +38,8 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
   
   // Calendar için hasta filtreleme
   const [calendarPatientFilter, setCalendarPatientFilter] = useState('');
+  const [patientAllAppointments, setPatientAllAppointments] = useState<any[]>([]);
+  const [patientAllAppointmentsLoading, setPatientAllAppointmentsLoading] = useState(false);
 
   // Rutin Tedavi Programları
   const [activeTab, setActiveTab] = useState<'calendar' | 'routinePrograms' | 'nextAppointments'>('calendar');
@@ -200,6 +202,36 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
     };
     fetchAppointments();
   }, [dateISO, viewMode, selectedDate, doctorProfile?.clinicId, filterPatientName, filterStartDate, filterEndDate, filterStatus]);
+
+  // Hasta filtrelendiğinde tüm randevuları çek
+  useEffect(() => {
+    if (!calendarPatientFilter.trim() || !doctorProfile?.clinicId) {
+      setPatientAllAppointments([]);
+      return;
+    }
+    const fetchAll = async () => {
+      setPatientAllAppointmentsLoading(true);
+      const snap = await getDocs(
+        query(collection(db, 'appointments'), where('clinicId', '==', doctorProfile.clinicId))
+      );
+      const ownerUid = doctorProfile?.uid;
+      const searchTerm = calendarPatientFilter.toLowerCase().trim();
+      const all = snap.docs
+        .map(d => ({ id: d.id, ...(d.data() as any) }))
+        .filter(apt =>
+          apt.patientName?.toLowerCase().includes(searchTerm) &&
+          (!ownerUid || apt.doctorId === ownerUid)
+        );
+      all.sort((a, b) => {
+        const dateCompare = String(a.dateISO || '').localeCompare(String(b.dateISO || ''));
+        if (dateCompare !== 0) return dateCompare;
+        return String(a.start || '').localeCompare(String(b.start || ''));
+      });
+      setPatientAllAppointments(all);
+      setPatientAllAppointmentsLoading(false);
+    };
+    fetchAll();
+  }, [calendarPatientFilter, doctorProfile?.clinicId, doctorProfile?.uid]);
 
   // Segment aralığına düşen randevular - sadece başlangıç zamanı bu slot içinde olanlar
   const getAppointmentsForSegment = (segStart: number, segEnd: number) => {
@@ -1120,41 +1152,74 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
 
         {/* Yaklaşan Randevular */}
         <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-          <h2 className="text-xl font-bold text-white mb-6">
-            {viewMode === 'day' ? 'Yaklaşan Randevular' : 'Randevular'}
+          <h2 className="text-xl font-bold text-white mb-2">
+            {calendarPatientFilter ? 'Tüm Randevular' : viewMode === 'day' ? 'Yaklaşan Randevular' : 'Randevular'}
           </h2>
+          {calendarPatientFilter && (
+            <p className="text-white/50 text-xs mb-4">Geçmiş ve gelecek tüm randevular gösteriliyor</p>
+          )}
 
           <div className="space-y-4 max-h-[600px] overflow-y-auto">
-            {filteredAppointments.length === 0 ? (
-              <div className="text-white/40 text-center py-8">
-                {calendarPatientFilter ? 'Aradığınız kriterlere uygun randevu bulunamadı' : 'Randevu bulunamadı'}
-              </div>
+            {calendarPatientFilter ? (
+              patientAllAppointmentsLoading ? (
+                <div className="text-white/40 text-center py-8">Yükleniyor...</div>
+              ) : patientAllAppointments.length === 0 ? (
+                <div className="text-white/40 text-center py-8">Aradığınız hastaya ait randevu bulunamadı</div>
+              ) : (
+                patientAllAppointments.map((appointment) => {
+                  const today = new Date().toISOString().slice(0, 10);
+                  const isPast = appointment.dateISO < today;
+                  return (
+                    <div
+                      key={appointment.id}
+                      className={`bg-white/5 rounded-xl p-4 cursor-pointer hover:bg-white/10 transition-colors ${isPast ? 'opacity-60' : ''}`}
+                      onClick={() => { setViewedAppointment(appointment); setOpenDetailsModal(true); }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-white font-semibold">{appointment.patientName}</div>
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${getStatusColor(appointment.status)}`}>
+                          {appointment.status === 'confirmed' ? 'Onaylandı' :
+                           appointment.status === 'pending' ? 'Beklemede' : 'İptal'}
+                        </span>
+                      </div>
+                      <div className="text-white/60 text-xs mb-1 flex items-center gap-2">
+                        {appointment.dateISO}
+                        {isPast && <span className="text-white/40 text-[10px] bg-white/10 px-1.5 py-0.5 rounded">Geçmiş</span>}
+                      </div>
+                      <div className="text-white/70 text-sm mb-1">{appointment.start} • {appointment.typeName ?? appointment.type}</div>
+                      <div className="text-white/60 text-xs">{appointment.notes ?? ''}</div>
+                    </div>
+                  );
+                })
+              )
+            ) : filteredAppointments.length === 0 ? (
+              <div className="text-white/40 text-center py-8">Randevu bulunamadı</div>
             ) : (
               filteredAppointments.map((appointment) => (
-              <div
-                key={appointment.id}
-                className="bg-white/5 rounded-xl p-4 cursor-pointer hover:bg-white/10 transition-colors"
-                onClick={() => { setViewedAppointment(appointment); setOpenDetailsModal(true); }}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-white font-semibold">{appointment.patientName}</div>
-                  <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${getStatusColor(appointment.status)}`}>
-                    {appointment.status === 'confirmed' ? 'Onaylandı' :
-                     appointment.status === 'pending' ? 'Beklemede' : 'İptal'}
-                  </span>
-                </div>
-                {viewMode !== 'day' && (
-                  <div className="text-white/60 text-xs mb-1">
-                    {new Date(appointment.dateISO).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', weekday: 'short' })}
+                <div
+                  key={appointment.id}
+                  className="bg-white/5 rounded-xl p-4 cursor-pointer hover:bg-white/10 transition-colors"
+                  onClick={() => { setViewedAppointment(appointment); setOpenDetailsModal(true); }}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-white font-semibold">{appointment.patientName}</div>
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold border ${getStatusColor(appointment.status)}`}>
+                      {appointment.status === 'confirmed' ? 'Onaylandı' :
+                       appointment.status === 'pending' ? 'Beklemede' : 'İptal'}
+                    </span>
                   </div>
-                )}
-                <div className="text-white/70 text-sm mb-1">{appointment.start} • {appointment.typeName ?? appointment.type}</div>
-                <div className="text-white/60 text-xs">{appointment.notes ?? ''}</div>
-              </div>
-            ))
-          )}
+                  {viewMode !== 'day' && (
+                    <div className="text-white/60 text-xs mb-1">
+                      {new Date(appointment.dateISO).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', weekday: 'short' })}
+                    </div>
+                  )}
+                  <div className="text-white/70 text-sm mb-1">{appointment.start} • {appointment.typeName ?? appointment.type}</div>
+                  <div className="text-white/60 text-xs">{appointment.notes ?? ''}</div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
-      </div>
       </div>
       </>}
 
