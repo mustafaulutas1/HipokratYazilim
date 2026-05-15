@@ -97,7 +97,7 @@ interface PharmacyPatient {
 }
 
 const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorProfile }) => {
-  const [activeTab, setActiveTab] = useState<'medications' | 'devices' | 'patients' | 'pharmacy_debt' | 'sales_history'>('medications');
+  const [activeTab, setActiveTab] = useState<'medications' | 'devices' | 'patients' | 'pharmacy_debt' | 'sales_history' | 'direct_sale'>('medications');
   const [savedMedications, setSavedMedications] = useState<SavedMedication[]>([]);
   const [savedDevices, setSavedDevices] = useState<SavedMedicalDevice[]>([]);
   const [protocolNames, setProtocolNames] = useState<string[]>([]);
@@ -123,8 +123,6 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const [pharmacyPaymentMethods, setPharmacyPaymentMethods] = useState<PaymentMethodEntry[]>([{ method: 'nakit', amount: 0 }]);
   const [pendingSoldItems, setPendingSoldItems] = useState<any[]>([]);
   const [selectedMedicines, setSelectedMedicines] = useState<string[]>([]);
-  const [isPharmacyPartialPayment, setIsPharmacyPartialPayment] = useState<boolean>(false);
-  const [pharmacyRemainingDebt, setPharmacyRemainingDebt] = useState<string>('');
   // Debt history panel states
   const [patientDebtHistory, setPatientDebtHistory] = useState<any[]>([]);
   const [selectedDebts, setSelectedDebts] = useState<string[]>([]);
@@ -142,6 +140,15 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const [pickerQuantities, setPickerQuantities] = useState<Record<string, number>>({});
   // Sale note state
   const [pharmacyNote, setPharmacyNote] = useState<string>('');
+  // Direct sale states
+  const [isDirectSaleModeActive, setIsDirectSaleModeActive] = useState(false);
+  const [directSaleSearch, setDirectSaleSearch] = useState('');
+  const [allClinicPatients, setAllClinicPatients] = useState<any[]>([]);
+  const [loadingAllPatients, setLoadingAllPatients] = useState(false);
+  const [directSaleMode, setDirectSaleMode] = useState<'existing' | 'guest'>('existing');
+  const [guestName, setGuestName] = useState('');
+  const [guestTcNo, setGuestTcNo] = useState('');
+  const [guestPhone, setGuestPhone] = useState('');
   const [formData, setFormData] = useState<Medication>({
     name: '',
     protocolName: '',
@@ -315,6 +322,21 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     }
   };
 
+  const fetchAllClinicPatients = async () => {
+    if (!doctorProfile?.clinicId) return;
+    setLoadingAllPatients(true);
+    try {
+      const snap = await getDocs(query(collection(db, 'patients'), where('clinicId', '==', doctorProfile.clinicId)));
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      list.sort((a: any, b: any) => (a.fullName || '').localeCompare(b.fullName || '', 'tr'));
+      setAllClinicPatients(list);
+    } catch (e) {
+      console.error('Error fetching all patients:', e);
+    } finally {
+      setLoadingAllPatients(false);
+    }
+  };
+
   const fetchPatients = async () => {
     if (!doctorProfile?.clinicId) return;
     try {
@@ -351,23 +373,28 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
         where('clinicId', '==', doctorProfile.clinicId),
         where('pharmacyStatus', '==', 'completed')
       );
-      
+
       const salesSnapshot = await getDocs(salesQuery);
       const sales: any[] = [];
-      
+
       salesSnapshot.forEach((doc) => {
         const data = doc.data();
         if (data.pharmacySaleDate) {
-          sales.push({
-            id: doc.id,
-            ...data
-          });
+          sales.push({ id: doc.id, ...data });
         }
       });
-      
+
+      // Also fetch direct sales from pharmacy_direct_sales collection
+      const directSalesSnap = await getDocs(
+        query(collection(db, 'pharmacy_direct_sales'), where('clinicId', '==', doctorProfile.clinicId))
+      );
+      directSalesSnap.forEach((doc) => {
+        sales.push({ id: doc.id, ...doc.data(), isDirectSale: true });
+      });
+
       // Sort by sale date, most recent first
       sales.sort((a, b) => new Date(b.pharmacySaleDate || b.pharmacySaleCompletedAt).getTime() - new Date(a.pharmacySaleDate || a.pharmacySaleCompletedAt).getTime());
-      setCompletedSales(sales.slice(0, 50)); // Limit to last 50 sales
+      setCompletedSales(sales.slice(0, 100));
     } catch (error) {
       console.error('Error fetching completed sales:', error);
     }
@@ -646,6 +673,25 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     setIsSaleModalOpen(true);
   };
 
+  // Direct sale: skip sale modal, go straight to payment modal with all medicines available
+  const handleOpenDirectSalePaymentModal = (patient: PharmacyPatient) => {
+    setIsDirectSaleModeActive(true);
+    setSelectedPatientForSale(patient);
+    setPendingSoldItems([]);
+    setSelectedMedicines([]);
+    setPharmacyPaymentAmount('0.00');
+    setSelectedDebts([]);
+    setPharmacyPaymentMethod('nakit');
+    setPharmacyPaymentMethods([{ method: 'nakit', amount: 0 }]);
+    setDebtsAddedToPayment(false);
+    setPharmacyNote('');
+    setShowExtraMedicinePicker(true);
+    setExtraMedicineSearch('');
+    setPickerQuantities({});
+    if (patient.tcNo) fetchPatientDebtHistory(patient);
+    setIsPaymentModalOpen(true);
+  };
+
   // Open payment modal when clicking "Satışı Tamamla"
   const handleOpenPaymentModal = (soldItems: any[]) => {
     const itemsWithQty = soldItems.map(item => ({ ...item, quantity: item.quantity || 1 }));
@@ -725,8 +771,6 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
         return updated;
       });
       setPickerQuantities(prev => { const n = { ...prev }; delete n[medication.id!]; return n; });
-      setShowExtraMedicinePicker(false);
-      setExtraMedicineSearch('');
       return;
     }
 
@@ -750,8 +794,6 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     });
     setSelectedMedicines(prev => [...prev, getMedicationDisplayName(medication)]);
     setPickerQuantities(prev => { const n = { ...prev }; delete n[medication.id!]; return n; });
-    setShowExtraMedicinePicker(false);
-    setExtraMedicineSearch('');
   };
 
   // Remove extra medicine from pending items
@@ -779,18 +821,97 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       // Calculate amounts
       const selectedDebtTotal = calculateSelectedDebtTotal();
       const totalPaymentReceived = parseFloat(pharmacyPaymentAmount) || 0;
+
+      // Auto-calculate debt: total medicines cost minus what was actually paid
+      const medicinesTotal = approvedMedicines.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
+      const newDebtAmount = Math.max(0, Math.round((medicinesTotal - totalPaymentReceived) * 100) / 100);
       
-      // Calculate new debt from this sale (if partial payment)
-      const newDebtAmount = isPharmacyPartialPayment && pharmacyRemainingDebt ? parseFloat(pharmacyRemainingDebt) : 0;
-      
+      if (isDirectSaleModeActive) {
+        const directSaleBatch = writeBatch(db);
+
+        // Save sale record
+        const directSaleRef = doc(collection(db, 'pharmacy_direct_sales'));
+        directSaleBatch.set(directSaleRef, {
+          clinicId: doctorProfile?.clinicId,
+          patientId: selectedPatientForSale.id !== 'guest' ? selectedPatientForSale.id : null,
+          fullName: selectedPatientForSale.fullName,
+          tcNo: selectedPatientForSale.tcNo || '',
+          phone: (selectedPatientForSale as any).phone || '',
+          pharmacySoldItems: approvedMedicines,
+          pharmacyRemovedItems: removedMedicines,
+          pharmacyPaymentAmount: totalPaymentReceived,
+          pharmacyPaymentMethod: pharmacyPaymentMethod,
+          pharmacyPaymentMethods: pharmacyPaymentMethods.filter(m => m.amount > 0),
+          pharmacySaleDate: new Date().toISOString(),
+          pharmacyNote: pharmacyNote.trim() || null,
+          isDirectSale: true,
+          debtAmount: newDebtAmount > 0 ? newDebtAmount : null,
+          createdAt: new Date().toISOString(),
+        });
+
+        // If partial payment, save debt record to pharmacy_debts so it appears in "Borçlu Hastalar"
+        if (newDebtAmount > 0) {
+          const debtRef = doc(collection(db, 'pharmacy_debts'));
+          directSaleBatch.set(debtRef, {
+            clinicId: doctorProfile?.clinicId,
+            patientId: selectedPatientForSale.id !== 'guest' ? selectedPatientForSale.id : null,
+            patientTcNo: selectedPatientForSale.tcNo || '',
+            patientName: selectedPatientForSale.fullName,
+            patientPhone: (selectedPatientForSale as any).phone || '',
+            amount: newDebtAmount,
+            items: approvedMedicines.map(item => ({
+              name: item.name,
+              price: item.price,
+              quantity: item.quantity || 1,
+            })),
+            reason: `Direkt eczane satışı — eksik ödeme (${totalPaymentReceived.toFixed(2)} TL ödendi, ${medicinesTotal.toFixed(2)} TL toplam)`,
+            isPaid: false,
+            isDirectSale: true,
+            saleId: directSaleRef.id,
+            createdAt: new Date().toISOString(),
+            saleDate: new Date().toISOString(),
+          });
+        }
+
+        await directSaleBatch.commit();
+
+        let message = 'Direkt satış başarıyla kaydedildi!';
+        if (newDebtAmount > 0) {
+          message += ` ${newDebtAmount.toFixed(2)} TL borç olarak kaydedildi.`;
+        }
+        alert(message);
+
+        setIsPaymentModalOpen(false);
+        setIsSaleModalOpen(false);
+        setSelectedPatientForSale(null);
+        setPendingSoldItems([]);
+        setSelectedMedicines([]);
+        setPharmacyPaymentAmount('');
+        setPharmacyPaymentMethod('nakit');
+        setPharmacyPaymentMethods([{ method: 'nakit', amount: 0 }]);
+        setPatientDebtHistory([]);
+        setSelectedDebts([]);
+        setDebtsAddedToPayment(false);
+        setShowExtraMedicinePicker(false);
+        setExtraMedicineSearch('');
+        setPharmacyNote('');
+        setIsDirectSaleModeActive(false);
+        setGuestName('');
+        setGuestTcNo('');
+        setGuestPhone('');
+        fetchCompletedSales();
+        if (newDebtAmount > 0) fetchPatientsWithPharmacyDebts();
+        return;
+      }
+
       const batch = writeBatch(db);
       const patientRef = doc(db, 'patients', selectedPatientForSale.id);
-      
+
       // 1. Mark selected past debts as paid
       if (selectedDebts.length > 0) {
         for (const debtId of selectedDebts) {
           const debtRecord = patientDebtHistory.find(d => d.id === debtId);
-          
+
           // Update debt in pharmacy_debts collection
           const debtRef = doc(db, 'pharmacy_debts', debtId);
           batch.update(debtRef, {
@@ -801,7 +922,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
           });
         }
       }
-      
+
       // 2. If there's new debt from this sale, save it as a debt record
       if (newDebtAmount > 0) {
         const newDebtRef = doc(collection(db, 'pharmacy_debts'));
@@ -822,16 +943,16 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
           saleDate: new Date().toISOString()
         });
       }
-      
+
       // 3. Calculate remaining total debt for the patient
       // Start with debts that were NOT selected (still unpaid)
       const remainingOldDebts = patientDebtHistory
         .filter(d => !selectedDebts.includes(d.id))
         .reduce((sum, d) => sum + (d.amount || 0), 0);
-      
+
       // Add new debt from this sale
       const totalRemainingDebt = remainingOldDebts + newDebtAmount;
-      
+
       // 4. Prepare patient update data
       const updateData: any = {
         pharmacyStatus: 'completed',
@@ -853,7 +974,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
           paidAt: new Date().toISOString()
         } : null
       };
-      
+
       // Update patient pharmacy debt status (separate from treatment debts)
       if (totalRemainingDebt > 0) {
         updateData.pharmacyHasDebt = true;
@@ -869,9 +990,9 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
         updateData.pharmacyDebtReason = '';
         updateData.pharmacyDebtDate = null;
       }
-      
+
       batch.update(patientRef, updateData);
-      
+
       // Commit all changes
       await batch.commit();
 
@@ -887,7 +1008,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
         message += ` Kalan toplam borç: ${totalRemainingDebt.toFixed(2)} TL.`;
       }
       alert(message);
-      
+
       // Close modals and reset states
       setIsPaymentModalOpen(false);
       setIsSaleModalOpen(false);
@@ -897,15 +1018,14 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       setPharmacyPaymentAmount('');
       setPharmacyPaymentMethod('nakit');
       setPharmacyPaymentMethods([{ method: 'nakit', amount: 0 }]);
-      setIsPharmacyPartialPayment(false);
-      setPharmacyRemainingDebt('');
+
       setPatientDebtHistory([]);
       setSelectedDebts([]);
       setDebtsAddedToPayment(false);
       setShowExtraMedicinePicker(false);
       setExtraMedicineSearch('');
       setPharmacyNote('');
-      
+
       fetchPatients();
       fetchCompletedSales();
 
@@ -1360,6 +1480,25 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
           </button>
           <button
             onClick={() => {
+              setActiveTab('direct_sale');
+              setShowAddForm(false);
+              setDirectSaleSearch('');
+              setDirectSaleMode('existing');
+              setGuestName('');
+              setGuestTcNo('');
+              setGuestPhone('');
+              fetchAllClinicPatients();
+            }}
+            className={`px-8 py-3 rounded-xl font-medium transition-all duration-200 ${
+              activeTab === 'direct_sale'
+                ? 'bg-gradient-to-r from-orange-600 to-amber-600 text-white shadow-lg'
+                : 'bg-white/10 text-white/70 hover:bg-white/20'
+            }`}
+          >
+            🛒 Direkt Satış
+          </button>
+          <button
+            onClick={() => {
               setActiveTab('sales_history');
               setShowAddForm(false);
               setSearchTerm('');
@@ -1469,7 +1608,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
           ) : null}
           
           {/* Action Buttons and Filters - Only for medications and devices tabs */}
-          {activeTab !== 'patients' && activeTab !== 'pharmacy_debt' && activeTab !== 'sales_history' && (
+          {activeTab !== 'patients' && activeTab !== 'pharmacy_debt' && activeTab !== 'sales_history' && activeTab !== 'direct_sale' && (
           <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
             <div className="mb-6 flex flex-wrap items-center gap-3">
               <button
@@ -2035,6 +2174,169 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
             </div>
           )}
 
+          {/* Direct Sale */}
+          {activeTab === 'direct_sale' && (
+            <div className="space-y-6">
+              <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+                <h3 className="text-xl font-bold text-white mb-2">🛒 Direkt Satış</h3>
+                <p className="text-white/60 text-sm mb-6">Akıştan bağımsız olarak eczaneye gelen kişilere ilaç satışı yapın.</p>
+
+                {/* Mode Toggle */}
+                <div className="flex gap-3 mb-6">
+                  <button
+                    onClick={() => { setDirectSaleMode('existing'); setDirectSaleSearch(''); }}
+                    className={`px-5 py-2.5 rounded-xl font-semibold transition-all text-sm ${
+                      directSaleMode === 'existing'
+                        ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md'
+                        : 'bg-white/10 text-white/70 hover:bg-white/20'
+                    }`}
+                  >
+                    👥 Mevcut Hasta
+                  </button>
+                  <button
+                    onClick={() => setDirectSaleMode('guest')}
+                    className={`px-5 py-2.5 rounded-xl font-semibold transition-all text-sm ${
+                      directSaleMode === 'guest'
+                        ? 'bg-gradient-to-r from-orange-600 to-amber-600 text-white shadow-md'
+                        : 'bg-white/10 text-white/70 hover:bg-white/20'
+                    }`}
+                  >
+                    🧑 Yeni Müşteri
+                  </button>
+                </div>
+
+                {/* Existing Patient Mode */}
+                {directSaleMode === 'existing' && (
+                  <div className="space-y-4">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={directSaleSearch}
+                        onChange={(e) => setDirectSaleSearch(e.target.value)}
+                        placeholder="Hasta adı veya TC ile ara..."
+                        className="w-full px-4 py-3 pl-10 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                      />
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50">🔍</span>
+                    </div>
+
+                    {loadingAllPatients ? (
+                      <div className="text-center py-8 text-white/50">Hastalar yükleniyor...</div>
+                    ) : (
+                      <div className="max-h-[400px] overflow-y-auto space-y-2 pr-1">
+                        {allClinicPatients
+                          .filter(p => {
+                            if (!directSaleSearch.trim()) return true;
+                            const term = directSaleSearch.toLowerCase();
+                            return (
+                              (p.fullName || '').toLowerCase().includes(term) ||
+                              (p.tcNo || '').includes(term)
+                            );
+                          })
+                          .map((patient) => (
+                            <div
+                              key={patient.id}
+                              className="flex items-center justify-between bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl px-5 py-3.5 transition-all cursor-pointer group"
+                            >
+                              <div>
+                                <div className="text-white font-semibold group-hover:text-cyan-300 transition-colors">
+                                  {patient.fullName}
+                                </div>
+                                <div className="text-white/50 text-sm">
+                                  {patient.tcNo ? `TC: ${patient.tcNo}` : 'TC girilmemiş'}
+                                  {patient.phone ? ` • ${patient.phone}` : ''}
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  const mockPatient: PharmacyPatient = {
+                                    id: patient.id,
+                                    fullName: patient.fullName,
+                                    tcNo: patient.tcNo || '',
+                                    status: patient.status || 'active',
+                                    pharmacyStatus: undefined,
+                                    updatedAt: patient.updatedAt || '',
+                                    createdAt: patient.createdAt || '',
+                                    treatmentOptions: patient.treatmentOptions,
+                                  };
+                                  handleOpenDirectSalePaymentModal(mockPatient);
+                                }}
+                                className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white text-sm font-semibold rounded-xl transition-all shadow-md"
+                              >
+                                Satış Yap
+                              </button>
+                            </div>
+                          ))}
+                        {allClinicPatients.filter(p => {
+                          if (!directSaleSearch.trim()) return true;
+                          const term = directSaleSearch.toLowerCase();
+                          return (p.fullName || '').toLowerCase().includes(term) || (p.tcNo || '').includes(term);
+                        }).length === 0 && (
+                          <div className="text-center py-8 text-white/40">Eşleşen hasta bulunamadı.</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Guest / New Customer Mode */}
+                {directSaleMode === 'guest' && (
+                  <div className="space-y-4 max-w-lg">
+                    <div>
+                      <label className="block text-white/80 text-sm font-semibold mb-2">Ad Soyad *</label>
+                      <input
+                        type="text"
+                        value={guestName}
+                        onChange={(e) => setGuestName(e.target.value)}
+                        placeholder="Müşteri adı soyadı"
+                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-white/80 text-sm font-semibold mb-2">TC Kimlik No</label>
+                      <input
+                        type="text"
+                        value={guestTcNo}
+                        onChange={(e) => setGuestTcNo(e.target.value)}
+                        placeholder="Opsiyonel"
+                        maxLength={11}
+                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-white/80 text-sm font-semibold mb-2">Telefon</label>
+                      <input
+                        type="text"
+                        value={guestPhone}
+                        onChange={(e) => setGuestPhone(e.target.value)}
+                        placeholder="Opsiyonel"
+                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      />
+                    </div>
+                    <button
+                      disabled={!guestName.trim()}
+                      onClick={() => {
+                        const guestPatient: PharmacyPatient & { phone?: string } = {
+                          id: 'guest',
+                          fullName: guestName.trim(),
+                          tcNo: guestTcNo.trim(),
+                          status: 'active',
+                          pharmacyStatus: undefined,
+                          updatedAt: '',
+                          createdAt: '',
+                          phone: guestPhone.trim(),
+                        };
+                        handleOpenDirectSalePaymentModal(guestPatient as PharmacyPatient);
+                      }}
+                      className="w-full py-3 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-lg"
+                    >
+                      Satışa Devam Et
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Sales History */}
           {activeTab === 'sales_history' && (
             <div className="space-y-4">
@@ -2091,8 +2393,13 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                                 👤
                               </div>
                               <div>
-                                <p className="text-white font-medium">{sale.fullName}</p>
-                                <p className="text-white/50 text-sm">TC: {sale.tcNo}</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-white font-medium">{sale.fullName}</p>
+                                  {sale.isDirectSale && (
+                                    <span className="text-[10px] bg-orange-500/20 text-orange-300 border border-orange-500/30 px-1.5 py-0.5 rounded-full font-semibold">Direkt</span>
+                                  )}
+                                </div>
+                                <p className="text-white/50 text-sm">TC: {sale.tcNo || '-'}</p>
                               </div>
                             </div>
                           </td>
@@ -2520,11 +2827,22 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
           <div className="bg-[#1a1f37] border border-white/10 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl p-6">
             <div className="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
               <div>
-                <h2 className="text-2xl font-bold text-white">💊 Reçete ve İlaç Satışı</h2>
-                <p className="text-white/60">Hasta: {selectedPatientForSale.fullName}</p>
+                <h2 className="text-2xl font-bold text-white">
+                  {isDirectSaleModeActive ? '🛒 Direkt İlaç Satışı' : '💊 Reçete ve İlaç Satışı'}
+                </h2>
+                <p className="text-white/60">
+                  {isDirectSaleModeActive ? 'Müşteri' : 'Hasta'}: {selectedPatientForSale.fullName}
+                  {isDirectSaleModeActive && <span className="ml-2 text-xs text-orange-400 bg-orange-400/20 px-2 py-0.5 rounded-full">Direkt Satış</span>}
+                </p>
               </div>
               <button 
-                onClick={() => setIsSaleModalOpen(false)}
+                onClick={() => {
+                  setIsSaleModalOpen(false);
+                  if (isDirectSaleModeActive) {
+                    setIsDirectSaleModeActive(false);
+                    setSelectedPatientForSale(null);
+                  }
+                }}
                 className="p-2 hover:bg-white/10 rounded-lg transition-colors"
               >
                 <span className="text-2xl">✕</span>
@@ -2599,8 +2917,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                         };
                      });
 
-                     if (soldItems.length === 0) {
-                       alert('Satışı yapılacak ilaç bulunamadı.');
+                     if (soldItems.length === 0 && !isDirectSaleModeActive) {
+                       alert('Satışı yapılacak ilaç bulunamadı. Lütfen ekstra ilaç ekleyin.');
                        return;
                      }
 
@@ -2622,15 +2940,21 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-2xl w-full max-w-6xl max-h-[95vh] overflow-hidden shadow-2xl border border-gray-200">
             {/* Modal Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-cyan-600 p-4">
+            <div className={`bg-gradient-to-r ${isDirectSaleModeActive ? 'from-orange-600 to-amber-600' : 'from-blue-600 to-cyan-600'} p-4`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
-                    <span className="text-2xl">💳</span>
+                    <span className="text-2xl">{isDirectSaleModeActive ? '🛒' : '💳'}</span>
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Eczane Ödeme</h3>
-                    <p className="text-white/80 text-sm">{selectedPatientForSale.fullName} - TC: {selectedPatientForSale.tcNo}</p>
+                    <h3 className="text-xl font-bold text-white">
+                      {isDirectSaleModeActive ? 'Direkt Satış' : 'Eczane Ödeme'}
+                    </h3>
+                    <p className="text-white/80 text-sm">
+                      {selectedPatientForSale.fullName}
+                      {selectedPatientForSale.tcNo ? ` - TC: ${selectedPatientForSale.tcNo}` : ''}
+                      {isDirectSaleModeActive && <span className="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded-full">Direkt Satış</span>}
+                    </p>
                   </div>
                 </div>
                 <button
@@ -2641,13 +2965,15 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                     setPharmacyPaymentAmount('');
                     setPharmacyPaymentMethod('nakit');
                     setPharmacyPaymentMethods([{ method: 'nakit', amount: 0 }]);
-                    setIsPharmacyPartialPayment(false);
-                    setPharmacyRemainingDebt('');
                     setPatientDebtHistory([]);
                     setSelectedDebts([]);
                     setShowExtraMedicinePicker(false);
                     setExtraMedicineSearch('');
                     setPharmacyNote('');
+                    if (isDirectSaleModeActive) {
+                      setIsDirectSaleModeActive(false);
+                      setSelectedPatientForSale(null);
+                    }
                   }}
                   className="w-10 h-10 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-white transition-all"
                 >
@@ -2770,20 +3096,22 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                   <div className="bg-white border border-gray-200 rounded-xl p-4">
                     <div className="flex items-center justify-between mb-3">
                       <h5 className="font-semibold text-gray-800 flex items-center gap-2 text-sm">
-                        <span>➕</span>
-                        Ek İlaç Ekle
+                        <span>{isDirectSaleModeActive ? '💊' : '➕'}</span>
+                        {isDirectSaleModeActive ? `Tüm İlaçlar (${savedMedications.length})` : 'Ek İlaç Ekle'}
                       </h5>
-                      <button
-                        type="button"
-                        onClick={() => { setShowExtraMedicinePicker(p => !p); setPickerQuantities({}); }}
-                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 ${
-                          showExtraMedicinePicker
-                            ? 'bg-red-500 text-white hover:bg-red-600'
-                            : 'bg-green-500 text-white hover:bg-green-600'
-                        }`}
-                      >
-                        {showExtraMedicinePicker ? '✕' : '+'}
-                      </button>
+                      {!isDirectSaleModeActive && (
+                        <button
+                          type="button"
+                          onClick={() => { setShowExtraMedicinePicker(p => !p); setPickerQuantities({}); }}
+                          className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 ${
+                            showExtraMedicinePicker
+                              ? 'bg-red-500 text-white hover:bg-red-600'
+                              : 'bg-green-500 text-white hover:bg-green-600'
+                          }`}
+                        >
+                          {showExtraMedicinePicker ? '✕' : '+'}
+                        </button>
+                      )}
                     </div>
 
                     {showExtraMedicinePicker && (
@@ -2798,7 +3126,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                         />
 
                         {/* Medicines List */}
-                        <div className="max-h-[200px] overflow-y-auto space-y-2">
+                        <div className={`${isDirectSaleModeActive ? 'max-h-[380px]' : 'max-h-[200px]'} overflow-y-auto space-y-2`}>
                           {savedMedications
                             .filter(med => {
                               if (extraMedicineSearch === '') return true;
@@ -2882,32 +3210,92 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                   </div>
 
                   {/* Payment Amount */}
-                  <div className="bg-white border border-gray-200 rounded-xl p-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      💰 Ödeme Tutarı (TL)
-                    </label>
-                    <input
-                      type="number"
-                      value={pharmacyPaymentAmount}
-                      onChange={(e) => {
-                        const newAmount = e.target.value;
-                        setPharmacyPaymentAmount(newAmount);
-                        
-                        // Otomatik olarak ödeme yöntemi tutarını güncelle
-                        if (pharmacyPaymentMethods.length > 0) {
-                          const numAmount = parseFloat(newAmount) || 0;
-                          setPharmacyPaymentMethods([{
-                            method: pharmacyPaymentMethods[0].method,
-                            amount: numAmount
-                          }]);
-                        }
-                      }}
-                      className="w-full px-4 py-3 text-lg font-bold border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="0.00"
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
+                  {(() => {
+                    const medicinesTotal = pendingSoldItems
+                      .filter(item => selectedMedicines.includes(item.name))
+                      .reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
+                    const paidAmount = parseFloat(pharmacyPaymentAmount) || 0;
+                    const autoDebt = Math.max(0, Math.round((medicinesTotal - paidAmount) * 100) / 100);
+                    return (
+                      <div className="space-y-3">
+                        {/* Total cost display */}
+                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between">
+                          <span className="text-blue-800 font-semibold text-sm">Toplam İlaç Tutarı</span>
+                          <span className="text-blue-900 font-bold text-xl">{medicinesTotal.toFixed(2)} TL</span>
+                        </div>
+
+                        {/* Paid amount input */}
+                        <div className="bg-white border border-gray-200 rounded-xl p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <label className="block text-sm font-medium text-gray-700">
+                              💰 Ödenen Tutar (TL)
+                            </label>
+                            {autoDebt > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPharmacyPaymentAmount(medicinesTotal.toFixed(2));
+                                  if (pharmacyPaymentMethods.length > 0) {
+                                    setPharmacyPaymentMethods([{ method: pharmacyPaymentMethods[0].method, amount: medicinesTotal }]);
+                                  }
+                                }}
+                                className="text-xs text-blue-600 hover:text-blue-800 underline"
+                              >
+                                Tamamını öde ({medicinesTotal.toFixed(2)} TL)
+                              </button>
+                            )}
+                          </div>
+                          <input
+                            type="number"
+                            value={pharmacyPaymentAmount}
+                            onChange={(e) => {
+                              const newAmount = e.target.value;
+                              setPharmacyPaymentAmount(newAmount);
+                              if (pharmacyPaymentMethods.length > 0) {
+                                const numAmount = parseFloat(newAmount) || 0;
+                                setPharmacyPaymentMethods([{
+                                  method: pharmacyPaymentMethods[0].method,
+                                  amount: numAmount
+                                }]);
+                              }
+                            }}
+                            className="w-full px-4 py-3 text-lg font-bold border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="0.00"
+                            min="0"
+                            max={medicinesTotal}
+                            step="0.01"
+                          />
+                        </div>
+
+                        {/* Auto-calculated debt display */}
+                        {autoDebt > 0 && (
+                          <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-bold text-red-800 flex items-center gap-2">
+                                  <span>⚠️</span> Eksik Ödeme — Borç Oluşacak
+                                </p>
+                                <p className="text-red-600 text-sm mt-0.5">
+                                  {medicinesTotal.toFixed(2)} TL toplam – {paidAmount.toFixed(2)} TL ödeme
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-red-900 font-extrabold text-2xl">{autoDebt.toFixed(2)} TL</p>
+                                <p className="text-red-600 text-xs">borç kaydedilecek</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {paidAmount > 0 && autoDebt === 0 && medicinesTotal > 0 && (
+                          <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-2">
+                            <span className="text-green-600">✅</span>
+                            <span className="text-green-800 font-semibold text-sm">Tam ödeme — borç oluşmayacak</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Multi Payment Method Selector */}
                   <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
@@ -2916,7 +3304,6 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       value={pharmacyPaymentMethods}
                       onChange={(methods) => {
                         setPharmacyPaymentMethods(methods);
-                        // Keep backwards compatibility - set primary method
                         if (methods.length > 0) {
                           setPharmacyPaymentMethod(methods[0].method);
                         }
@@ -2925,41 +3312,6 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       showValidation={true}
                       allowedMethods={['nakit', 'kredi_karti', 'banka_karti', 'havale', 'cari']}
                     />
-                  </div>
-
-                  {/* Partial Payment Checkbox */}
-                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
-                    <label className="flex items-center gap-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={isPharmacyPartialPayment}
-                        onChange={(e) => {
-                          setIsPharmacyPartialPayment(e.target.checked);
-                          if (!e.target.checked) setPharmacyRemainingDebt('');
-                        }}
-                        className="w-5 h-5 rounded border-orange-300 text-orange-500 focus:ring-orange-400"
-                      />
-                      <span className="font-semibold text-orange-900">⚠️ Hasta tamamını ödemedi</span>
-                    </label>
-                    
-                    {isPharmacyPartialPayment && (
-                      <div className="mt-3 space-y-2">
-                        <input
-                          type="number"
-                          value={pharmacyRemainingDebt}
-                          onChange={(e) => setPharmacyRemainingDebt(e.target.value)}
-                          className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500"
-                          placeholder="Kalan borç tutarı"
-                          min="0"
-                          step="0.01"
-                        />
-                        {pharmacyRemainingDebt && parseFloat(pharmacyRemainingDebt) > 0 && (
-                          <p className="text-orange-700 text-sm font-medium">
-                            🚨 {parseFloat(pharmacyRemainingDebt).toFixed(2)} TL borç kaydedilecek
-                          </p>
-                        )}
-                      </div>
-                    )}
                   </div>
 
                   {/* Optional Note */}
@@ -3163,11 +3515,13 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       setPharmacyPaymentAmount('');
                       setPharmacyPaymentMethod('nakit');
                       setPharmacyPaymentMethods([{ method: 'nakit', amount: 0 }]);
-                      setIsPharmacyPartialPayment(false);
-                      setPharmacyRemainingDebt('');
                       setPatientDebtHistory([]);
                       setSelectedDebts([]);
                       setDebtsAddedToPayment(false);
+                      if (isDirectSaleModeActive) {
+                        setIsDirectSaleModeActive(false);
+                        setSelectedPatientForSale(null);
+                      }
                     }}
                     className="px-6 py-3 bg-gray-200 hover:bg-gray-300 border border-gray-300 rounded-xl text-gray-700 font-medium transition-all duration-200"
                   >
@@ -3175,7 +3529,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                   </button>
                   <button
                     onClick={handleProcessPharmacyPayment}
-                    disabled={loading || !pharmacyPaymentAmount || parseFloat(pharmacyPaymentAmount) < 0 || selectedMedicines.length === 0}
+                    disabled={loading || parseFloat(pharmacyPaymentAmount) < 0 || selectedMedicines.length === 0}
                     className="px-8 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-xl font-bold text-lg transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-green-500/30"
                   >
                     {loading ? (
