@@ -4,6 +4,8 @@ import { db } from '../../../firebase/config';
 import { utils, writeFile } from 'xlsx';
 import MultiPaymentMethodSelector, { formatPaymentMethods } from '../../../components/UI/MultiPaymentMethodSelector';
 import type { PaymentMethodEntry } from '../../../components/UI/MultiPaymentMethodSelector';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface Medication {
   id?: string;
@@ -148,15 +150,19 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const [dsAllPatients, setDsAllPatients] = useState<PharmacyPatient[]>([]);
   const [dsSelectedPatient, setDsSelectedPatient] = useState<PharmacyPatient | null>(null);
   const [dsNewCustomerName, setDsNewCustomerName] = useState('');
-  const [dsSaleItems, setDsSaleItems] = useState<{ application: { id: string; name: string; price: number; description?: string }; quantity: number }[]>([]);
+  const [dsSaleItems, setDsSaleItems] = useState<{ medication: SavedMedication; quantity: number }[]>([]);
   const [dsAppSearch, setDsAppSearch] = useState('');
-  const [dsApplications, setDsApplications] = useState<{ id: string; name: string; price: number; description?: string }[]>([]);
   const [dsPaymentMethods, setDsPaymentMethods] = useState<PaymentMethodEntry[]>([{ method: 'nakit', amount: 0 }]);
   const [dsNote, setDsNote] = useState('');
   const [dsPartialPayment, setDsPartialPayment] = useState(false);
   const [dsRemainingDebt, setDsRemainingDebt] = useState('');
   const [dsLoading, setDsLoading] = useState(false);
   const [dsPaymentModalOpen, setDsPaymentModalOpen] = useState(false);
+  const [dsView, setDsView] = useState<'sale' | 'history'>('sale');
+  const [dsHistorySales, setDsHistorySales] = useState<any[]>([]);
+  const [dsHistoryLoading, setDsHistoryLoading] = useState(false);
+  const [dsHistorySearch, setDsHistorySearch] = useState('');
+  const [dsSelectedHistorySale, setDsSelectedHistorySale] = useState<any | null>(null);
   const [formData, setFormData] = useState<Medication>({
     name: '',
     protocolName: '',
@@ -543,32 +549,6 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     }
   };
 
-  const fetchApplicationsForDirectSale = async () => {
-    if (!doctorProfile?.clinicId) return;
-    try {
-      const snap = await getDocs(collection(db, 'medicalApplications'));
-      const apps: { id: string; name: string; price: number; description?: string }[] = [];
-      const clinicNames = new Set<string>();
-      snap.forEach((d) => {
-        const data = d.data() as any;
-        if (data.clinicId === doctorProfile.clinicId) {
-          apps.push({ id: d.id, name: data.name, price: data.price || 0, description: data.description });
-          clinicNames.add(data.name);
-        }
-      });
-      snap.forEach((d) => {
-        const data = d.data() as any;
-        if (data.clinicId === 'STANDARD' && !clinicNames.has(data.name)) {
-          apps.push({ id: d.id, name: data.name, price: data.price || 0, description: data.description });
-        }
-      });
-      apps.sort((a, b) => a.name.localeCompare(b.name, 'tr'));
-      setDsApplications(apps);
-    } catch (e) {
-      console.error('Error fetching applications:', e);
-    }
-  };
-
   const fetchPatientsWithPharmacyDebts = async () => {
     if (!doctorProfile?.clinicId) return;
     
@@ -652,7 +632,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   // Auto-calculate remaining debt in direct sale payment modal
   useEffect(() => {
     if (dsPartialPayment) {
-      const total = dsSaleItems.reduce((s, i) => s + i.application.price * i.quantity, 0);
+      const total = dsSaleItems.reduce((s, i) => s + i.medication.price * i.quantity, 0);
       const paid = dsPaymentMethods.reduce((s, m) => s + (m.amount || 0), 0);
       const remaining = Math.max(0, total - paid);
       setDsRemainingDebt(remaining.toFixed(2));
@@ -981,6 +961,115 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     }
   };
 
+  const fetchDirectSales = async () => {
+    if (!doctorProfile?.clinicId) return;
+    try {
+      setDsHistoryLoading(true);
+      const snap = await getDocs(
+        query(
+          collection(db, 'direct_sales'),
+          where('clinicId', '==', doctorProfile.clinicId)
+        )
+      );
+      const sales: any[] = [];
+      snap.forEach((d) => sales.push({ id: d.id, ...d.data() }));
+      sales.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setDsHistorySales(sales.slice(0, 100));
+    } catch (e) {
+      console.error('Error fetching direct sales:', e);
+    } finally {
+      setDsHistoryLoading(false);
+    }
+  };
+
+  const exportDirectSalesPdf = () => {
+    const filtered = dsHistorySales.filter(s =>
+      !dsHistorySearch.trim() ||
+      (s.customerName || '').toLowerCase().includes(dsHistorySearch.toLowerCase())
+    );
+    if (filtered.length === 0) { alert('Dışa aktarılacak kayıt bulunamadı.'); return; }
+
+    const doc2 = new jsPDF({ orientation: 'landscape' });
+
+    // Title
+    doc2.setFontSize(16);
+    doc2.setTextColor(5, 150, 105);
+    doc2.text('Eczane Direkt Satış Raporu', 14, 16);
+    doc2.setFontSize(9);
+    doc2.setTextColor(100);
+    doc2.text(`Klinik: ${doctorProfile?.clinicId || ''}   Tarih: ${new Date().toLocaleDateString('tr-TR')}   Toplam: ${filtered.length} kayıt`, 14, 23);
+
+    autoTable(doc2, {
+      startY: 28,
+      head: [['Tarih', 'Müşteri', 'Ürünler', 'Toplam (TL)', 'Ödeme Yöntemi', 'Not']],
+      body: filtered.map(s => {
+        const tarih = s.createdAt ? new Date(s.createdAt).toLocaleString('tr-TR') : '-';
+        const urunler = (s.items || []).map((i: any) => `${i.name} ×${i.quantity} (${(i.price * i.quantity).toFixed(2)} TL)`).join('\n');
+        const toplam = (s.totalAmount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 });
+        const odeme = (s.paymentMethods || []).length > 0
+          ? (s.paymentMethods as PaymentMethodEntry[]).map((m) => `${m.method === 'nakit' ? 'Nakit' : m.method === 'kredi_karti' ? 'Kredi Kartı' : m.method === 'banka_karti' ? 'Banka Kartı' : m.method === 'havale' ? 'Havale/EFT' : m.method === 'cari' ? 'Cari' : m.method}: ${m.amount.toFixed(2)} TL`).join('\n')
+          : '-';
+        return [tarih, s.customerName || '-', urunler, toplam, odeme, s.note || '-'];
+      }),
+      styles: { fontSize: 8, cellPadding: 3 },
+      headStyles: { fillColor: [5, 150, 105], textColor: 255 },
+      columnStyles: { 2: { cellWidth: 70 }, 4: { cellWidth: 45 } },
+      alternateRowStyles: { fillColor: [240, 253, 250] },
+    });
+
+    // Summary row
+    const totalRevenue = filtered.reduce((s, sale) => s + (sale.totalAmount || 0), 0);
+    const finalY = (doc2 as any).lastAutoTable.finalY + 6;
+    doc2.setFontSize(10);
+    doc2.setTextColor(5, 150, 105);
+    doc2.text(`Toplam Gelir: ${totalRevenue.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL`, 14, finalY);
+
+    doc2.save(`eczane-satis-raporu-${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
+
+  const exportSingleSalePdf = (sale: any) => {
+    const doc2 = new jsPDF();
+    doc2.setFontSize(18);
+    doc2.setTextColor(5, 150, 105);
+    doc2.text('Satış Fişi', 14, 20);
+
+    doc2.setFontSize(10);
+    doc2.setTextColor(60);
+    doc2.text(`Müşteri: ${sale.customerName || '-'}`, 14, 32);
+    doc2.text(`Tarih: ${sale.createdAt ? new Date(sale.createdAt).toLocaleString('tr-TR') : '-'}`, 14, 39);
+    if (sale.customerTcNo) doc2.text(`TC: ${sale.customerTcNo}`, 14, 46);
+
+    const startY = sale.customerTcNo ? 54 : 48;
+    autoTable(doc2, {
+      startY,
+      head: [['Ürün / Uygulama', 'Adet', 'Birim Fiyat', 'Toplam']],
+      body: (sale.items || []).map((i: any) => [
+        i.name,
+        i.quantity,
+        `${(i.price || 0).toFixed(2)} TL`,
+        `${(i.price * i.quantity).toFixed(2)} TL`,
+      ]),
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [5, 150, 105], textColor: 255 },
+      columnStyles: { 0: { cellWidth: 90 } },
+    });
+
+    const finalY = (doc2 as any).lastAutoTable.finalY + 6;
+    doc2.setFontSize(11);
+    doc2.setTextColor(5, 150, 105);
+    doc2.text(`Toplam: ${(sale.totalAmount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL`, 14, finalY);
+
+    const odeme = (sale.paymentMethods || []).length > 0
+      ? (sale.paymentMethods as PaymentMethodEntry[]).map((m) => `${m.method === 'nakit' ? 'Nakit' : m.method === 'kredi_karti' ? 'Kredi Kartı' : m.method === 'banka_karti' ? 'Banka Kartı' : m.method === 'havale' ? 'Havale/EFT' : m.method === 'cari' ? 'Cari' : m.method}: ${m.amount.toFixed(2)} TL`).join(' | ')
+      : '-';
+    doc2.setFontSize(9);
+    doc2.setTextColor(80);
+    doc2.text(`Ödeme: ${odeme}`, 14, finalY + 7);
+    if (sale.note) doc2.text(`Not: ${sale.note}`, 14, finalY + 14);
+
+    doc2.save(`satis-fisi-${sale.id?.slice(0, 8) || 'export'}.pdf`);
+  };
+
   const handleDirectSaleComplete = async () => {
     const customerName = dsCustomerMode === 'existing'
       ? dsSelectedPatient?.fullName || ''
@@ -994,7 +1083,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       alert('Lütfen en az bir ilaç/uygulama ekleyin.');
       return;
     }
-    const totalAmount = dsSaleItems.reduce((sum, i) => sum + i.application.price * i.quantity, 0);
+    const totalAmount = dsSaleItems.reduce((sum, i) => sum + i.medication.price * i.quantity, 0);
     const enteredAmount = dsPaymentMethods.reduce((sum, m) => sum + (m.amount || 0), 0);
     if (enteredAmount <= 0) {
       alert('Lütfen ödeme tutarı girin.');
@@ -1014,11 +1103,11 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
         customerTcNo: dsCustomerMode === 'existing' ? (dsSelectedPatient?.tcNo || '') : '',
         patientId: dsCustomerMode === 'existing' ? (dsSelectedPatient?.id || null) : null,
         items: dsSaleItems.map(i => ({
-          name: i.application.name,
-          applicationId: i.application.id,
-          price: i.application.price,
+          name: getMedicationDisplayName(i.medication),
+          medicationId: i.medication.id,
+          price: i.medication.price,
           quantity: i.quantity,
-          total: i.application.price * i.quantity,
+          total: i.medication.price * i.quantity,
         })),
         totalAmount,
         paymentMethods: dsPaymentMethods.filter(m => m.amount > 0),
@@ -1040,7 +1129,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
             patientTcNo: dsSelectedPatient.tcNo,
             patientName: dsSelectedPatient.fullName,
             amount: debtAmount,
-            items: dsSaleItems.map(i => ({ name: i.application.name, price: i.application.price, quantity: i.quantity })),
+            items: dsSaleItems.map(i => ({ name: getMedicationDisplayName(i.medication), price: i.medication.price, quantity: i.quantity })),
             reason: 'Direkt eczane satışı eksik ödeme',
             isPaid: false,
             createdAt: new Date().toISOString(),
@@ -1069,6 +1158,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       setDsPartialPayment(false);
       setDsRemainingDebt('');
       setDsPaymentModalOpen(false);
+      fetchDirectSales();
     } catch (e) {
       console.error('Error completing direct sale:', e);
       alert('Satış tamamlanırken bir hata oluştu.');
@@ -1539,7 +1629,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
               setActiveTab('direct_sale');
               setShowAddForm(false);
               fetchAllPatientsForDirectSale();
-              fetchApplicationsForDirectSale();
+              fetchDirectSales();
             }}
             className={`px-8 py-3 rounded-xl font-medium transition-all duration-200 ${
               activeTab === 'direct_sale'
@@ -1656,7 +1746,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
               <div className="bg-gradient-to-r from-purple-500/20 to-purple-600/20 border border-purple-500/30 rounded-2xl p-4">
                 <div className="text-purple-300 text-2xl mb-1">💵</div>
                 <div className="text-white text-2xl font-bold">
-                  {dsSaleItems.reduce((s, i) => s + i.application.price * i.quantity, 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                  {dsSaleItems.reduce((s, i) => s + i.medication.price * i.quantity, 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
                 </div>
                 <div className="text-white/70 text-sm">Güncel Sepet Tutarı</div>
               </div>
@@ -2416,6 +2506,200 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
           {/* ─── ECZANE SATIŞ TAB ─── */}
           {activeTab === 'direct_sale' && (
             <>
+            {/* View Toggle */}
+            <div className="flex gap-3 mb-2">
+              <button
+                onClick={() => setDsView('sale')}
+                className={`px-6 py-2.5 rounded-xl font-semibold text-sm transition-all ${
+                  dsView === 'sale'
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg'
+                    : 'bg-white/10 text-white/60 hover:bg-white/20'
+                }`}
+              >
+                🛒 Yeni Satış
+              </button>
+              <button
+                onClick={() => { setDsView('history'); fetchDirectSales(); }}
+                className={`px-6 py-2.5 rounded-xl font-semibold text-sm transition-all ${
+                  dsView === 'history'
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg'
+                    : 'bg-white/10 text-white/60 hover:bg-white/20'
+                }`}
+              >
+                📋 Geçmiş Satışlar
+                {dsHistorySales.length > 0 && (
+                  <span className="ml-2 bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">
+                    {dsHistorySales.length}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* ── GEÇMIŞ SATIŞLAR VIEW ── */}
+            {dsView === 'history' && (
+              <div className="space-y-4">
+                {/* Toolbar */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex-1 min-w-[220px]">
+                    <input
+                      type="text"
+                      value={dsHistorySearch}
+                      onChange={(e) => setDsHistorySearch(e.target.value)}
+                      placeholder="Müşteri adı ile ara..."
+                      className="w-full px-4 py-2.5 bg-white/10 border border-white/20 rounded-xl text-white text-sm placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                    />
+                  </div>
+                  <button
+                    onClick={fetchDirectSales}
+                    className="px-4 py-2.5 bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl text-white/80 text-sm transition-all flex items-center gap-2"
+                  >
+                    🔄 Yenile
+                  </button>
+                  <button
+                    onClick={exportDirectSalesPdf}
+                    disabled={dsHistorySales.length === 0}
+                    className="px-4 py-2.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 disabled:from-gray-500 disabled:to-gray-600 disabled:cursor-not-allowed text-white rounded-xl text-sm font-medium transition-all shadow-md flex items-center gap-2"
+                  >
+                    📄 PDF İndir
+                  </button>
+                </div>
+
+                {dsHistoryLoading ? (
+                  <div className="flex items-center justify-center py-16">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mr-3"></div>
+                    <span className="text-white/60">Yükleniyor...</span>
+                  </div>
+                ) : (() => {
+                  const filtered = dsHistorySales.filter(s =>
+                    !dsHistorySearch.trim() ||
+                    (s.customerName || '').toLowerCase().includes(dsHistorySearch.toLowerCase())
+                  );
+                  return filtered.length === 0 ? (
+                    <div className="text-center py-16 text-white/40">
+                      <div className="text-5xl mb-3">📋</div>
+                      <p className="text-lg font-medium">
+                        {dsHistorySales.length === 0 ? 'Henüz satış kaydı yok' : 'Arama sonucu yok'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {/* Summary stats */}
+                      <div className="grid grid-cols-3 gap-4">
+                        <div className="bg-gradient-to-r from-emerald-500/20 to-teal-600/20 border border-emerald-500/30 rounded-2xl p-4">
+                          <div className="text-emerald-300 text-xl mb-1">🧾</div>
+                          <div className="text-white text-2xl font-bold">{filtered.length}</div>
+                          <div className="text-white/60 text-sm">Toplam Satış</div>
+                        </div>
+                        <div className="bg-gradient-to-r from-blue-500/20 to-cyan-600/20 border border-blue-500/30 rounded-2xl p-4">
+                          <div className="text-blue-300 text-xl mb-1">💰</div>
+                          <div className="text-white text-2xl font-bold">
+                            {filtered.reduce((s, x) => s + (x.totalAmount || 0), 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                          </div>
+                          <div className="text-white/60 text-sm">Toplam Gelir</div>
+                        </div>
+                        <div className="bg-gradient-to-r from-purple-500/20 to-pink-600/20 border border-purple-500/30 rounded-2xl p-4">
+                          <div className="text-purple-300 text-xl mb-1">💊</div>
+                          <div className="text-white text-2xl font-bold">
+                            {filtered.reduce((s, x) => s + (x.items?.length || 0), 0)}
+                          </div>
+                          <div className="text-white/60 text-sm">Toplam Ürün Kalemi</div>
+                        </div>
+                      </div>
+
+                      {/* Sales list */}
+                      <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl overflow-hidden">
+                        <table className="w-full text-left">
+                          <thead className="bg-white/10">
+                            <tr>
+                              <th className="px-4 py-3 text-white/60 text-xs font-medium uppercase tracking-wide">Tarih</th>
+                              <th className="px-4 py-3 text-white/60 text-xs font-medium uppercase tracking-wide">Müşteri</th>
+                              <th className="px-4 py-3 text-white/60 text-xs font-medium uppercase tracking-wide">Ürünler</th>
+                              <th className="px-4 py-3 text-white/60 text-xs font-medium uppercase tracking-wide">Tutar</th>
+                              <th className="px-4 py-3 text-white/60 text-xs font-medium uppercase tracking-wide">Ödeme</th>
+                              <th className="px-4 py-3 text-white/60 text-xs font-medium uppercase tracking-wide"></th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-white/5">
+                            {filtered.map((sale) => (
+                              <tr key={sale.id} className="hover:bg-white/5 transition-colors">
+                                <td className="px-4 py-3 text-white/70 text-sm whitespace-nowrap">
+                                  {sale.createdAt ? new Date(sale.createdAt).toLocaleDateString('tr-TR') : '-'}
+                                  <div className="text-white/40 text-xs">
+                                    {sale.createdAt ? new Date(sale.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : ''}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <p className="text-white font-medium text-sm">{sale.customerName || '-'}</p>
+                                  {sale.customerTcNo && <p className="text-white/40 text-xs">TC: {sale.customerTcNo}</p>}
+                                  {sale.customerType === 'new' && (
+                                    <span className="inline-block mt-0.5 bg-purple-500/20 text-purple-300 text-xs px-1.5 py-0.5 rounded">Yeni Müşteri</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 max-w-[220px]">
+                                  {(sale.items || []).slice(0, 2).map((item: any, i: number) => (
+                                    <div key={i} className="text-white/80 text-sm truncate">
+                                      {item.name} <span className="text-white/40">×{item.quantity}</span>
+                                    </div>
+                                  ))}
+                                  {(sale.items || []).length > 2 && (
+                                    <div className="text-white/40 text-xs">+{sale.items.length - 2} daha</div>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap">
+                                  <span className="text-emerald-400 font-bold text-sm">
+                                    {(sale.totalAmount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                                  </span>
+                                  {sale.isPartialPayment && (
+                                    <div className="text-orange-400 text-xs mt-0.5">⚠️ Eksik ödeme</div>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3">
+                                  {(sale.paymentMethods || []).length > 0 ? (
+                                    <div className="space-y-0.5">
+                                      {(sale.paymentMethods as PaymentMethodEntry[]).map((m, i) => (
+                                        <div key={i} className="flex items-center gap-1">
+                                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                            m.method === 'nakit' ? 'bg-green-500/20 text-green-300'
+                                            : m.method === 'kredi_karti' ? 'bg-blue-500/20 text-blue-300'
+                                            : m.method === 'banka_karti' ? 'bg-purple-500/20 text-purple-300'
+                                            : m.method === 'havale' ? 'bg-yellow-500/20 text-yellow-300'
+                                            : 'bg-orange-500/20 text-orange-300'
+                                          }`}>
+                                            {m.method === 'nakit' ? '💵 Nakit' : m.method === 'kredi_karti' ? '💳 Kredi' : m.method === 'banka_karti' ? '💳 Banka' : m.method === 'havale' ? '🏦 Havale' : '📋 Cari'}
+                                          </span>
+                                          <span className="text-white/50 text-xs">{m.amount.toFixed(2)} TL</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : <span className="text-white/30 text-xs">-</span>}
+                                </td>
+                                <td className="px-4 py-3 text-right">
+                                  <button
+                                    onClick={() => setDsSelectedHistorySale(sale)}
+                                    className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white/70 hover:text-white rounded-lg text-xs transition-all"
+                                  >
+                                    Detay
+                                  </button>
+                                  <button
+                                    onClick={() => exportSingleSalePdf(sale)}
+                                    className="ml-2 px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-300 hover:text-red-200 rounded-lg text-xs transition-all"
+                                  >
+                                    📄 Fiş
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* ── YENİ SATIŞ VIEW ── */}
+            {dsView === 'sale' && (
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
 
               {/* COL 1: Hasta Seçimi */}
@@ -2534,43 +2818,47 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                 )}
               </div>
 
-              {/* COL 2: Uygulamalar + Sepet */}
+              {/* COL 2: İlaçlar + Sepet */}
               <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl flex flex-col" style={{ minHeight: '60vh', maxHeight: '72vh' }}>
-                {/* Applications header */}
+                {/* Medications header */}
                 <div className="p-4 border-b border-white/10 flex-shrink-0">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-white font-bold flex items-center gap-2">
-                      <span>💊</span> Uygulamalar
+                      <span>💊</span> İlaçlar
                     </h3>
-                    <span className="text-white/40 text-xs">{dsApplications.length} kayıt</span>
+                    <span className="text-white/40 text-xs">{savedMedications.length} kayıt</span>
                   </div>
                   <input
                     type="text"
                     value={dsAppSearch}
                     onChange={(e) => setDsAppSearch(e.target.value)}
-                    placeholder="Uygulama ara..."
+                    placeholder="İlaç adı ara..."
                     className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white text-sm placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                   />
                 </div>
 
-                {/* Applications list */}
+                {/* Medications list */}
                 <div className="flex-1 overflow-y-auto">
-                  {dsApplications
-                    .filter(a => !dsAppSearch.trim() || a.name.toLowerCase().includes(dsAppSearch.toLowerCase()))
-                    .map(a => {
-                      const inCart = dsSaleItems.find(i => i.application.id === a.id);
+                  {savedMedications
+                    .filter(m => {
+                      const display = getMedicationDisplayName(m).toLowerCase();
+                      const term = dsAppSearch.toLowerCase();
+                      return !term || display.includes(term) || (m.barcode || '').includes(term);
+                    })
+                    .map(m => {
+                      const inCart = dsSaleItems.find(i => i.medication.id === m.id);
                       return (
                         <button
-                          key={a.id}
+                          key={m.id}
                           onClick={() => {
                             setDsSaleItems(prev => {
-                              const idx = prev.findIndex(i => i.application.id === a.id);
+                              const idx = prev.findIndex(i => i.medication.id === m.id);
                               if (idx >= 0) {
                                 const updated = [...prev];
                                 updated[idx] = { ...updated[idx], quantity: updated[idx].quantity + 1 };
                                 return updated;
                               }
-                              return [...prev, { application: a, quantity: 1 }];
+                              return [...prev, { medication: m, quantity: 1 }];
                             });
                           }}
                           className={`w-full text-left px-4 py-3 border-b border-white/5 last:border-0 transition-all hover:bg-white/10 flex items-center justify-between gap-3 ${
@@ -2578,11 +2866,13 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                           }`}
                         >
                           <div className="min-w-0 flex-1">
-                            <p className={`text-sm font-medium truncate ${inCart ? 'text-emerald-300' : 'text-white'}`}>{a.name}</p>
-                            {a.description && <p className="text-white/40 text-xs truncate">{a.description}</p>}
+                            <p className={`text-sm font-medium truncate ${inCart ? 'text-emerald-300' : 'text-white'}`}>
+                              {getMedicationDisplayName(m)}
+                            </p>
+                            {m.category && <p className="text-white/40 text-xs truncate">{m.category}</p>}
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
-                            <span className="text-emerald-400 font-bold text-sm whitespace-nowrap">{a.price.toFixed(2)} TL</span>
+                            <span className="text-emerald-400 font-bold text-sm whitespace-nowrap">{m.price.toFixed(2)} TL</span>
                             {inCart ? (
                               <span className="bg-emerald-500 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center font-bold shadow">
                                 {inCart.quantity}
@@ -2595,10 +2885,14 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       );
                     })
                   }
-                  {dsApplications.filter(a => !dsAppSearch.trim() || a.name.toLowerCase().includes(dsAppSearch.toLowerCase())).length === 0 && (
+                  {savedMedications.filter(m => {
+                    const display = getMedicationDisplayName(m).toLowerCase();
+                    const term = dsAppSearch.toLowerCase();
+                    return !term || display.includes(term) || (m.barcode || '').includes(term);
+                  }).length === 0 && (
                     <div className="flex flex-col items-center justify-center h-40 text-white/40">
                       <span className="text-3xl mb-2">💊</span>
-                      <p className="text-sm">{dsApplications.length === 0 ? 'Uygulama bulunamadı' : 'Arama sonucu yok'}</p>
+                      <p className="text-sm">{savedMedications.length === 0 ? 'İlaç bulunamadı' : 'Arama sonucu yok'}</p>
                     </div>
                   )}
                 </div>
@@ -2609,8 +2903,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                     {/* Compact cart list */}
                     <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
                       {dsSaleItems.map((item, idx) => (
-                        <div key={item.application.id} className="flex items-center gap-2">
-                          <span className="text-white/70 text-xs flex-1 truncate">{item.application.name}</span>
+                        <div key={item.medication.id} className="flex items-center gap-2">
+                          <span className="text-white/70 text-xs flex-1 truncate">{getMedicationDisplayName(item.medication)}</span>
                           <div className="flex items-center gap-1 flex-shrink-0">
                             <button
                               onClick={() => setDsSaleItems(prev => {
@@ -2637,7 +2931,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                             >✕</button>
                           </div>
                           <span className="text-emerald-400 text-xs w-16 text-right flex-shrink-0">
-                            {(item.application.price * item.quantity).toFixed(2)} TL
+                            {(item.medication.price * item.quantity).toFixed(2)} TL
                           </span>
                         </div>
                       ))}
@@ -2648,7 +2942,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       <div>
                         <p className="text-white/50 text-xs">Toplam</p>
                         <p className="text-white font-bold text-lg">
-                          {dsSaleItems.reduce((s, i) => s + i.application.price * i.quantity, 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                          {dsSaleItems.reduce((s, i) => s + i.medication.price * i.quantity, 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
                         </p>
                       </div>
                       <button
@@ -2673,8 +2967,116 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
               </div>
 
             </div>
+            )}
 
             {/* ─── ÖDEME MODALI ─── */}
+            {/* ─── SATIŞ DETAY MODALI ─── */}
+            {dsSelectedHistorySale && (
+              <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[60] p-4">
+                <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+                  <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-5 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-white font-bold text-lg">Satış Detayı</h3>
+                      <p className="text-white/80 text-sm">{dsSelectedHistorySale.customerName}</p>
+                    </div>
+                    <button
+                      onClick={() => setDsSelectedHistorySale(null)}
+                      className="w-9 h-9 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-white transition-all"
+                    >✕</button>
+                  </div>
+                  <div className="p-6 space-y-4 overflow-y-auto" style={{ maxHeight: 'calc(85vh - 140px)' }}>
+                    {/* Info */}
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div className="bg-gray-50 rounded-xl p-3">
+                        <p className="text-gray-400 text-xs mb-0.5">Tarih</p>
+                        <p className="text-gray-800 font-medium">
+                          {dsSelectedHistorySale.createdAt ? new Date(dsSelectedHistorySale.createdAt).toLocaleString('tr-TR') : '-'}
+                        </p>
+                      </div>
+                      <div className="bg-gray-50 rounded-xl p-3">
+                        <p className="text-gray-400 text-xs mb-0.5">Müşteri Tipi</p>
+                        <p className="text-gray-800 font-medium">
+                          {dsSelectedHistorySale.customerType === 'existing' ? '📋 Kayıtlı Hasta' : '✏️ Yeni Müşteri'}
+                        </p>
+                      </div>
+                      {dsSelectedHistorySale.customerTcNo && (
+                        <div className="bg-gray-50 rounded-xl p-3">
+                          <p className="text-gray-400 text-xs mb-0.5">TC No</p>
+                          <p className="text-gray-800 font-medium">{dsSelectedHistorySale.customerTcNo}</p>
+                        </div>
+                      )}
+                      <div className="bg-emerald-50 rounded-xl p-3">
+                        <p className="text-gray-400 text-xs mb-0.5">Toplam Tutar</p>
+                        <p className="text-emerald-700 font-bold text-lg">
+                          {(dsSelectedHistorySale.totalAmount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                        </p>
+                      </div>
+                    </div>
+                    {/* Items */}
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-500 mb-2">Satılan Ürünler</h4>
+                      <div className="space-y-2">
+                        {(dsSelectedHistorySale.items || []).map((item: any, i: number) => (
+                          <div key={i} className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3">
+                            <div>
+                              <p className="text-gray-800 font-medium text-sm">{item.name}</p>
+                              <p className="text-gray-400 text-xs">{item.quantity} adet × {(item.price || 0).toFixed(2)} TL</p>
+                            </div>
+                            <span className="text-emerald-700 font-bold text-sm">
+                              {(item.price * item.quantity).toFixed(2)} TL
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Payment */}
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-500 mb-2">Ödeme Yöntemi</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {(dsSelectedHistorySale.paymentMethods || []).map((m: PaymentMethodEntry, i: number) => (
+                          <span key={i} className={`px-3 py-1.5 rounded-xl text-sm font-medium ${
+                            m.method === 'nakit' ? 'bg-green-100 text-green-700'
+                            : m.method === 'kredi_karti' ? 'bg-blue-100 text-blue-700'
+                            : m.method === 'banka_karti' ? 'bg-purple-100 text-purple-700'
+                            : m.method === 'havale' ? 'bg-yellow-100 text-yellow-700'
+                            : 'bg-orange-100 text-orange-700'
+                          }`}>
+                            {m.method === 'nakit' ? '💵 Nakit' : m.method === 'kredi_karti' ? '💳 Kredi Kartı' : m.method === 'banka_karti' ? '💳 Banka Kartı' : m.method === 'havale' ? '🏦 Havale/EFT' : '📋 Cari'}: {m.amount.toFixed(2)} TL
+                          </span>
+                        ))}
+                      </div>
+                      {dsSelectedHistorySale.isPartialPayment && (
+                        <p className="text-orange-600 text-sm mt-2 font-medium">
+                          ⚠️ Eksik ödeme — Kalan borç: {(dsSelectedHistorySale.remainingDebt || 0).toFixed(2)} TL
+                        </p>
+                      )}
+                    </div>
+                    {/* Note */}
+                    {dsSelectedHistorySale.note && (
+                      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                        <p className="text-blue-600 text-xs font-medium mb-1">📝 Not</p>
+                        <p className="text-gray-700 text-sm">{dsSelectedHistorySale.note}</p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-between">
+                    <button
+                      onClick={() => exportSingleSalePdf(dsSelectedHistorySale)}
+                      className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-medium text-sm transition-all flex items-center gap-2"
+                    >
+                      📄 PDF Fiş İndir
+                    </button>
+                    <button
+                      onClick={() => setDsSelectedHistorySale(null)}
+                      className="px-5 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-xl font-medium text-sm transition-all"
+                    >
+                      Kapat
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {dsPaymentModalOpen && (
               <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[60] p-4">
                 <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
@@ -2701,16 +3103,16 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       <h4 className="text-sm font-semibold text-gray-500 mb-3">Satış Özeti</h4>
                       <div className="space-y-2">
                         {dsSaleItems.map(item => (
-                          <div key={item.application.id} className="flex justify-between text-sm">
-                            <span className="text-gray-700 truncate flex-1 mr-2">{item.application.name} × {item.quantity}</span>
-                            <span className="text-gray-900 font-semibold flex-shrink-0">{(item.application.price * item.quantity).toFixed(2)} TL</span>
+                          <div key={item.medication.id} className="flex justify-between text-sm">
+                            <span className="text-gray-700 truncate flex-1 mr-2">{getMedicationDisplayName(item.medication)} × {item.quantity}</span>
+                            <span className="text-gray-900 font-semibold flex-shrink-0">{(item.medication.price * item.quantity).toFixed(2)} TL</span>
                           </div>
                         ))}
                       </div>
                       <div className="border-t border-gray-200 mt-3 pt-3 flex justify-between font-bold">
                         <span className="text-gray-700">Toplam</span>
                         <span className="text-emerald-700 text-lg">
-                          {dsSaleItems.reduce((s, i) => s + i.application.price * i.quantity, 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                          {dsSaleItems.reduce((s, i) => s + i.medication.price * i.quantity, 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
                         </span>
                       </div>
                     </div>
@@ -2719,7 +3121,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                     <MultiPaymentMethodSelector
                       value={dsPaymentMethods}
                       onChange={setDsPaymentMethods}
-                      totalAmount={dsSaleItems.reduce((s, i) => s + i.application.price * i.quantity, 0)}
+                      totalAmount={dsSaleItems.reduce((s, i) => s + i.medication.price * i.quantity, 0)}
                     />
 
                     {/* Partial Payment */}
@@ -2773,7 +3175,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                     <div>
                       <p className="text-gray-500 text-xs">TOPLAM</p>
                       <p className="text-emerald-700 text-2xl font-bold">
-                        {dsSaleItems.reduce((s, i) => s + i.application.price * i.quantity, 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                        {dsSaleItems.reduce((s, i) => s + i.medication.price * i.quantity, 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
                       </p>
                     </div>
                     <div className="flex gap-3">
