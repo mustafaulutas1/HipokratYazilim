@@ -59,6 +59,8 @@ interface PatientsProps {
 const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [filterTodayAppointments, setFilterTodayAppointments] = useState(false);
+  const [todayAppointmentPatientIds, setTodayAppointmentPatientIds] = useState<Set<string>>(new Set());
   const [patients, setPatients] = useState<Patient[]>([]);
   const [treatmentCompletedPatients, setTreatmentCompletedPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,6 +74,24 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
   const [isSurveyModalOpen, setIsSurveyModalOpen] = useState(false);
   const [selectedPatientForSurvey, setSelectedPatientForSurvey] = useState<Patient | null>(null);
   const [isSurveyAnalyticsOpen, setIsSurveyAnalyticsOpen] = useState(false);
+
+  const fetchTodayAppointmentPatients = async () => {
+    if (!doctorProfile?.clinicId) return;
+    const today = new Date();
+    const dateISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const q = query(
+      collection(db, 'appointments'),
+      where('clinicId', '==', doctorProfile.clinicId),
+      where('dateISO', '==', dateISO)
+    );
+    const snap = await getDocs(q);
+    const ids = new Set<string>();
+    snap.forEach(d => {
+      const pid = d.data().patientId;
+      if (pid) ids.add(pid);
+    });
+    setTodayAppointmentPatientIds(ids);
+  };
 
   // Fetch patients from Firestore
   const fetchPatients = async () => {
@@ -186,6 +206,13 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
     setSelectedPatientForSurvey(null);
   };
 
+  const handleToggleTodayAppointments = async () => {
+    if (!filterTodayAppointments) {
+      await fetchTodayAppointmentPatients();
+    }
+    setFilterTodayAppointments(prev => !prev);
+  };
+
   const filteredPatients = patients.filter(patient => {
     const matchesSearch = patient.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (patient.tcNo && patient.tcNo.includes(searchTerm)) ||
@@ -195,7 +222,10 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
     const matchesFilter = filterStatus === 'all' ||
       (filterStatus === 'active' && patient.status !== 'passive') ||
       (filterStatus === 'passive' && patient.status === 'passive');
-    return matchesSearch && matchesFilter;
+
+    const matchesTodayAppointment = !filterTodayAppointments || todayAppointmentPatientIds.has(patient.id);
+
+    return matchesSearch && matchesFilter && matchesTodayAppointment;
   });
 
   if (loading) {
@@ -492,8 +522,18 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
 
       {/* Patients Table */}
       <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl overflow-hidden">
-        <div className="p-6 border-b border-white/20">
+        <div className="p-6 border-b border-white/20 flex items-center justify-between">
           <h2 className="text-xl font-bold text-white">Hasta Listesi</h2>
+          <button
+            onClick={handleToggleTodayAppointments}
+            className={`px-4 py-2 border rounded-xl font-semibold text-sm transition-all duration-200 ${
+              filterTodayAppointments
+                ? 'bg-blue-500 border-blue-400 text-white shadow-lg shadow-blue-500/30'
+                : 'bg-white/10 border-white/20 text-white/80 hover:bg-white/20'
+            }`}
+          >
+            📅 Randevusu Olanlar
+          </button>
         </div>
 
         <div className="overflow-x-auto">

@@ -25,6 +25,7 @@ interface DepoUrun {
   cost: number;
   purchaseDate: string;
   quantity: number;
+  consumptionType?: 'islem-bazli' | 'genel-bazli';
   clinicId: string;
   createdBy: string;
   createdAt: string;
@@ -115,6 +116,7 @@ const emptyUrun = (): Omit<DepoUrun, 'id' | 'clinicId' | 'createdBy' | 'createdA
   cost: 0,
   purchaseDate: new Date().toISOString().split('T')[0],
   quantity: 0,
+  consumptionType: undefined,
 });
 
 const todayDate = () => new Date().toISOString().split('T')[0];
@@ -171,6 +173,8 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
   const [transferTime, setTransferTime] = useState(nowTime());
   const [transferNotes, setTransferNotes] = useState('');
   const [completingTransferId, setCompletingTransferId] = useState<string | null>(null);
+  const [transferProductTab, setTransferProductTab] = useState<'islem-bazli' | 'genel-bazli' | null>(null);
+  const [transferSearch, setTransferSearch] = useState('');
   const processingIds = useRef<Set<string>>(new Set());
 
   // Kullanım filtresi
@@ -228,7 +232,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
   const openEdit = (urun: DepoUrun, depo: 'ana' | 'kat') => {
     setActiveDepo(depo);
     setEditingUrun(urun);
-    setFormData({ productName: urun.productName, stockCode: urun.stockCode, companyName: (urun as any).companyName || '', cost: urun.cost, purchaseDate: urun.purchaseDate, quantity: urun.quantity });
+    setFormData({ productName: urun.productName, stockCode: urun.stockCode, companyName: (urun as any).companyName || '', cost: urun.cost, purchaseDate: urun.purchaseDate, quantity: urun.quantity, consumptionType: urun.consumptionType });
     setShowAddModal(true);
   };
 
@@ -314,12 +318,18 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
 
           const existing = katMevcut.find(k => k.stockCode === it.stockCode);
           if (existing?.id) {
-            await updateDoc(doc(db, 'katDepoUrunler', existing.id), { quantity: existing.quantity + actual, updatedAt: new Date().toISOString() });
+            await updateDoc(doc(db, 'katDepoUrunler', existing.id), {
+              quantity: existing.quantity + actual,
+              ...(anaUrun.consumptionType ? { consumptionType: anaUrun.consumptionType } : {}),
+              updatedAt: new Date().toISOString(),
+            });
           } else {
             await addDoc(collection(db, 'katDepoUrunler'), {
               productName: it.productName, stockCode: it.stockCode,
               cost: anaUrun.cost ?? 0, purchaseDate: anaUrun.purchaseDate ?? todayDate(),
-              quantity: actual, clinicId: doctorProfile.clinicId,
+              quantity: actual,
+              ...(anaUrun.consumptionType ? { consumptionType: anaUrun.consumptionType } : {}),
+              clinicId: doctorProfile.clinicId,
               createdBy: doctorProfile.fullName, createdAt: new Date().toISOString(),
             });
           }
@@ -393,6 +403,8 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
     setTransferDate(todayDate());
     setTransferTime(nowTime());
     setTransferNotes('');
+    setTransferProductTab(null);
+    setTransferSearch('');
     setShowTransferModal(true);
   };
 
@@ -467,7 +479,11 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
         const anaUrun = anaMevcut.find(u => u.id === ti.productId);
         const existing = katMevcut.find(k => k.stockCode === ti.stockCode);
         if (existing?.id) {
-          await updateDoc(doc(db, 'katDepoUrunler', existing.id), { quantity: existing.quantity + ti.quantity, updatedAt: new Date().toISOString() });
+          await updateDoc(doc(db, 'katDepoUrunler', existing.id), {
+            quantity: existing.quantity + ti.quantity,
+            ...(anaUrun?.consumptionType ? { consumptionType: anaUrun.consumptionType } : {}),
+            updatedAt: new Date().toISOString(),
+          });
         } else {
           await addDoc(collection(db, 'katDepoUrunler'), {
             productName: ti.productName,
@@ -475,6 +491,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
             cost: anaUrun?.cost ?? 0,
             purchaseDate: anaUrun?.purchaseDate ?? todayDate(),
             quantity: ti.quantity,
+            ...(anaUrun?.consumptionType ? { consumptionType: anaUrun.consumptionType } : {}),
             clinicId: doctorProfile.clinicId,
             createdBy: doctorProfile.fullName,
             createdAt: new Date().toISOString(),
@@ -654,81 +671,128 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
   const completedTransfers = transferler.filter(t => t.status === 'completed');
 
   // ─── Alt bileşen: Ürün tablosu ────────────────────────────────────────────
-  const UrunTable: React.FC<{ urunler: DepoUrun[]; depo: 'ana' | 'kat' }> = ({ urunler, depo }) => (
-    <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl overflow-hidden">
-      <div className="p-4 border-b border-white/20 flex items-center justify-between">
-        <h3 className="text-white font-bold text-lg">
-          {depo === 'ana' ? '🏭 Ana Depo Stok Listesi' : '🏥 Kat Deposu Stok Listesi'}
-        </h3>
-        <div className="flex gap-2">
-          {depo === 'ana' && canManage && (
-            <button
-              onClick={openTransferModal}
-              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 rounded-xl text-white font-semibold text-sm transition-all flex items-center gap-2"
-            >
-              <span>🚚</span> Kat Depoya Gönderilecekler
-            </button>
-          )}
-          {canManage && (
-            <button
-              onClick={() => openAdd(depo)}
-              className="px-4 py-2 bg-green-500 hover:bg-green-600 rounded-xl text-white font-semibold text-sm transition-all"
-            >
-              + Ürün Ekle
-            </button>
-          )}
-        </div>
-      </div>
-      {urunler.length === 0 ? (
-        <div className="p-10 text-center text-white/50">
-          <div className="text-4xl mb-3">📦</div>
-          <p>Henüz ürün eklenmemiş.</p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-white/20 bg-white/5">
-                <th className="px-4 py-3 text-left text-white/70">Ürün Adı</th>
-                <th className="px-4 py-3 text-left text-white/70">Stok Kodu</th>
-                <th className="px-4 py-3 text-left text-white/70">Firma Adı</th>
-                <th className="px-4 py-3 text-left text-white/70">Maliyet</th>
-                <th className="px-4 py-3 text-left text-white/70">Alım Tarihi</th>
-                <th className="px-4 py-3 text-left text-white/70">Adet</th>
-                {canManage && <th className="px-4 py-3 text-left text-white/70">İşlemler</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {urunler.map(u => (
-                <tr key={u.id} className="border-b border-white/10 hover:bg-white/5 transition-all">
-                  <td className="px-4 py-3 text-white font-medium">{u.productName}</td>
-                  <td className="px-4 py-3 text-white/70">{u.stockCode}</td>
-                  <td className="px-4 py-3 text-white/70">{u.companyName || '—'}</td>
-                  <td className="px-4 py-3 text-white/70">{formatCurrency(u.cost)}</td>
-                  <td className="px-4 py-3 text-white/70">{new Date(u.purchaseDate).toLocaleDateString('tr-TR')}</td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                      u.quantity <= 5 ? 'bg-red-500/20 text-red-300' : u.quantity <= 20 ? 'bg-yellow-500/20 text-yellow-300' : 'bg-green-500/20 text-green-300'
-                    }`}>
-                      {u.quantity} adet
-                    </span>
-                  </td>
-                  {canManage && (
-                    <td className="px-4 py-3">
-                      <div className="flex gap-2">
-                        <button onClick={() => openEdit(u, depo)} className="px-3 py-1 bg-blue-500/20 border border-blue-400/50 rounded-lg text-blue-300 hover:bg-blue-500/30 text-xs transition-all">Düzenle</button>
-                        <button onClick={() => handleDelete(u, depo)} className="px-3 py-1 bg-red-500/20 border border-red-400/50 rounded-lg text-red-300 hover:bg-red-500/30 text-xs transition-all">Sil</button>
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+  const renderUrunRows = (items: DepoUrun[], depo: 'ana' | 'kat') => (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-white/20 bg-white/5">
+            <th className="px-4 py-3 text-left text-white/70">Ürün Adı</th>
+            <th className="px-4 py-3 text-left text-white/70">Stok Kodu</th>
+            <th className="px-4 py-3 text-left text-white/70">Firma Adı</th>
+            <th className="px-4 py-3 text-left text-white/70">Maliyet</th>
+            <th className="px-4 py-3 text-left text-white/70">Alım Tarihi</th>
+            <th className="px-4 py-3 text-left text-white/70">Adet</th>
+            {canManage && <th className="px-4 py-3 text-left text-white/70">İşlemler</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {items.map(u => (
+            <tr key={u.id} className="border-b border-white/10 hover:bg-white/5 transition-all">
+              <td className="px-4 py-3 text-white font-medium">{u.productName}</td>
+              <td className="px-4 py-3 text-white/70">{u.stockCode}</td>
+              <td className="px-4 py-3 text-white/70">{u.companyName || '—'}</td>
+              <td className="px-4 py-3 text-white/70">{formatCurrency(u.cost)}</td>
+              <td className="px-4 py-3 text-white/70">{new Date(u.purchaseDate).toLocaleDateString('tr-TR')}</td>
+              <td className="px-4 py-3">
+                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                  u.quantity <= 5 ? 'bg-red-500/20 text-red-300' : u.quantity <= 20 ? 'bg-yellow-500/20 text-yellow-300' : 'bg-green-500/20 text-green-300'
+                }`}>
+                  {u.quantity} adet
+                </span>
+              </td>
+              {canManage && (
+                <td className="px-4 py-3">
+                  <div className="flex gap-2">
+                    <button onClick={() => openEdit(u, depo)} className="px-3 py-1 bg-blue-500/20 border border-blue-400/50 rounded-lg text-blue-300 hover:bg-blue-500/30 text-xs transition-all">Düzenle</button>
+                    <button onClick={() => handleDelete(u, depo)} className="px-3 py-1 bg-red-500/20 border border-red-400/50 rounded-lg text-red-300 hover:bg-red-500/30 text-xs transition-all">Sil</button>
+                  </div>
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
+
+  const UrunTable: React.FC<{ urunler: DepoUrun[]; depo: 'ana' | 'kat' }> = ({ urunler, depo }) => {
+    const islemBazli = urunler.filter(u => u.consumptionType === 'islem-bazli');
+    const genelBazli = urunler.filter(u => u.consumptionType === 'genel-bazli');
+    const kategorisiz = urunler.filter(u => !u.consumptionType);
+
+    return (
+      <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl overflow-hidden">
+        <div className="p-4 border-b border-white/20 flex items-center justify-between">
+          <h3 className="text-white font-bold text-lg">
+            {depo === 'ana' ? '🏭 Ana Depo Stok Listesi' : '🏥 Kat Deposu Stok Listesi'}
+          </h3>
+          <div className="flex gap-2">
+            {depo === 'ana' && canManage && (
+              <button
+                onClick={openTransferModal}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 rounded-xl text-white font-semibold text-sm transition-all flex items-center gap-2"
+              >
+                <span>🚚</span> Kat Depoya Gönderilecekler
+              </button>
+            )}
+            {canManage && (
+              <button
+                onClick={() => openAdd(depo)}
+                className="px-4 py-2 bg-green-500 hover:bg-green-600 rounded-xl text-white font-semibold text-sm transition-all"
+              >
+                + Ürün Ekle
+              </button>
+            )}
+          </div>
+        </div>
+
+        {urunler.length === 0 ? (
+          <div className="p-10 text-center text-white/50">
+            <div className="text-4xl mb-3">📦</div>
+            <p>Henüz ürün eklenmemiş.</p>
+          </div>
+        ) : (
+          <>
+            {/* İşlem Bazlı Tüketim */}
+            <div className="border-b border-white/10">
+              <div className="px-4 py-2.5 bg-indigo-500/10 flex items-center gap-2">
+                <span className="text-indigo-300 text-base">⚙️</span>
+                <p className="text-indigo-300 font-semibold text-sm">İşlem Bazlı Tüketim</p>
+                <span className="ml-auto px-2 py-0.5 bg-indigo-500/20 border border-indigo-400/40 rounded-full text-indigo-300 text-xs">{islemBazli.length} ürün</span>
+              </div>
+              {islemBazli.length === 0 ? (
+                <div className="p-6 text-center text-white/40 text-sm">Bu kategoride henüz ürün yok.</div>
+              ) : renderUrunRows(islemBazli, depo)}
+            </div>
+
+            {/* Genel Bazlı Tüketim */}
+            <div className={kategorisiz.length > 0 ? 'border-b border-white/10' : ''}>
+              <div className="px-4 py-2.5 bg-green-500/10 flex items-center gap-2">
+                <span className="text-green-300 text-base">📦</span>
+                <p className="text-green-300 font-semibold text-sm">Genel Bazlı Tüketim</p>
+                <span className="ml-auto px-2 py-0.5 bg-green-500/20 border border-green-400/40 rounded-full text-green-300 text-xs">{genelBazli.length} ürün</span>
+              </div>
+              {genelBazli.length === 0 ? (
+                <div className="p-6 text-center text-white/40 text-sm">Bu kategoride henüz ürün yok.</div>
+              ) : renderUrunRows(genelBazli, depo)}
+            </div>
+
+            {/* Kategorisiz */}
+            {kategorisiz.length > 0 && (
+              <div>
+                <div className="px-4 py-2.5 bg-white/5 flex items-center gap-2">
+                  <span className="text-white/40 text-base">📋</span>
+                  <p className="text-white/40 font-semibold text-sm">Kategorisiz</p>
+                  <span className="ml-auto px-2 py-0.5 bg-white/10 border border-white/20 rounded-full text-white/40 text-xs">{kategorisiz.length} ürün</span>
+                </div>
+                {renderUrunRows(kategorisiz, depo)}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
 
   if (loading) {
     return (
@@ -1455,13 +1519,14 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
       {/* ─── Ürün Ekle/Düzenle Modal ──────────────────────────── */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-white/20 rounded-2xl w-full max-w-md shadow-2xl">
-            <div className="p-5 border-b border-white/20">
+          <div className="bg-slate-900 border border-white/20 rounded-2xl w-full max-w-md shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="p-5 border-b border-white/20 flex items-center justify-between flex-shrink-0">
               <h3 className="text-white font-bold text-lg">
                 {editingUrun ? 'Ürün Düzenle' : `Ürün Ekle — ${activeDepo === 'ana' ? 'Ana Depo' : 'Kat Deposu'}`}
               </h3>
+              <button onClick={() => setShowAddModal(false)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white/60 hover:text-white transition-all text-lg">✕</button>
             </div>
-            <div className="p-5 space-y-4">
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
               {[
                 { label: 'Ürün Adı *', key: 'productName', type: 'text', placeholder: 'Kelebek valfi, Ozon filtresi...' },
                 { label: 'Stok Kodu *', key: 'stockCode', type: 'text', placeholder: 'STK-001' },
@@ -1481,8 +1546,41 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                   />
                 </div>
               ))}
+              {activeDepo === 'ana' && (
+                <div>
+                  <label className="block text-white/70 text-sm mb-2">Tüketim Türü</label>
+                  <div className="flex flex-col gap-2">
+                    <label className="flex items-center gap-3 cursor-pointer p-3 rounded-xl border transition-all hover:bg-white/5"
+                      style={{ borderColor: formData.consumptionType === 'islem-bazli' ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.15)', background: formData.consumptionType === 'islem-bazli' ? 'rgba(99,102,241,0.1)' : undefined }}>
+                      <div
+                        onClick={() => setFormData(prev => ({ ...prev, consumptionType: prev.consumptionType === 'islem-bazli' ? undefined : 'islem-bazli' }))}
+                        className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 transition-all cursor-pointer ${formData.consumptionType === 'islem-bazli' ? 'bg-indigo-500 border-indigo-500' : 'border-white/30'}`}
+                      >
+                        {formData.consumptionType === 'islem-bazli' && <span className="text-white text-xs font-bold">✓</span>}
+                      </div>
+                      <div onClick={() => setFormData(prev => ({ ...prev, consumptionType: prev.consumptionType === 'islem-bazli' ? undefined : 'islem-bazli' }))}>
+                        <p className="text-white text-sm font-medium">⚙️ İşlem Bazlı Tüketim</p>
+                        <p className="text-white/50 text-xs">Belirli bir işlem/tedaviye bağlı tüketim</p>
+                      </div>
+                    </label>
+                    <label className="flex items-center gap-3 cursor-pointer p-3 rounded-xl border transition-all hover:bg-white/5"
+                      style={{ borderColor: formData.consumptionType === 'genel-bazli' ? 'rgba(34,197,94,0.6)' : 'rgba(255,255,255,0.15)', background: formData.consumptionType === 'genel-bazli' ? 'rgba(34,197,94,0.1)' : undefined }}>
+                      <div
+                        onClick={() => setFormData(prev => ({ ...prev, consumptionType: prev.consumptionType === 'genel-bazli' ? undefined : 'genel-bazli' }))}
+                        className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 transition-all cursor-pointer ${formData.consumptionType === 'genel-bazli' ? 'bg-green-500 border-green-500' : 'border-white/30'}`}
+                      >
+                        {formData.consumptionType === 'genel-bazli' && <span className="text-white text-xs font-bold">✓</span>}
+                      </div>
+                      <div onClick={() => setFormData(prev => ({ ...prev, consumptionType: prev.consumptionType === 'genel-bazli' ? undefined : 'genel-bazli' }))}>
+                        <p className="text-white text-sm font-medium">📦 Genel Bazlı Tüketim</p>
+                        <p className="text-white/50 text-xs">Genel kullanım ve genel tüketim ürünleri</p>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="p-5 border-t border-white/20 flex gap-3 justify-end">
+            <div className="p-5 border-t border-white/20 flex gap-3 justify-end flex-shrink-0">
               <button onClick={() => setShowAddModal(false)} className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-white transition-all">İptal</button>
               <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 rounded-xl text-white font-semibold transition-all disabled:opacity-50">
                 {saving ? 'Kaydediliyor...' : 'Kaydet'}
@@ -1535,65 +1633,102 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                   Gönderilecek Ürünler *
                   <span className="text-white/40 ml-2 font-normal">(Seçmek için satıra tıklayın)</span>
                 </label>
-                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                  {anaDepoUrunler.map(urun => {
-                    const isSelected = selectedItems[urun.id!] !== undefined;
-                    return (
-                      <div
-                        key={urun.id}
-                        onClick={() => toggleProductSelection(urun)}
-                        className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                          isSelected
-                            ? 'bg-amber-500/15 border-amber-400/60'
-                            : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20'
-                        }`}
-                      >
-                        {/* Checkbox görseli */}
-                        <div className={`w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 transition-all ${
-                          isSelected ? 'bg-amber-500 border-amber-500' : 'border-2 border-white/30'
-                        }`}>
-                          {isSelected && <span className="text-white text-xs font-bold">✓</span>}
-                        </div>
 
-                        {/* Ürün bilgileri */}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-white font-medium text-sm truncate">{urun.productName}</p>
-                          <p className="text-white/50 text-xs">{urun.stockCode} • Mevcut: {urun.quantity} adet</p>
-                        </div>
-
-                        {/* Miktar girişi */}
-                        {isSelected && (
-                          <div
-                            className="flex items-center gap-1.5 flex-shrink-0"
-                            onClick={e => e.stopPropagation()}
-                          >
-                            <button
-                              onClick={() => setSelectedItems(prev => ({ ...prev, [urun.id!]: Math.max(1, (prev[urun.id!] || 1) - 1) }))}
-                              className="w-7 h-7 bg-white/10 hover:bg-white/20 rounded-lg text-white font-bold text-sm flex items-center justify-center transition-all"
-                            >
-                              −
-                            </button>
-                            <input
-                              type="number"
-                              min={1}
-                              max={urun.quantity}
-                              value={selectedItems[urun.id!] || 1}
-                              onChange={e => setSelectedItems(prev => ({ ...prev, [urun.id!]: Math.min(urun.quantity, Math.max(1, Number(e.target.value))) }))}
-                              className="w-14 text-center px-1 py-1 bg-white/10 border border-white/20 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-amber-400"
-                            />
-                            <button
-                              onClick={() => setSelectedItems(prev => ({ ...prev, [urun.id!]: Math.min(urun.quantity, (prev[urun.id!] || 1) + 1) }))}
-                              className="w-7 h-7 bg-white/10 hover:bg-white/20 rounded-lg text-white font-bold text-sm flex items-center justify-center transition-all"
-                            >
-                              +
-                            </button>
-                            <span className="text-white/40 text-xs">/ {urun.quantity}</span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                {/* Tüketim türü sekme butonları */}
+                <div className="flex gap-2 mb-3">
+                  {([
+                    { key: 'islem-bazli', label: '⚙️ İşlem Bazlı Tüketim', activeClass: 'bg-indigo-500/20 border-indigo-400/60 text-indigo-300', count: anaDepoUrunler.filter(u => u.consumptionType === 'islem-bazli').length },
+                    { key: 'genel-bazli', label: '📦 Genel Bazlı Tüketim', activeClass: 'bg-green-500/20 border-green-400/60 text-green-300', count: anaDepoUrunler.filter(u => u.consumptionType === 'genel-bazli').length },
+                  ] as const).map(tab => (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => { setTransferProductTab(prev => prev === tab.key ? null : tab.key); setTransferSearch(''); }}
+                      className={`flex-1 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
+                        transferProductTab === tab.key
+                          ? tab.activeClass
+                          : 'bg-white/5 border-white/15 text-white/50 hover:bg-white/10 hover:text-white/80'
+                      }`}
+                    >
+                      {tab.label}
+                      <span className={`px-1.5 py-0.5 rounded-full text-xs ${transferProductTab === tab.key ? 'bg-white/20' : 'bg-white/10'}`}>{tab.count}</span>
+                    </button>
+                  ))}
                 </div>
+
+                {/* Ürün listesi */}
+                {transferProductTab === null ? (
+                  <div className="p-6 text-center text-white/40 bg-white/5 rounded-xl border border-white/10">
+                    <p className="text-sm">Yukarıdan bir tüketim türü seçin</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Arama */}
+                    <div className="relative mb-2">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-sm">🔍</span>
+                      <input
+                        type="text"
+                        value={transferSearch}
+                        onChange={e => setTransferSearch(e.target.value)}
+                        placeholder="Ürün ara..."
+                        className="w-full pl-9 pr-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      />
+                    </div>
+
+                    <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                      {anaDepoUrunler
+                        .filter(u => u.consumptionType === transferProductTab)
+                        .filter(u => u.productName.toLowerCase().includes(transferSearch.toLowerCase()) || u.stockCode.toLowerCase().includes(transferSearch.toLowerCase()))
+                        .sort((a, b) => a.productName.localeCompare(b.productName, 'tr'))
+                        .map(urun => {
+                          const isSelected = selectedItems[urun.id!] !== undefined;
+                          return (
+                            <div
+                              key={urun.id}
+                              onClick={() => toggleProductSelection(urun)}
+                              className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                                isSelected
+                                  ? 'bg-amber-500/15 border-amber-400/60'
+                                  : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20'
+                              }`}
+                            >
+                              <div className={`w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 transition-all ${
+                                isSelected ? 'bg-amber-500 border-amber-500' : 'border-2 border-white/30'
+                              }`}>
+                                {isSelected && <span className="text-white text-xs font-bold">✓</span>}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-white font-medium text-sm truncate">{urun.productName}</p>
+                                <p className="text-white/50 text-xs">{urun.stockCode} • Mevcut: {urun.quantity} adet</p>
+                              </div>
+                              {isSelected && (
+                                <div className="flex items-center gap-1.5 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                                  <button onClick={() => setSelectedItems(prev => ({ ...prev, [urun.id!]: Math.max(1, (prev[urun.id!] || 1) - 1) }))}
+                                    className="w-7 h-7 bg-white/10 hover:bg-white/20 rounded-lg text-white font-bold text-sm flex items-center justify-center transition-all">−</button>
+                                  <input
+                                    type="number" min={1} max={urun.quantity}
+                                    value={selectedItems[urun.id!] || 1}
+                                    onChange={e => setSelectedItems(prev => ({ ...prev, [urun.id!]: Math.min(urun.quantity, Math.max(1, Number(e.target.value))) }))}
+                                    className="w-14 text-center px-1 py-1 bg-white/10 border border-white/20 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                  />
+                                  <button onClick={() => setSelectedItems(prev => ({ ...prev, [urun.id!]: Math.min(urun.quantity, (prev[urun.id!] || 1) + 1) }))}
+                                    className="w-7 h-7 bg-white/10 hover:bg-white/20 rounded-lg text-white font-bold text-sm flex items-center justify-center transition-all">+</button>
+                                  <span className="text-white/40 text-xs">/ {urun.quantity}</span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      {anaDepoUrunler.filter(u => u.consumptionType === transferProductTab).filter(u =>
+                        u.productName.toLowerCase().includes(transferSearch.toLowerCase()) || u.stockCode.toLowerCase().includes(transferSearch.toLowerCase())
+                      ).length === 0 && (
+                        <div className="p-6 text-center text-white/40 text-sm">
+                          {transferSearch ? 'Arama sonucu bulunamadı.' : 'Bu kategoride ürün yok.'}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Seçili özet */}
