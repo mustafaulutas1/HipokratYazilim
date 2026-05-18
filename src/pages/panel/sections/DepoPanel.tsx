@@ -3,6 +3,9 @@ import {
   collection, query, where, addDoc, updateDoc, deleteDoc, doc, onSnapshot, getDocs
 } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 
 interface DepoPanelProps {
   doctorProfile?: {
@@ -55,6 +58,7 @@ interface KullanimKaydi {
   nurseId: string;
   patientName: string;
   treatmentName: string;
+  appliedApplications?: string[];
   items: { productId: string; productName: string; plannedQty: number; usedQty: number }[];
   clinicId: string;
   date: string;
@@ -521,11 +525,120 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
   const formatDateTime = (date: string, time: string) =>
     `${new Date(date).toLocaleDateString('tr-TR')} ${time}`;
 
-  const filteredKullanim = kullanimKayitlari.filter(k => {
-    if (isNurse) return k.nurseId === doctorProfile?.uid;
-    if (filterNurse) return k.nurseName.toLowerCase().includes(filterNurse.toLowerCase());
-    return true;
-  });
+  const filteredKullanim = kullanimKayitlari
+    .filter(k => {
+      if (isNurse) return k.nurseId === doctorProfile?.uid;
+      if (filterNurse) return k.nurseName.toLowerCase().includes(filterNurse.toLowerCase());
+      return true;
+    })
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  const toAscii = (str: string) =>
+    str
+      .replace(/ş/g, 's').replace(/Ş/g, 'S')
+      .replace(/ğ/g, 'g').replace(/Ğ/g, 'G')
+      .replace(/ü/g, 'u').replace(/Ü/g, 'U')
+      .replace(/ö/g, 'o').replace(/Ö/g, 'O')
+      .replace(/ç/g, 'c').replace(/Ç/g, 'C')
+      .replace(/ı/g, 'i').replace(/İ/g, 'I');
+
+  const downloadKullanimPDF = () => {
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const today = new Date().toLocaleDateString('tr-TR');
+
+    // ── Header band ──────────────────────────────────────────────────────────
+    pdf.setFillColor(67, 56, 202); // indigo-700
+    pdf.rect(0, 0, pageW, 22, 'F');
+
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(15);
+    pdf.text('KAT DEPO KULLANIM RAPORU', 14, 14);
+
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+    pdf.text(`Olusturma tarihi: ${today}   |   Toplam kayit: ${filteredKullanim.length}`, pageW - 14, 14, { align: 'right' });
+
+    // ── Table ─────────────────────────────────────────────────────────────────
+    const rows = filteredKullanim.map((k, idx) => [
+      String(idx + 1),
+      toAscii(new Date(k.createdAt).toLocaleString('tr-TR')),
+      toAscii(k.nurseName),
+      toAscii(k.treatmentName || '-'),
+      toAscii((k.appliedApplications ?? []).join(', ') || '-'),
+      toAscii(k.patientName),
+      toAscii(k.items.map(i => `${i.productName} x${i.usedQty}`).join('\n')),
+    ]);
+
+    autoTable(pdf, {
+      startY: 27,
+      head: [['#', 'Tarih / Saat', 'Uygulayan', 'Protokol', 'Uygulanan Tedaviler', 'Hasta', 'Kullanilan Malzemeler']],
+      body: rows,
+      theme: 'grid',
+      styles: {
+        fontSize: 8,
+        cellPadding: { top: 3, bottom: 3, left: 4, right: 4 },
+        valign: 'middle',
+        lineColor: [220, 220, 230],
+        lineWidth: 0.2,
+        textColor: [30, 30, 30],
+      },
+      headStyles: {
+        fillColor: [67, 56, 202],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 8.5,
+        halign: 'center',
+      },
+      alternateRowStyles: { fillColor: [245, 245, 255] },
+      columnStyles: {
+        0: { cellWidth: 8, halign: 'center' },
+        1: { cellWidth: 32 },
+        2: { cellWidth: 36 },
+        3: { cellWidth: 34 },
+        4: { cellWidth: 48 },
+        5: { cellWidth: 32 },
+        6: { cellWidth: 'auto' },
+      },
+      didDrawPage: (data) => {
+        // Footer
+        const pageCount = (pdf as any).internal.getNumberOfPages();
+        pdf.setFontSize(8);
+        pdf.setTextColor(150, 150, 150);
+        pdf.text(
+          `Sayfa ${data.pageNumber} / ${pageCount}`,
+          pageW / 2,
+          pdf.internal.pageSize.getHeight() - 6,
+          { align: 'center' }
+        );
+      },
+    });
+
+    pdf.save(`kat-depo-kullanim-raporu-${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  const downloadKullanimExcel = () => {
+    const wsData: (string | number)[][] = [
+      ['#', 'Tarih / Saat', 'Uygulayan', 'Protokol', 'Uygulanan Tedaviler', 'Hasta', 'Kullanilan Malzemeler'],
+      ...filteredKullanim.map((k, idx) => [
+        idx + 1,
+        new Date(k.createdAt).toLocaleString('tr-TR'),
+        k.nurseName,
+        k.treatmentName || '-',
+        (k.appliedApplications ?? []).join(', ') || '-',
+        k.patientName,
+        k.items.map(i => `${i.productName} x${i.usedQty}`).join('; '),
+      ]),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws['!cols'] = [
+      { wch: 4 }, { wch: 22 }, { wch: 24 }, { wch: 28 }, { wch: 40 }, { wch: 22 }, { wch: 50 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Kullanim Raporu');
+    XLSX.writeFile(wb, `kat-depo-kullanim-raporu-${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
 
   const nurseUsageSummary = () => {
     const map: Record<string, { nurseName: string; totalItems: number; records: number }> = {};
@@ -1030,8 +1143,24 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
               )}
 
               <div className="bg-white/10 border border-white/20 rounded-2xl overflow-hidden">
-                <div className="p-4 border-b border-white/20">
+                <div className="p-4 border-b border-white/20 flex items-center justify-between flex-wrap gap-3">
                   <h3 className="text-white font-bold">{isNurse ? 'Kendi Kullanım Geçmişim' : 'Tüm Kullanım Kayıtları'}</h3>
+                  {filteredKullanim.length > 0 && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={downloadKullanimPDF}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 border border-red-400/40 text-red-300 text-xs font-semibold rounded-xl transition-all"
+                      >
+                        📄 PDF İndir
+                      </button>
+                      <button
+                        onClick={downloadKullanimExcel}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500/20 hover:bg-green-500/30 border border-green-400/40 text-green-300 text-xs font-semibold rounded-xl transition-all"
+                      >
+                        📊 Excel İndir
+                      </button>
+                    </div>
+                  )}
                 </div>
                 {filteredKullanim.length === 0 ? (
                   <div className="p-10 text-center text-white/40">
@@ -1040,19 +1169,57 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                   </div>
                 ) : (
                   <div className="divide-y divide-white/10">
-                    {filteredKullanim.slice().reverse().map(k => (
+                    {filteredKullanim.map(k => (
                       <div key={k.id} className="p-4 hover:bg-white/5 transition-all">
-                        <p className="text-white font-semibold">{k.treatmentName}</p>
-                        <p className="text-white/60 text-xs">Hasta: {k.patientName} • Hemşire: {k.nurseName}</p>
-                        <p className="text-white/50 text-xs">{new Date(k.date).toLocaleDateString('tr-TR')}</p>
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {k.items.map((item, i) => (
-                            <span key={i} className="px-2 py-1 bg-white/10 rounded-lg text-white/70 text-xs">
-                              {item.productName}: <span className="text-white font-semibold">{item.usedQty}</span>
-                              {item.usedQty !== item.plannedQty && <span className="text-yellow-400 ml-1">(plan: {item.plannedQty})</span>}
-                            </span>
-                          ))}
+                        {/* Üst satır: tarih + hasta */}
+                        <div className="flex items-start justify-between gap-2 flex-wrap mb-1">
+                          <p className="text-white/40 text-xs">
+                            {new Date(k.createdAt).toLocaleString('tr-TR')}
+                            <span className="mx-2">•</span>
+                            <span className="text-white/60">Hasta:</span> {k.patientName}
+                          </p>
                         </div>
+
+                        {/* Protokol + Uygulayan */}
+                        <div className="flex flex-wrap gap-x-4 gap-y-0.5 mb-2">
+                          {k.treatmentName && (
+                            <p className="text-white font-semibold text-sm">
+                              📋 {k.treatmentName}
+                            </p>
+                          )}
+                          <p className="text-indigo-300 text-xs font-medium self-center">
+                            👤 Uygulayan: <span className="text-white">{k.nurseName}</span>
+                          </p>
+                        </div>
+
+                        {/* Uygulanan tedaviler */}
+                        {k.appliedApplications && k.appliedApplications.length > 0 && (
+                          <div className="mb-2">
+                            <p className="text-white/50 text-xs mb-1">Uygulanan Tedaviler:</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {k.appliedApplications.map((app, i) => (
+                                <span key={i} className="px-2 py-0.5 bg-blue-500/20 border border-blue-400/30 rounded-full text-blue-200 text-xs">
+                                  {app}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Kullanılan malzemeler */}
+                        {k.items.length > 0 && (
+                          <div>
+                            <p className="text-white/50 text-xs mb-1">Kullanılan Malzemeler:</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {k.items.map((item, i) => (
+                                <span key={i} className="px-2 py-0.5 bg-indigo-500/15 border border-indigo-400/30 rounded-lg text-white/80 text-xs">
+                                  {item.productName}: <span className="text-white font-semibold">{item.usedQty} adet</span>
+                                  {item.usedQty !== item.plannedQty && <span className="text-yellow-400 ml-1">(plan: {item.plannedQty})</span>}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

@@ -585,7 +585,8 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
             nurseName: doctorProfile?.fullName || '',
             nurseId: doctorProfile?.clinicId || '',
             patientName: selectedPatient.fullName,
-            treatmentName: selectedPatient.treatmentOptions?.protocolName || selectedTreatments.join(', ') || 'Tedavi',
+            treatmentName: selectedPatient.treatmentOptions?.protocolName || 'Tedavi',
+            appliedApplications: selectedTreatments,
             items: selectedMaterials.map(m => ({
               productId: m.productId,
               productName: m.productName,
