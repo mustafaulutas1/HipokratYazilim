@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import AddPatientModal from './AddPatientModal';
 import EditPatientModal from '../components/EditPatientModal';
@@ -148,23 +148,6 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
     return new Date(dateString).toLocaleDateString('tr-TR');
   };
 
-  // Toggle patient active/passive status
-  const togglePatientStatus = async (patient: Patient) => {
-    try {
-      const newStatus = patient.status === 'passive' ? 'active' : 'passive';
-      const patientRef = doc(db, 'patients', patient.id);
-      await updateDoc(patientRef, { status: newStatus });
-
-      // Update local state
-      setPatients(prevPatients =>
-        prevPatients.map(p =>
-          p.id === patient.id ? { ...p, status: newStatus } : p
-        )
-      );
-    } catch (error) {
-      console.error('Error toggling patient status:', error);
-    }
-  };
 
   const handleDeletePatient = async (patient: Patient) => {
     if (!window.confirm(`"${patient.fullName}" adlı hasta kalıcı olarak silinecek. Bu işlem geri alınamaz. Devam etmek istiyor musunuz?`)) return;
