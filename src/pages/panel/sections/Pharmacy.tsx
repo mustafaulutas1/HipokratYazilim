@@ -97,7 +97,7 @@ interface PharmacyPatient {
 }
 
 const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorProfile }) => {
-  const [activeTab, setActiveTab] = useState<'medications' | 'devices' | 'patients' | 'pharmacy_debt' | 'sales_history'>('medications');
+  const [activeTab, setActiveTab] = useState<'medications' | 'devices' | 'patients' | 'pharmacy_debt' | 'sales_history' | 'direct_sale'>('medications');
   const [savedMedications, setSavedMedications] = useState<SavedMedication[]>([]);
   const [savedDevices, setSavedDevices] = useState<SavedMedicalDevice[]>([]);
   const [protocolNames, setProtocolNames] = useState<string[]>([]);
@@ -142,6 +142,21 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const [pickerQuantities, setPickerQuantities] = useState<Record<string, number>>({});
   // Sale note state
   const [pharmacyNote, setPharmacyNote] = useState<string>('');
+  // Direct sale tab states
+  const [dsCustomerMode, setDsCustomerMode] = useState<'existing' | 'new'>('existing');
+  const [dsPatientSearch, setDsPatientSearch] = useState('');
+  const [dsAllPatients, setDsAllPatients] = useState<PharmacyPatient[]>([]);
+  const [dsSelectedPatient, setDsSelectedPatient] = useState<PharmacyPatient | null>(null);
+  const [dsNewCustomerName, setDsNewCustomerName] = useState('');
+  const [dsSaleItems, setDsSaleItems] = useState<{ application: { id: string; name: string; price: number; description?: string }; quantity: number }[]>([]);
+  const [dsAppSearch, setDsAppSearch] = useState('');
+  const [dsApplications, setDsApplications] = useState<{ id: string; name: string; price: number; description?: string }[]>([]);
+  const [dsPaymentMethods, setDsPaymentMethods] = useState<PaymentMethodEntry[]>([{ method: 'nakit', amount: 0 }]);
+  const [dsNote, setDsNote] = useState('');
+  const [dsPartialPayment, setDsPartialPayment] = useState(false);
+  const [dsRemainingDebt, setDsRemainingDebt] = useState('');
+  const [dsLoading, setDsLoading] = useState(false);
+  const [dsPaymentModalOpen, setDsPaymentModalOpen] = useState(false);
   const [formData, setFormData] = useState<Medication>({
     name: '',
     protocolName: '',
@@ -515,6 +530,45 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   };
 
   // Fetch all patients with outstanding pharmacy debts
+  const fetchAllPatientsForDirectSale = async () => {
+    if (!doctorProfile?.clinicId) return;
+    try {
+      const snap = await getDocs(query(collection(db, 'patients'), where('clinicId', '==', doctorProfile.clinicId)));
+      const patients: PharmacyPatient[] = [];
+      snap.forEach((d) => patients.push({ id: d.id, ...d.data() } as PharmacyPatient));
+      patients.sort((a, b) => a.fullName.localeCompare(b.fullName, 'tr'));
+      setDsAllPatients(patients);
+    } catch (e) {
+      console.error('Error fetching all patients:', e);
+    }
+  };
+
+  const fetchApplicationsForDirectSale = async () => {
+    if (!doctorProfile?.clinicId) return;
+    try {
+      const snap = await getDocs(collection(db, 'medicalApplications'));
+      const apps: { id: string; name: string; price: number; description?: string }[] = [];
+      const clinicNames = new Set<string>();
+      snap.forEach((d) => {
+        const data = d.data() as any;
+        if (data.clinicId === doctorProfile.clinicId) {
+          apps.push({ id: d.id, name: data.name, price: data.price || 0, description: data.description });
+          clinicNames.add(data.name);
+        }
+      });
+      snap.forEach((d) => {
+        const data = d.data() as any;
+        if (data.clinicId === 'STANDARD' && !clinicNames.has(data.name)) {
+          apps.push({ id: d.id, name: data.name, price: data.price || 0, description: data.description });
+        }
+      });
+      apps.sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+      setDsApplications(apps);
+    } catch (e) {
+      console.error('Error fetching applications:', e);
+    }
+  };
+
   const fetchPatientsWithPharmacyDebts = async () => {
     if (!doctorProfile?.clinicId) return;
     
@@ -594,6 +648,16 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       fetchProtocolNames();
     }
   }, [doctorProfile?.clinicId]);
+
+  // Auto-calculate remaining debt in direct sale payment modal
+  useEffect(() => {
+    if (dsPartialPayment) {
+      const total = dsSaleItems.reduce((s, i) => s + i.application.price * i.quantity, 0);
+      const paid = dsPaymentMethods.reduce((s, m) => s + (m.amount || 0), 0);
+      const remaining = Math.max(0, total - paid);
+      setDsRemainingDebt(remaining.toFixed(2));
+    }
+  }, [dsPartialPayment, dsPaymentMethods, dsSaleItems]);
 
   // Extract the protocol name for display — uses stored protocolName first,
   // then tries to match the start of description against known protocol names,
@@ -914,6 +978,102 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       alert('Satış işlemi sırasında bir hata oluştu.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDirectSaleComplete = async () => {
+    const customerName = dsCustomerMode === 'existing'
+      ? dsSelectedPatient?.fullName || ''
+      : dsNewCustomerName.trim();
+
+    if (!customerName) {
+      alert('Lütfen müşteri adı girin veya sistemden bir hasta seçin.');
+      return;
+    }
+    if (dsSaleItems.length === 0) {
+      alert('Lütfen en az bir ilaç/uygulama ekleyin.');
+      return;
+    }
+    const totalAmount = dsSaleItems.reduce((sum, i) => sum + i.application.price * i.quantity, 0);
+    const enteredAmount = dsPaymentMethods.reduce((sum, m) => sum + (m.amount || 0), 0);
+    if (enteredAmount <= 0) {
+      alert('Lütfen ödeme tutarı girin.');
+      return;
+    }
+
+    try {
+      setDsLoading(true);
+      const batch = writeBatch(db);
+
+      const saleRef = doc(collection(db, 'direct_sales'));
+      batch.set(saleRef, {
+        clinicId: doctorProfile?.clinicId,
+        createdBy: doctorProfile?.fullName,
+        customerType: dsCustomerMode,
+        customerName,
+        customerTcNo: dsCustomerMode === 'existing' ? (dsSelectedPatient?.tcNo || '') : '',
+        patientId: dsCustomerMode === 'existing' ? (dsSelectedPatient?.id || null) : null,
+        items: dsSaleItems.map(i => ({
+          name: i.application.name,
+          applicationId: i.application.id,
+          price: i.application.price,
+          quantity: i.quantity,
+          total: i.application.price * i.quantity,
+        })),
+        totalAmount,
+        paymentMethods: dsPaymentMethods.filter(m => m.amount > 0),
+        paidAmount: enteredAmount,
+        note: dsNote.trim() || null,
+        isPartialPayment: dsPartialPayment,
+        remainingDebt: dsPartialPayment && dsRemainingDebt ? parseFloat(dsRemainingDebt) : 0,
+        createdAt: new Date().toISOString(),
+        saleType: 'direct',
+      });
+
+      if (dsCustomerMode === 'existing' && dsSelectedPatient && dsPartialPayment && dsRemainingDebt) {
+        const debtAmount = parseFloat(dsRemainingDebt);
+        if (debtAmount > 0) {
+          const debtRef = doc(collection(db, 'pharmacy_debts'));
+          batch.set(debtRef, {
+            clinicId: doctorProfile?.clinicId,
+            patientId: dsSelectedPatient.id,
+            patientTcNo: dsSelectedPatient.tcNo,
+            patientName: dsSelectedPatient.fullName,
+            amount: debtAmount,
+            items: dsSaleItems.map(i => ({ name: i.application.name, price: i.application.price, quantity: i.quantity })),
+            reason: 'Direkt eczane satışı eksik ödeme',
+            isPaid: false,
+            createdAt: new Date().toISOString(),
+            saleDate: new Date().toISOString(),
+            saleId: saleRef.id,
+          });
+          batch.update(doc(db, 'patients', dsSelectedPatient.id), {
+            pharmacyHasDebt: true,
+            pharmacyDebtAmount: debtAmount,
+            pharmacyDebtDate: new Date().toISOString(),
+            pharmacyDebtReason: `Direkt eczane satışı borcu: ${debtAmount.toFixed(2)} TL`,
+          });
+        }
+      }
+
+      await batch.commit();
+      alert(`Satış başarıyla tamamlandı! Toplam: ${totalAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL`);
+
+      setDsSelectedPatient(null);
+      setDsNewCustomerName('');
+      setDsPatientSearch('');
+      setDsSaleItems([]);
+      setDsAppSearch('');
+      setDsPaymentMethods([{ method: 'nakit', amount: 0 }]);
+      setDsNote('');
+      setDsPartialPayment(false);
+      setDsRemainingDebt('');
+      setDsPaymentModalOpen(false);
+    } catch (e) {
+      console.error('Error completing direct sale:', e);
+      alert('Satış tamamlanırken bir hata oluştu.');
+    } finally {
+      setDsLoading(false);
     }
   };
 
@@ -1374,6 +1534,21 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
           >
             📋 Satış Geçmişi
           </button>
+          <button
+            onClick={() => {
+              setActiveTab('direct_sale');
+              setShowAddForm(false);
+              fetchAllPatientsForDirectSale();
+              fetchApplicationsForDirectSale();
+            }}
+            className={`px-8 py-3 rounded-xl font-medium transition-all duration-200 ${
+              activeTab === 'direct_sale'
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg'
+                : 'bg-white/10 text-white/70 hover:bg-white/20'
+            }`}
+          >
+            🛒 Eczane Satış
+          </button>
         </div>
       </div>
 
@@ -1466,10 +1641,30 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                 <div className="text-white/70 text-sm">Toplam Borç İşlemi</div>
               </div>
             </div>
+          ) : activeTab === 'direct_sale' ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-gradient-to-r from-emerald-500/20 to-teal-600/20 border border-emerald-500/30 rounded-2xl p-4">
+                <div className="text-emerald-300 text-2xl mb-1">🛒</div>
+                <div className="text-white text-2xl font-bold">{savedMedications.length}</div>
+                <div className="text-white/70 text-sm">Satışa Hazır İlaç</div>
+              </div>
+              <div className="bg-gradient-to-r from-blue-500/20 to-blue-600/20 border border-blue-500/30 rounded-2xl p-4">
+                <div className="text-blue-300 text-2xl mb-1">👥</div>
+                <div className="text-white text-2xl font-bold">{dsAllPatients.length}</div>
+                <div className="text-white/70 text-sm">Kayıtlı Hasta</div>
+              </div>
+              <div className="bg-gradient-to-r from-purple-500/20 to-purple-600/20 border border-purple-500/30 rounded-2xl p-4">
+                <div className="text-purple-300 text-2xl mb-1">💵</div>
+                <div className="text-white text-2xl font-bold">
+                  {dsSaleItems.reduce((s, i) => s + i.application.price * i.quantity, 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                </div>
+                <div className="text-white/70 text-sm">Güncel Sepet Tutarı</div>
+              </div>
+            </div>
           ) : null}
-          
+
           {/* Action Buttons and Filters - Only for medications and devices tabs */}
-          {activeTab !== 'patients' && activeTab !== 'pharmacy_debt' && activeTab !== 'sales_history' && (
+          {activeTab !== 'patients' && activeTab !== 'pharmacy_debt' && activeTab !== 'sales_history' && activeTab !== 'direct_sale' && (
           <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
             <div className="mb-6 flex flex-wrap items-center gap-3">
               <button
@@ -2216,6 +2411,397 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                 </div>
               )}
             </div>
+          )}
+
+          {/* ─── ECZANE SATIŞ TAB ─── */}
+          {activeTab === 'direct_sale' && (
+            <>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+
+              {/* COL 1: Hasta Seçimi */}
+              <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl flex flex-col" style={{ minHeight: '60vh', maxHeight: '72vh' }}>
+                <div className="p-4 border-b border-white/10 flex-shrink-0">
+                  {/* Mode Toggle */}
+                  <div className="flex gap-2 mb-3">
+                    <button
+                      onClick={() => { setDsCustomerMode('existing'); setDsNewCustomerName(''); }}
+                      className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${
+                        dsCustomerMode === 'existing'
+                          ? 'bg-teal-600 text-white shadow-md'
+                          : 'bg-white/10 text-white/60 hover:bg-white/20'
+                      }`}
+                    >
+                      👥 Mevcut Hastalar
+                    </button>
+                    <button
+                      onClick={() => { setDsCustomerMode('new'); setDsSelectedPatient(null); setDsPatientSearch(''); }}
+                      className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${
+                        dsCustomerMode === 'new'
+                          ? 'bg-purple-600 text-white shadow-md'
+                          : 'bg-white/10 text-white/60 hover:bg-white/20'
+                      }`}
+                    >
+                      ✏️ Yeni Müşteri
+                    </button>
+                  </div>
+
+                  {dsCustomerMode === 'existing' ? (
+                    <input
+                      type="text"
+                      value={dsPatientSearch}
+                      onChange={(e) => setDsPatientSearch(e.target.value)}
+                      placeholder="İsim veya TC ile ara..."
+                      className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white text-sm placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      value={dsNewCustomerName}
+                      onChange={(e) => setDsNewCustomerName(e.target.value)}
+                      placeholder="Müşteri adı soyadı..."
+                      className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white text-sm placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                    />
+                  )}
+                </div>
+
+                {/* Patient list */}
+                {dsCustomerMode === 'existing' ? (
+                  <div className="flex-1 overflow-y-auto">
+                    {dsAllPatients
+                      .filter(p =>
+                        !dsPatientSearch.trim() ||
+                        p.fullName.toLowerCase().includes(dsPatientSearch.toLowerCase()) ||
+                        (p.tcNo || '').includes(dsPatientSearch)
+                      )
+                      .map(p => (
+                        <button
+                          key={p.id}
+                          onClick={() => setDsSelectedPatient(dsSelectedPatient?.id === p.id ? null : p)}
+                          className={`w-full text-left px-4 py-3 border-b border-white/5 last:border-0 transition-all ${
+                            dsSelectedPatient?.id === p.id
+                              ? 'bg-teal-500/25 border-l-4 border-l-teal-400'
+                              : 'hover:bg-white/8'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
+                              dsSelectedPatient?.id === p.id ? 'bg-teal-500 text-white' : 'bg-white/10 text-white/60'
+                            }`}>
+                              {p.fullName.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className={`text-sm font-medium truncate ${dsSelectedPatient?.id === p.id ? 'text-teal-300' : 'text-white'}`}>
+                                {p.fullName}
+                              </p>
+                              {p.tcNo && <p className="text-white/40 text-xs">TC: {p.tcNo}</p>}
+                            </div>
+                            {dsSelectedPatient?.id === p.id && (
+                              <span className="text-teal-400 text-xl flex-shrink-0">✓</span>
+                            )}
+                          </div>
+                        </button>
+                      ))
+                    }
+                    {dsAllPatients.filter(p =>
+                      !dsPatientSearch.trim() ||
+                      p.fullName.toLowerCase().includes(dsPatientSearch.toLowerCase()) ||
+                      (p.tcNo || '').includes(dsPatientSearch)
+                    ).length === 0 && (
+                      <div className="flex flex-col items-center justify-center h-40 text-white/40">
+                        <span className="text-3xl mb-2">👥</span>
+                        <p className="text-sm">Hasta bulunamadı</p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex-1 flex items-center justify-center">
+                    <div className="text-center text-white/50 p-6">
+                      <div className="text-5xl mb-3">✏️</div>
+                      {dsNewCustomerName.trim()
+                        ? <p className="text-white font-semibold text-lg">{dsNewCustomerName}</p>
+                        : <p className="text-sm">Yukarıya müşteri adını yazın</p>
+                      }
+                    </div>
+                  </div>
+                )}
+
+                {(dsCustomerMode === 'existing' ? dsSelectedPatient : dsNewCustomerName.trim()) && (
+                  <div className="flex-shrink-0 px-4 py-2 bg-teal-500/15 border-t border-teal-500/20">
+                    <p className="text-teal-300 text-xs font-medium text-center truncate">
+                      ✓ {dsCustomerMode === 'existing' ? dsSelectedPatient!.fullName : dsNewCustomerName.trim()}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* COL 2: Uygulamalar + Sepet */}
+              <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl flex flex-col" style={{ minHeight: '60vh', maxHeight: '72vh' }}>
+                {/* Applications header */}
+                <div className="p-4 border-b border-white/10 flex-shrink-0">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-white font-bold flex items-center gap-2">
+                      <span>💊</span> Uygulamalar
+                    </h3>
+                    <span className="text-white/40 text-xs">{dsApplications.length} kayıt</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={dsAppSearch}
+                    onChange={(e) => setDsAppSearch(e.target.value)}
+                    placeholder="Uygulama ara..."
+                    className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white text-sm placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  />
+                </div>
+
+                {/* Applications list */}
+                <div className="flex-1 overflow-y-auto">
+                  {dsApplications
+                    .filter(a => !dsAppSearch.trim() || a.name.toLowerCase().includes(dsAppSearch.toLowerCase()))
+                    .map(a => {
+                      const inCart = dsSaleItems.find(i => i.application.id === a.id);
+                      return (
+                        <button
+                          key={a.id}
+                          onClick={() => {
+                            setDsSaleItems(prev => {
+                              const idx = prev.findIndex(i => i.application.id === a.id);
+                              if (idx >= 0) {
+                                const updated = [...prev];
+                                updated[idx] = { ...updated[idx], quantity: updated[idx].quantity + 1 };
+                                return updated;
+                              }
+                              return [...prev, { application: a, quantity: 1 }];
+                            });
+                          }}
+                          className={`w-full text-left px-4 py-3 border-b border-white/5 last:border-0 transition-all hover:bg-white/10 flex items-center justify-between gap-3 ${
+                            inCart ? 'bg-emerald-500/10' : ''
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className={`text-sm font-medium truncate ${inCart ? 'text-emerald-300' : 'text-white'}`}>{a.name}</p>
+                            {a.description && <p className="text-white/40 text-xs truncate">{a.description}</p>}
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className="text-emerald-400 font-bold text-sm whitespace-nowrap">{a.price.toFixed(2)} TL</span>
+                            {inCart ? (
+                              <span className="bg-emerald-500 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center font-bold shadow">
+                                {inCart.quantity}
+                              </span>
+                            ) : (
+                              <span className="w-6 h-6 rounded-full border border-white/20 flex items-center justify-center text-white/40 text-sm">+</span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })
+                  }
+                  {dsApplications.filter(a => !dsAppSearch.trim() || a.name.toLowerCase().includes(dsAppSearch.toLowerCase())).length === 0 && (
+                    <div className="flex flex-col items-center justify-center h-40 text-white/40">
+                      <span className="text-3xl mb-2">💊</span>
+                      <p className="text-sm">{dsApplications.length === 0 ? 'Uygulama bulunamadı' : 'Arama sonucu yok'}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Cart summary + Ödeme Yap button */}
+                {dsSaleItems.length > 0 && (
+                  <div className="flex-shrink-0 border-t border-white/10 bg-white/5 p-4 space-y-3">
+                    {/* Compact cart list */}
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                      {dsSaleItems.map((item, idx) => (
+                        <div key={item.application.id} className="flex items-center gap-2">
+                          <span className="text-white/70 text-xs flex-1 truncate">{item.application.name}</span>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <button
+                              onClick={() => setDsSaleItems(prev => {
+                                const updated = [...prev];
+                                if (updated[idx].quantity > 1) {
+                                  updated[idx] = { ...updated[idx], quantity: updated[idx].quantity - 1 };
+                                } else { updated.splice(idx, 1); }
+                                return updated;
+                              })}
+                              className="w-5 h-5 bg-white/10 hover:bg-red-500/30 rounded text-white text-xs transition-colors flex items-center justify-center"
+                            >−</button>
+                            <span className="text-white text-xs w-4 text-center">{item.quantity}</span>
+                            <button
+                              onClick={() => setDsSaleItems(prev => {
+                                const updated = [...prev];
+                                updated[idx] = { ...updated[idx], quantity: updated[idx].quantity + 1 };
+                                return updated;
+                              })}
+                              className="w-5 h-5 bg-white/10 hover:bg-green-500/30 rounded text-white text-xs transition-colors flex items-center justify-center"
+                            >+</button>
+                            <button
+                              onClick={() => setDsSaleItems(prev => prev.filter((_, i) => i !== idx))}
+                              className="ml-1 text-white/30 hover:text-red-400 text-sm transition-colors"
+                            >✕</button>
+                          </div>
+                          <span className="text-emerald-400 text-xs w-16 text-right flex-shrink-0">
+                            {(item.application.price * item.quantity).toFixed(2)} TL
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Total + Payment button */}
+                    <div className="flex items-center justify-between pt-2 border-t border-white/10">
+                      <div>
+                        <p className="text-white/50 text-xs">Toplam</p>
+                        <p className="text-white font-bold text-lg">
+                          {dsSaleItems.reduce((s, i) => s + i.application.price * i.quantity, 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const customer = dsCustomerMode === 'existing' ? dsSelectedPatient?.fullName : dsNewCustomerName.trim();
+                          if (!customer) { alert('Lütfen önce bir hasta/müşteri seçin.'); return; }
+                          setDsPaymentModalOpen(true);
+                        }}
+                        className="px-6 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-bold text-sm transition-all shadow-lg hover:shadow-emerald-500/25 flex items-center gap-2"
+                      >
+                        💳 Ödeme Yap
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {dsSaleItems.length === 0 && (
+                  <div className="flex-shrink-0 p-4 border-t border-white/10 text-center text-white/30 text-sm">
+                    Listeden uygulama seçin
+                  </div>
+                )}
+              </div>
+
+            </div>
+
+            {/* ─── ÖDEME MODALI ─── */}
+            {dsPaymentModalOpen && (
+              <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[60] p-4">
+                <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+                  {/* Modal Header */}
+                  <div className="bg-gradient-to-r from-emerald-600 to-teal-600 p-5 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-xl">💳</div>
+                      <div>
+                        <h3 className="text-white font-bold text-lg">Eczane Satış Ödemesi</h3>
+                        <p className="text-white/80 text-sm">
+                          {dsCustomerMode === 'existing' ? dsSelectedPatient?.fullName : dsNewCustomerName.trim()}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setDsPaymentModalOpen(false)}
+                      className="w-9 h-9 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-white transition-all"
+                    >✕</button>
+                  </div>
+
+                  <div className="p-6 space-y-5 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 140px)' }}>
+                    {/* Item Summary */}
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <h4 className="text-sm font-semibold text-gray-500 mb-3">Satış Özeti</h4>
+                      <div className="space-y-2">
+                        {dsSaleItems.map(item => (
+                          <div key={item.application.id} className="flex justify-between text-sm">
+                            <span className="text-gray-700 truncate flex-1 mr-2">{item.application.name} × {item.quantity}</span>
+                            <span className="text-gray-900 font-semibold flex-shrink-0">{(item.application.price * item.quantity).toFixed(2)} TL</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="border-t border-gray-200 mt-3 pt-3 flex justify-between font-bold">
+                        <span className="text-gray-700">Toplam</span>
+                        <span className="text-emerald-700 text-lg">
+                          {dsSaleItems.reduce((s, i) => s + i.application.price * i.quantity, 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Payment Methods */}
+                    <MultiPaymentMethodSelector
+                      value={dsPaymentMethods}
+                      onChange={setDsPaymentMethods}
+                      totalAmount={dsSaleItems.reduce((s, i) => s + i.application.price * i.quantity, 0)}
+                    />
+
+                    {/* Partial Payment */}
+                    <div
+                      className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                        dsPartialPayment ? 'bg-orange-50 border-orange-300' : 'bg-gray-50 border-gray-200 hover:border-orange-200'
+                      }`}
+                      onClick={() => setDsPartialPayment(!dsPartialPayment)}
+                    >
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors flex-shrink-0 ${
+                        dsPartialPayment ? 'bg-orange-500 border-orange-500' : 'border-gray-300'
+                      }`}>
+                        {dsPartialPayment && <span className="text-white text-xs font-bold">✓</span>}
+                      </div>
+                      <span className={`text-sm font-medium ${dsPartialPayment ? 'text-orange-700' : 'text-gray-600'}`}>
+                        ⚠️ Hasta tamamını ödemedi
+                      </span>
+                    </div>
+
+                    {dsPartialPayment && (
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-sm font-medium text-gray-600">Kalan Borç (TL)</label>
+                          <span className="text-xs text-gray-400">Otomatik hesaplandı</span>
+                        </div>
+                        <input
+                          type="number"
+                          value={dsRemainingDebt}
+                          onChange={(e) => setDsRemainingDebt(e.target.value)}
+                          placeholder="0.00"
+                          className="w-full px-4 py-3 border border-orange-300 bg-orange-50 rounded-xl text-orange-800 font-semibold focus:outline-none focus:ring-2 focus:ring-orange-400"
+                        />
+                      </div>
+                    )}
+
+                    {/* Note */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 mb-1">Not (Opsiyonel)</label>
+                      <textarea
+                        value={dsNote}
+                        onChange={(e) => setDsNote(e.target.value)}
+                        placeholder="Bu satış için not ekleyin..."
+                        rows={2}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-900 resize-none focus:outline-none focus:ring-2 focus:ring-teal-400"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Modal Footer */}
+                  <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+                    <div>
+                      <p className="text-gray-500 text-xs">TOPLAM</p>
+                      <p className="text-emerald-700 text-2xl font-bold">
+                        {dsSaleItems.reduce((s, i) => s + i.application.price * i.quantity, 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                      </p>
+                    </div>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setDsPaymentModalOpen(false)}
+                        className="px-5 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-xl font-medium transition-all"
+                      >
+                        İptal
+                      </button>
+                      <button
+                        onClick={handleDirectSaleComplete}
+                        disabled={
+                          dsLoading ||
+                          dsPaymentMethods.reduce((s, m) => s + (m.amount || 0), 0) <= 0
+                        }
+                        className="px-6 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-emerald-500/25 flex items-center gap-2"
+                      >
+                        {dsLoading
+                          ? <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div> İşleniyor...</>
+                          : <>✅ Ödemeyi Tamamla</>
+                        }
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            </>
           )}
         </>
       ) : (
