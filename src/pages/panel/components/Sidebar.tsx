@@ -223,8 +223,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, doct
               .filter(item => {
                 const userRole = doctorProfile?.role || doctorProfile?.userType || 'doctor';
 
-                // Hide settings (Ayarlar) for all roles except admin
-                if (userRole !== 'admin' && item.id === 'settings') {
+                // Hide settings (Ayarlar) for all roles except admin and assistant
+                if (userRole !== 'admin' && userRole !== 'assistant' && item.id === 'settings') {
                   return false;
                 }
 
