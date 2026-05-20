@@ -1065,7 +1065,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
             🔗 Malzeme Eşleştirme
           </button>
         )}
-        {(isAdmin || isBashemshire || isDepoyonetici) && (
+        {(isAdmin || isBashemshire) && (
           <button
             onClick={() => setActiveTab('malzeme-talebi')}
             className={`relative px-5 py-2.5 rounded-xl font-semibold text-sm transition-all ${
@@ -1097,8 +1097,8 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                 {([
                   { key: 'transfer', label: '🚚 Transfer Planları' },
                   { key: 'eklemeler', label: '📦 Ürün Eklemeleri' },
-                  { key: 'talepler', label: '📋 Malzeme Talepleri' },
-                ] as const).map(tab => (
+                  ...(!isBashemshire ? [{ key: 'talepler', label: '📋 Malzeme Talepleri' }] : []),
+                ] as { key: 'transfer' | 'eklemeler' | 'talepler'; label: string }[]).map(tab => (
                   <button
                     key={tab.key}
                     onClick={() => setAnaDepoInfoTab(tab.key)}
