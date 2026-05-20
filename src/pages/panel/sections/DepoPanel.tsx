@@ -6,6 +6,7 @@ import { db } from '../../../firebase/config';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { loadTurkishPdfFont } from '../../../utils/pdfFont';
 
 interface DepoPanelProps {
   doctorProfile?: {
@@ -141,6 +142,8 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
   const [eslestirmeQtys, setEslestirmeQtys] = useState<Record<string, number>>({});
   const [eslestirmeSaving, setEslestirmeSaving] = useState(false);
   const [eslestirmeAppSearch, setEslestirmeAppSearch] = useState('');
+  const [eslestirmeMalzemeSearch, setEslestirmeMalzemeSearch] = useState('');
+  const [talepMalzemeSearch, setTalepMalzemeSearch] = useState('');
 
   // Malzeme Talebi state
   const [malzemeTalepleri, setMalzemeTalepleri] = useState<MalzemeTalebi[]>([]);
@@ -361,6 +364,23 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
     setEslestirmeQtys(qtys);
   };
 
+  const handleDeleteEslestirme = async () => {
+    if (!eslestirmeSelectedApp) return;
+    const existing = eslestirmeler.find(e => e.applicationName === eslestirmeSelectedApp.name);
+    if (!existing?.id) return;
+    if (!confirm(`"${eslestirmeSelectedApp.name}" için tüm malzeme eşleştirmesi silinecek. Emin misiniz?`)) return;
+    setEslestirmeSaving(true);
+    try {
+      await deleteDoc(doc(db, 'tedaviMalzemeEslestirme', existing.id));
+      setEslestirmeQtys({});
+    } catch (e) {
+      console.error(e);
+      alert('Silinirken hata oluştu.');
+    } finally {
+      setEslestirmeSaving(false);
+    }
+  };
+
   const handleSaveEslestirme = async () => {
     if (!eslestirmeSelectedApp || !doctorProfile?.clinicId) return;
     setEslestirmeSaving(true);
@@ -388,6 +408,184 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
     } finally {
       setEslestirmeSaving(false);
     }
+  };
+
+  // ── Rapor Export ────────────────────────────────────────────
+  const clinicName = doctorProfile?.clinicId ?? 'Klinik';
+  const today = new Date().toLocaleDateString('tr-TR');
+
+  const buildPdfBase = async (title: string, subtitle: string): Promise<{ pdf: jsPDF; fontName: string }> => {
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    let fontName = 'helvetica';
+    try {
+      const fontData = await loadTurkishPdfFont();
+      if (fontData) {
+        pdf.addFileToVFS('Roboto-Regular.ttf', fontData);
+        pdf.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+        fontName = 'Roboto';
+      }
+    } catch { /* varsayılan font kullan */ }
+    pdf.setFillColor(15, 23, 42);
+    pdf.rect(0, 0, 297, 210, 'F');
+    pdf.setFillColor(30, 41, 59);
+    pdf.rect(0, 0, 297, 28, 'F');
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFontSize(16);
+    pdf.setFont(fontName, 'normal');
+    pdf.text(title, 14, 12);
+    pdf.setFontSize(9);
+    pdf.setTextColor(148, 163, 184);
+    pdf.text(subtitle, 14, 20);
+    pdf.text(`Tarih: ${today}`, 283, 20, { align: 'right' });
+    return { pdf, fontName };
+  };
+
+  const exportTransferPdf = async () => {
+    const { pdf, fontName } = await buildPdfBase('Transfer Planları Raporu', `${clinicName} • Ana Depo — Transferler`);
+    const allTransfers = [...transferler].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    autoTable(pdf, {
+      startY: 34,
+      head: [['Tarih & Saat', 'Ürünler', 'Durum', 'Oluşturan', 'Tamamlayan', 'Not']],
+      body: allTransfers.map(t => [
+        `${t.scheduledDate} ${t.scheduledTime}`,
+        t.items.map(i => `${i.productName} ×${i.quantity}`).join('\n'),
+        t.status === 'completed' ? 'Tamamlandı' : t.status === 'cancelled' ? 'İptal' : 'Planlandı',
+        t.createdBy || '—',
+        t.completedBy || '—',
+        t.notes || '—',
+      ]),
+      styles: { font: fontName, fontSize: 8, cellPadding: 4, textColor: [226, 232, 240], fillColor: [30, 41, 59] },
+      headStyles: { font: fontName, fillColor: [14, 165, 233], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
+      alternateRowStyles: { fillColor: [15, 23, 42] },
+      columnStyles: { 1: { cellWidth: 80 } },
+      tableLineColor: [51, 65, 85],
+      tableLineWidth: 0.1,
+    });
+    pdf.save(`Transfer_Planlari_${today.replace(/\./g, '-')}.pdf`);
+  };
+
+  const downloadExcel = (wb: XLSX.WorkBook, filename: string) => {
+    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const exportTransferExcel = () => {
+    const allTransfers = [...transferler].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const rows = allTransfers.flatMap(t =>
+      t.items.map(item => ({
+        'Tarih': t.scheduledDate,
+        'Saat': t.scheduledTime,
+        'Ürün': item.productName,
+        'Stok Kodu': item.stockCode,
+        'Miktar': item.quantity,
+        'Durum': t.status === 'completed' ? 'Tamamlandı' : t.status === 'cancelled' ? 'İptal' : 'Planlandı',
+        'Oluşturan': t.createdBy || '',
+        'Tamamlayan': t.completedBy || '',
+        'Not': t.notes || '',
+      }))
+    );
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [10,10,25,14,8,14,18,18,25].map(w => ({ wch: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Transferler');
+    downloadExcel(wb, `Transfer_Planlari_${today.replace(/\./g, '-')}.xlsx`);
+  };
+
+  const exportEklemelerPdf = async () => {
+    const { pdf, fontName } = await buildPdfBase('Ürün Eklemeleri Raporu', `${clinicName} • Ana Depo — Ürün Eklemeleri`);
+    const sorted = [...anaDepoUrunler].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    autoTable(pdf, {
+      startY: 34,
+      head: [['Ürün Adı', 'Stok Kodu', 'Firma', 'Adet', 'Maliyet (₺)', 'Alım Tarihi', 'Ekleyen']],
+      body: sorted.map(u => [
+        u.productName,
+        u.stockCode,
+        u.companyName || '—',
+        u.quantity,
+        u.cost > 0 ? u.cost.toLocaleString('tr-TR') : '—',
+        u.purchaseDate ? new Date(u.purchaseDate).toLocaleDateString('tr-TR') : '—',
+        u.createdBy || '—',
+      ]),
+      styles: { font: fontName, fontSize: 8, cellPadding: 4, textColor: [226, 232, 240], fillColor: [30, 41, 59] },
+      headStyles: { font: fontName, fillColor: [16, 185, 129], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
+      alternateRowStyles: { fillColor: [15, 23, 42] },
+      tableLineColor: [51, 65, 85],
+      tableLineWidth: 0.1,
+    });
+    pdf.save(`Urun_Eklemeleri_${today.replace(/\./g, '-')}.pdf`);
+  };
+
+  const exportEklemelerExcel = () => {
+    const sorted = [...anaDepoUrunler].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const rows = sorted.map(u => ({
+      'Ürün Adı': u.productName,
+      'Stok Kodu': u.stockCode,
+      'Firma': u.companyName || '',
+      'Adet': u.quantity,
+      'Maliyet (₺)': u.cost > 0 ? u.cost : '',
+      'Alım Tarihi': u.purchaseDate ? new Date(u.purchaseDate).toLocaleDateString('tr-TR') : '',
+      'Ekleyen': u.createdBy || '',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [28, 14, 20, 8, 14, 14, 18].map(w => ({ wch: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Urunler');
+    downloadExcel(wb, `Urun_Eklemeleri_${today.replace(/\./g, '-')}.xlsx`);
+  };
+
+  const exportTaleplerPdf = async () => {
+    const { pdf, fontName } = await buildPdfBase('Malzeme Talepleri Raporu', `${clinicName} • Ana Depo — Malzeme Talepleri`);
+    const statusLabel: Record<string, string> = { pending: 'Bekliyor', approved: 'Onaylandı', rejected: 'Reddedildi', partial: 'Kısmen Onaylandı' };
+    autoTable(pdf, {
+      startY: 34,
+      head: [['Talep Tarihi', 'Talep Eden', 'Ürünler', 'Durum', 'Yanıtlayan', 'Not']],
+      body: malzemeTalepleri.map(t => [
+        new Date(t.requestedAt).toLocaleString('tr-TR'),
+        t.requestedBy,
+        t.items.map(i => `${i.productName} ×${i.requestedQty}${i.approvedQty !== undefined && i.approvedQty !== i.requestedQty ? ` (onaylanan: ${i.approvedQty})` : ''}`).join('\n'),
+        statusLabel[t.status] || t.status,
+        t.respondedBy || '—',
+        t.responseNotes || t.notes || '—',
+      ]),
+      styles: { font: fontName, fontSize: 8, cellPadding: 4, textColor: [226, 232, 240], fillColor: [30, 41, 59] },
+      headStyles: { font: fontName, fillColor: [245, 158, 11], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
+      alternateRowStyles: { fillColor: [15, 23, 42] },
+      columnStyles: { 2: { cellWidth: 80 } },
+      tableLineColor: [51, 65, 85],
+      tableLineWidth: 0.1,
+    });
+    pdf.save(`Malzeme_Talepleri_${today.replace(/\./g, '-')}.pdf`);
+  };
+
+  const exportTaleplerExcel = () => {
+    const statusLabel: Record<string, string> = { pending: 'Bekliyor', approved: 'Onaylandı', rejected: 'Reddedildi', partial: 'Kısmen Onaylandı' };
+    const rows = malzemeTalepleri.flatMap(t =>
+      t.items.map(item => ({
+        'Talep Tarihi': new Date(t.requestedAt).toLocaleString('tr-TR'),
+        'Talep Eden': t.requestedBy,
+        'Ürün': item.productName,
+        'Stok Kodu': item.stockCode || '',
+        'Talep Miktarı': item.requestedQty,
+        'Onaylanan Miktar': item.approvedQty ?? '',
+        'Durum': statusLabel[t.status] || t.status,
+        'Yanıtlayan': t.respondedBy || '',
+        'Yanıt Tarihi': t.respondedAt ? new Date(t.respondedAt).toLocaleString('tr-TR') : '',
+        'Not': t.responseNotes || t.notes || '',
+      }))
+    );
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [20, 18, 25, 14, 14, 16, 18, 18, 20, 25].map(w => ({ wch: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Talepler');
+    downloadExcel(wb, `Malzeme_Talepleri_${today.replace(/\./g, '-')}.xlsx`);
   };
 
   const handleDelete = async (urun: DepoUrun, depo: 'ana' | 'kat') => {
@@ -894,29 +1092,76 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
           {/* ── Sekmeli bilgi kartı ── */}
           <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl overflow-hidden">
             {/* Sekme başlıkları */}
-            <div className="flex border-b border-white/20">
-              {([
-                { key: 'transfer', label: '🚚 Transfer Planları' },
-                { key: 'eklemeler', label: '📦 Ürün Eklemeleri' },
-                { key: 'talepler', label: '📋 Malzeme Talepleri' },
-              ] as const).map(tab => (
-                <button
-                  key={tab.key}
-                  onClick={() => setAnaDepoInfoTab(tab.key)}
-                  className={`relative flex-1 px-4 py-3 text-sm font-semibold transition-all ${
-                    anaDepoInfoTab === tab.key
-                      ? 'bg-white/10 text-white border-b-2 border-green-400'
-                      : 'text-white/50 hover:text-white/80 hover:bg-white/5'
-                  }`}
-                >
-                  {tab.label}
-                  {tab.key === 'talepler' && malzemeTalepleri.filter(t => t.status === 'pending').length > 0 && (
-                    <span className="ml-1.5 px-1.5 py-0.5 bg-orange-500 rounded-full text-white text-xs">
-                      {malzemeTalepleri.filter(t => t.status === 'pending').length}
-                    </span>
-                  )}
-                </button>
-              ))}
+            <div className="flex items-stretch border-b border-white/20">
+              <div className="flex flex-1">
+                {([
+                  { key: 'transfer', label: '🚚 Transfer Planları' },
+                  { key: 'eklemeler', label: '📦 Ürün Eklemeleri' },
+                  { key: 'talepler', label: '📋 Malzeme Talepleri' },
+                ] as const).map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setAnaDepoInfoTab(tab.key)}
+                    className={`relative flex-1 px-4 py-3 text-sm font-semibold transition-all ${
+                      anaDepoInfoTab === tab.key
+                        ? 'bg-white/10 text-white border-b-2 border-green-400'
+                        : 'text-white/50 hover:text-white/80 hover:bg-white/5'
+                    }`}
+                  >
+                    {tab.label}
+                    {tab.key === 'talepler' && malzemeTalepleri.filter(t => t.status === 'pending').length > 0 && (
+                      <span className="ml-1.5 px-1.5 py-0.5 bg-orange-500 rounded-full text-white text-xs">
+                        {malzemeTalepleri.filter(t => t.status === 'pending').length}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              {/* Export butonları */}
+              <div className="flex items-center gap-1.5 px-3 border-l border-white/10">
+                {anaDepoInfoTab === 'transfer' && (
+                  <>
+                    <button onClick={exportTransferExcel} title="Excel İndir"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 rounded-lg text-emerald-300 text-xs font-semibold transition-all">
+                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM8.5 17l1.5-2.5L11.5 17H13l-2-3 2-3h-1.5L10 13.5 8.5 11H7l2 3-2 3h1.5z"/></svg>
+                      Excel
+                    </button>
+                    <button onClick={exportTransferPdf} title="PDF İndir"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/40 rounded-lg text-rose-300 text-xs font-semibold transition-all">
+                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM9 13h1.5v3H12v-3h1.5L11.25 10 9 13zm5.5 2.5h-1v-2h1v2z"/></svg>
+                      PDF
+                    </button>
+                  </>
+                )}
+                {anaDepoInfoTab === 'eklemeler' && (
+                  <>
+                    <button onClick={exportEklemelerExcel} title="Excel İndir"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 rounded-lg text-emerald-300 text-xs font-semibold transition-all">
+                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM8.5 17l1.5-2.5L11.5 17H13l-2-3 2-3h-1.5L10 13.5 8.5 11H7l2 3-2 3h1.5z"/></svg>
+                      Excel
+                    </button>
+                    <button onClick={exportEklemelerPdf} title="PDF İndir"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/40 rounded-lg text-rose-300 text-xs font-semibold transition-all">
+                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM9 13h1.5v3H12v-3h1.5L11.25 10 9 13zm5.5 2.5h-1v-2h1v2z"/></svg>
+                      PDF
+                    </button>
+                  </>
+                )}
+                {anaDepoInfoTab === 'talepler' && (
+                  <>
+                    <button onClick={exportTaleplerExcel} title="Excel İndir"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 rounded-lg text-emerald-300 text-xs font-semibold transition-all">
+                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM8.5 17l1.5-2.5L11.5 17H13l-2-3 2-3h-1.5L10 13.5 8.5 11H7l2 3-2 3h1.5z"/></svg>
+                      Excel
+                    </button>
+                    <button onClick={exportTaleplerPdf} title="PDF İndir"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/40 rounded-lg text-rose-300 text-xs font-semibold transition-all">
+                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM9 13h1.5v3H12v-3h1.5L11.25 10 9 13zm5.5 2.5h-1v-2h1v2z"/></svg>
+                      PDF
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* ── Transfer Planları ── */}
@@ -1299,15 +1544,30 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
         <div className="space-y-6">
           {/* Yeni Talep Formu */}
           <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl overflow-hidden">
-            <div className="p-4 border-b border-white/20">
-              <h3 className="text-white font-bold text-lg flex items-center gap-2"><span>📋</span> Yeni Malzeme Talebi</h3>
-              <p className="text-white/50 text-xs mt-1">Ana depodan talep etmek istediğiniz malzemeleri ve miktarları seçin</p>
+            <div className="p-4 border-b border-white/20 space-y-3">
+              <div>
+                <h3 className="text-white font-bold text-lg flex items-center gap-2"><span>📋</span> Yeni Malzeme Talebi</h3>
+                <p className="text-white/50 text-xs mt-1">Ana depodan talep etmek istediğiniz malzemeleri ve miktarları seçin</p>
+              </div>
+              <div className="relative">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/40 text-sm">🔍</span>
+                <input
+                  type="text"
+                  value={talepMalzemeSearch}
+                  onChange={e => setTalepMalzemeSearch(e.target.value)}
+                  placeholder="Malzeme ara..."
+                  className="w-full pl-8 pr-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                />
+              </div>
             </div>
             <div className="p-4 space-y-3 max-h-[50vh] overflow-y-auto">
               {anaDepoUrunler.length === 0 ? (
                 <p className="text-white/40 text-sm text-center py-8">Ana depoda ürün bulunmuyor.</p>
               ) : (
-                [...anaDepoUrunler].sort((a, b) => a.productName.localeCompare(b.productName, 'tr')).map(urun => {
+                [...anaDepoUrunler]
+                  .sort((a, b) => a.productName.localeCompare(b.productName, 'tr'))
+                  .filter(urun => urun.productName.toLowerCase().includes(talepMalzemeSearch.toLowerCase()))
+                  .map(urun => {
                   const qty = talepQtys[urun.id!] || 0;
                   return (
                     <div key={urun.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${qty > 0 ? 'bg-orange-500/15 border-orange-400/50' : 'bg-white/5 border-white/10'}`}>
@@ -1450,9 +1710,32 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
               </div>
             ) : (
               <>
-                <div className="p-4 border-b border-white/20">
-                  <h3 className="text-white font-bold text-lg">📦 {eslestirmeSelectedApp.name}</h3>
-                  <p className="text-white/50 text-xs mt-1">Bu tedavide varsayılan kullanılacak kat deposu malzemeleri ve miktarları</p>
+                <div className="p-4 border-b border-white/20 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-white font-bold text-lg">📦 {eslestirmeSelectedApp.name}</h3>
+                      <p className="text-white/50 text-xs mt-1">Bu tedavide varsayılan kullanılacak kat deposu malzemeleri ve miktarları</p>
+                    </div>
+                    {eslestirmeler.some(e => e.applicationName === eslestirmeSelectedApp.name) && (
+                      <button
+                        onClick={handleDeleteEslestirme}
+                        disabled={eslestirmeSaving}
+                        className="shrink-0 px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 border border-red-400/50 disabled:opacity-40 disabled:cursor-not-allowed text-red-300 hover:text-red-200 font-semibold rounded-xl transition-all text-xs"
+                      >
+                        🗑 Eşleştirmeyi Sil
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/40 text-sm">🔍</span>
+                    <input
+                      type="text"
+                      value={eslestirmeMalzemeSearch}
+                      onChange={e => setEslestirmeMalzemeSearch(e.target.value)}
+                      placeholder="Malzeme ara..."
+                      className="w-full pl-8 pr-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                    />
+                  </div>
                 </div>
                 <div className="p-4 space-y-3 max-h-[50vh] overflow-y-auto">
                   {katDepoUrunler.length === 0 ? (
@@ -1461,6 +1744,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                     katDepoUrunler
                       .slice()
                       .sort((a, b) => a.productName.localeCompare(b.productName, 'tr'))
+                      .filter(urun => urun.productName.toLowerCase().includes(eslestirmeMalzemeSearch.toLowerCase()))
                       .map(urun => {
                         const qty = eslestirmeQtys[urun.id!] || 0;
                         return (
@@ -1498,17 +1782,26 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                       })
                   )}
                 </div>
-                <div className="p-4 border-t border-white/20 flex items-center justify-between">
+                <div className="p-4 border-t border-white/20 flex items-center justify-between gap-2">
                   <p className="text-white/50 text-xs">
                     {Object.values(eslestirmeQtys).filter(q => q > 0).length} malzeme seçildi
                   </p>
-                  <button
-                    onClick={handleSaveEslestirme}
-                    disabled={eslestirmeSaving}
-                    className="px-5 py-2 bg-gradient-to-r from-purple-500 to-violet-500 hover:from-purple-600 hover:to-violet-600 disabled:opacity-50 text-white font-semibold rounded-xl transition-all text-sm"
-                  >
-                    {eslestirmeSaving ? 'Kaydediliyor...' : '💾 Kaydet'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setEslestirmeQtys({})}
+                      disabled={eslestirmeSaving || Object.values(eslestirmeQtys).filter(q => q > 0).length === 0}
+                      className="px-4 py-2 bg-white/10 hover:bg-red-500/20 border border-white/20 hover:border-red-400/50 disabled:opacity-30 disabled:cursor-not-allowed text-white/70 hover:text-red-300 font-semibold rounded-xl transition-all text-sm"
+                    >
+                      🔄 Sıfırla
+                    </button>
+                    <button
+                      onClick={handleSaveEslestirme}
+                      disabled={eslestirmeSaving}
+                      className="px-5 py-2 bg-gradient-to-r from-purple-500 to-violet-500 hover:from-purple-600 hover:to-violet-600 disabled:opacity-50 text-white font-semibold rounded-xl transition-all text-sm"
+                    >
+                      {eslestirmeSaving ? 'Kaydediliyor...' : '💾 Kaydet'}
+                    </button>
+                  </div>
                 </div>
               </>
             )}

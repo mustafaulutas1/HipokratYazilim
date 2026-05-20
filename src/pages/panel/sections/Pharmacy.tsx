@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, query, deleteDoc, doc, where, updateDoc, writeBatch } from 'firebase/firestore';
+import { collection, addDoc, getDocs, getDoc, query, deleteDoc, doc, where, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
-import { utils, writeFile } from 'xlsx';
-import MultiPaymentMethodSelector, { formatPaymentMethods } from '../../../components/UI/MultiPaymentMethodSelector';
+import MultiPaymentMethodSelector from '../../../components/UI/MultiPaymentMethodSelector';
 import type { PaymentMethodEntry } from '../../../components/UI/MultiPaymentMethodSelector';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { loadTurkishPdfFont } from '../../../utils/pdfFont';
 
 interface Medication {
   id?: string;
@@ -99,13 +99,12 @@ interface PharmacyPatient {
 }
 
 const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorProfile }) => {
-  const [activeTab, setActiveTab] = useState<'medications' | 'devices' | 'patients' | 'pharmacy_debt' | 'sales_history' | 'direct_sale'>('medications');
+  const [activeTab, setActiveTab] = useState<'medications' | 'devices' | 'patients' | 'pharmacy_debt' | 'direct_sale'>('medications');
   const [savedMedications, setSavedMedications] = useState<SavedMedication[]>([]);
   const [savedDevices, setSavedDevices] = useState<SavedMedicalDevice[]>([]);
   const [protocolNames, setProtocolNames] = useState<string[]>([]);
   const [waitingPatients, setWaitingPatients] = useState<PharmacyPatient[]>([]);
   const [patientsWithDebt, setPatientsWithDebt] = useState<any[]>([]);
-  const [completedSales, setCompletedSales] = useState<any[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingMedication, setEditingMedication] = useState<SavedMedication | null>(null);
   const [editingDevice, setEditingDevice] = useState<SavedMedicalDevice | null>(null);
@@ -136,6 +135,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const [loadingPharmacyDebts, setLoadingPharmacyDebts] = useState(false);
   const [pharmacyDebtSearchTerm, setPharmacyDebtSearchTerm] = useState('');
   const [pharmacyDebtSortBy, setPharmacyDebtSortBy] = useState<'name' | 'amount' | 'date'>('date');
+  const [pharmacyDebtTypeFilter, setPharmacyDebtTypeFilter] = useState<'all' | 'direct_sale' | 'treatment_patient'>('all');
   // Sale detail modal state
   const [selectedSaleDetail, setSelectedSaleDetail] = useState<any | null>(null);
   // Extra medicine picker state
@@ -163,7 +163,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const [dsHistoryLoading, setDsHistoryLoading] = useState(false);
   const [dsHistorySearch, setDsHistorySearch] = useState('');
   const [dsSelectedHistorySale, setDsSelectedHistorySale] = useState<any | null>(null);
-  // Borçlular modal states (sales_history tab)
+  // Borçlular modal states
   const [showDebtorsModal, setShowDebtorsModal] = useState(false);
   const [selectedDebtorForPayment, setSelectedDebtorForPayment] = useState<any | null>(null);
   const [debtorPaymentMethods, setDebtorPaymentMethods] = useState<PaymentMethodEntry[]>([{ method: 'nakit', amount: 0 }]);
@@ -368,116 +368,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     }
   };
 
-  const fetchCompletedSales = async () => {
-    if (!doctorProfile?.clinicId) return;
-    try {
-      const patientsRef = collection(db, 'patients');
-      const salesQuery = query(
-        patientsRef,
-        where('clinicId', '==', doctorProfile.clinicId),
-        where('pharmacyStatus', '==', 'completed')
-      );
-      
-      const salesSnapshot = await getDocs(salesQuery);
-      const sales: any[] = [];
-      
-      salesSnapshot.forEach((doc) => {
-        const data = doc.data();
-        if (data.pharmacySaleDate) {
-          sales.push({
-            id: doc.id,
-            ...data
-          });
-        }
-      });
-      
-      // Sort by sale date, most recent first
-      sales.sort((a, b) => new Date(b.pharmacySaleDate || b.pharmacySaleCompletedAt).getTime() - new Date(a.pharmacySaleDate || a.pharmacySaleCompletedAt).getTime());
-      setCompletedSales(sales.slice(0, 50)); // Limit to last 50 sales
-    } catch (error) {
-      console.error('Error fetching completed sales:', error);
-    }
-  };
 
-  // Excel export function for sales history
-  const exportSalesHistoryToExcel = () => {
-    if (completedSales.length === 0) {
-      alert('Dışa aktarılacak satış kaydı bulunmamaktadır.');
-      return;
-    }
 
-    const workbook = utils.book_new();
-    
-    // Özet sayfası
-    const totalRevenue = completedSales.reduce((sum, sale) => sum + (sale.pharmacyPaymentAmount || 0), 0);
-    const summaryData = [
-      ['ECZANE SATIŞ RAPORU - ÖZET'],
-      [''],
-      ['Rapor Tarihi', new Date().toLocaleDateString('tr-TR')],
-      [''],
-      ['İSTATİSTİKLER'],
-      ['Toplam Satış Adedi', completedSales.length],
-      ['Toplam Gelir', `${totalRevenue.toLocaleString('tr-TR')} TL`],
-      ['Ortalama Satış Tutarı', `${(totalRevenue / completedSales.length).toLocaleString('tr-TR', { maximumFractionDigits: 2 })} TL`]
-    ];
-    const summarySheet = utils.aoa_to_sheet(summaryData);
-    utils.book_append_sheet(workbook, summarySheet, 'Özet');
-
-    // Satış Detayları sayfası
-    const salesData = completedSales.map(sale => ({
-      'Hasta Adı': sale.fullName || '-',
-      'TC No': sale.tcNo || '-',
-      'Satış Tarihi': sale.pharmacySaleDate 
-        ? new Date(sale.pharmacySaleDate).toLocaleDateString('tr-TR') + ' ' + 
-          new Date(sale.pharmacySaleDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-        : '-',
-      'Satılan Ürünler': sale.pharmacySoldItems?.map((item: any) => `${item.name} (${item.quantity})`).join(', ') || '-',
-      'Ürün Sayısı': sale.pharmacySoldItems?.length || 0,
-      'Ödeme Tutarı': sale.pharmacyPaymentAmount || 0,
-      'Ödeme Yöntemi': sale.pharmacyPaymentMethods && sale.pharmacyPaymentMethods.length > 0
-        ? formatPaymentMethods(sale.pharmacyPaymentMethods)
-        : (sale.pharmacyPaymentMethod === 'nakit' ? 'Nakit' :
-           sale.pharmacyPaymentMethod === 'kartkredi' ? 'Kredi Kartı' :
-           sale.pharmacyPaymentMethod === 'kartdebit' ? 'Banka Kartı' :
-           sale.pharmacyPaymentMethod === 'kredi_karti' ? 'Kredi Kartı' :
-           sale.pharmacyPaymentMethod === 'banka_karti' ? 'Banka Kartı' :
-           sale.pharmacyPaymentMethod === 'havale' ? 'Havale/EFT' :
-           sale.pharmacyPaymentMethod === 'cari' ? 'Cari' :
-           sale.pharmacyPaymentMethod || '-'),
-      'Borç Durumu': sale.pharmacyHasDebt && sale.pharmacyDebtAmount ? `${sale.pharmacyDebtAmount.toLocaleString('tr-TR')} TL` : 'Yok'
-    }));
-    const salesSheet = utils.json_to_sheet(salesData);
-    utils.book_append_sheet(workbook, salesSheet, 'Satış Detayları');
-
-    // Ürün Bazlı Analiz sayfası
-    const productStats: { [key: string]: { name: string; quantity: number; revenue: number } } = {};
-    completedSales.forEach(sale => {
-      sale.pharmacySoldItems?.forEach((item: any) => {
-        if (!productStats[item.name]) {
-          productStats[item.name] = { name: item.name, quantity: 0, revenue: 0 };
-        }
-        productStats[item.name].quantity += item.quantity || 1;
-        productStats[item.name].revenue += (item.price || 0) * (item.quantity || 1);
-      });
-    });
-    
-    const productData = Object.values(productStats)
-      .sort((a, b) => b.quantity - a.quantity)
-      .map(p => ({
-        'Ürün Adı': p.name,
-        'Toplam Satış Adedi': p.quantity,
-        'Toplam Gelir': `${p.revenue.toLocaleString('tr-TR')} TL`
-      }));
-    
-    if (productData.length > 0) {
-      const productSheet = utils.json_to_sheet(productData);
-      utils.book_append_sheet(workbook, productSheet, 'Ürün Analizi');
-    }
-
-    // Excel dosyasını indir
-    const fileName = `Eczane_Satis_Raporu_${new Date().toLocaleDateString('tr-TR').replace(/\./g, '-')}.xlsx`;
-    writeFile(workbook, fileName);
-  };
 
   // Fetch patient's debt history (unpaid pharmacy purchases)
   const fetchPatientDebtHistory = async (patient: PharmacyPatient) => {
@@ -582,7 +474,9 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
             totalDebt: 0,
             debtCount: 0,
             lastDebtDate: '',
-            debts: []
+            debts: [],
+            patientId: debt.patientId || null,
+            isNewCustomer: debt.isNewCustomer || false,
           };
         }
         
@@ -700,6 +594,43 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     }
   };
 
+  const handleOpenDebtPaymentFromDebtList = async (patient: any) => {
+    if (patient.isNewCustomer || !patient.patientId) {
+      // New customer — use simple debtor payment modal
+      setSelectedDebtorForPayment(patient);
+      setDebtorPaymentMethods([{ method: 'nakit', amount: 0 }]);
+      setShowDebtorsModal(true);
+    } else {
+      // Existing patient — open the full pharmacy payment modal
+      try {
+        const patientDoc = await getDoc(doc(db, 'patients', patient.patientId));
+        if (patientDoc.exists()) {
+          const patientData = { id: patientDoc.id, ...patientDoc.data() } as PharmacyPatient;
+          setSelectedPatientForSale(patientData);
+          setPendingSoldItems([]);
+          setSelectedMedicines([]);
+          setPharmacyPaymentAmount('0');
+          setPharmacyPaymentMethods([{ method: 'nakit', amount: 0 }]);
+          setIsPharmacyPartialPayment(false);
+          setPharmacyRemainingDebt('');
+          setPatientDebtHistory([]);
+          setSelectedDebts([]);
+          setDebtsAddedToPayment(false);
+          await fetchPatientDebtHistory(patientData);
+          setIsPaymentModalOpen(true);
+        } else {
+          setSelectedDebtorForPayment(patient);
+          setDebtorPaymentMethods([{ method: 'nakit', amount: 0 }]);
+          setShowDebtorsModal(true);
+        }
+      } catch {
+        setSelectedDebtorForPayment(patient);
+        setDebtorPaymentMethods([{ method: 'nakit', amount: 0 }]);
+        setShowDebtorsModal(true);
+      }
+    }
+  };
+
   // Determine debt source type for a list of debt entries
   const getPatientDebtType = (debts: any[]): 'treatment_patient' | 'direct_sale' | 'mixed' => {
     const hasTreatment = debts.some(d =>
@@ -740,7 +671,6 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       fetchMedications();
       fetchDevices();
       fetchPatients();
-      fetchCompletedSales();
 
       // Fetch treatment protocol names for medication name dropdown
       const fetchProtocolNames = async () => {
@@ -1082,7 +1012,6 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       setPharmacyNote('');
       
       fetchPatients();
-      fetchCompletedSales();
 
     } catch (error) {
       console.error('Error completing sale:', error);
@@ -1158,44 +1087,58 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     doc2.save(`eczane-satis-raporu-${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
-  const exportSingleSalePdf = (sale: any) => {
+  const exportSingleSalePdf = async (sale: any) => {
     const doc2 = new jsPDF();
+    let fontName = 'helvetica';
+    try {
+      const fontData = await loadTurkishPdfFont();
+      if (fontData) {
+        doc2.addFileToVFS('Roboto-Regular.ttf', fontData);
+        doc2.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+        fontName = 'Roboto';
+      }
+    } catch { /* varsayılan font kullan */ }
+
+    doc2.setFont(fontName, 'normal');
     doc2.setFontSize(18);
     doc2.setTextColor(5, 150, 105);
-    doc2.text('Satış Fişi', 14, 20);
+    doc2.text('Satis Fisi', 14, 20);
 
+    doc2.setFont(fontName, 'normal');
     doc2.setFontSize(10);
     doc2.setTextColor(60);
-    doc2.text(`Müşteri: ${sale.customerName || '-'}`, 14, 32);
+    doc2.text(`Musteri: ${sale.customerName || '-'}`, 14, 32);
     doc2.text(`Tarih: ${sale.createdAt ? new Date(sale.createdAt).toLocaleString('tr-TR') : '-'}`, 14, 39);
     if (sale.customerTcNo) doc2.text(`TC: ${sale.customerTcNo}`, 14, 46);
 
     const startY = sale.customerTcNo ? 54 : 48;
     autoTable(doc2, {
       startY,
-      head: [['Ürün / Uygulama', 'Adet', 'Birim Fiyat', 'Toplam']],
+      head: [['Urun / Uygulama', 'Adet', 'Birim Fiyat', 'Toplam']],
       body: (sale.items || []).map((i: any) => [
         i.name,
         i.quantity,
         `${(i.price || 0).toFixed(2)} TL`,
         `${(i.price * i.quantity).toFixed(2)} TL`,
       ]),
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [5, 150, 105], textColor: 255 },
+      styles: { font: fontName, fontSize: 9 },
+      headStyles: { fillColor: [5, 150, 105], textColor: 255, font: fontName },
       columnStyles: { 0: { cellWidth: 90 } },
     });
 
     const finalY = (doc2 as any).lastAutoTable.finalY + 6;
+    doc2.setFont(fontName, 'normal');
     doc2.setFontSize(11);
     doc2.setTextColor(5, 150, 105);
     doc2.text(`Toplam: ${(sale.totalAmount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL`, 14, finalY);
 
     const odeme = (sale.paymentMethods || []).length > 0
-      ? (sale.paymentMethods as PaymentMethodEntry[]).map((m) => `${m.method === 'nakit' ? 'Nakit' : m.method === 'kredi_karti' ? 'Kredi Kartı' : m.method === 'banka_karti' ? 'Banka Kartı' : m.method === 'havale' ? 'Havale/EFT' : m.method === 'cari' ? 'Cari' : m.method}: ${m.amount.toFixed(2)} TL`).join(' | ')
+      ? (sale.paymentMethods as PaymentMethodEntry[]).map((m) => `${m.method === 'nakit' ? 'Nakit' : m.method === 'kredi_karti' ? 'Kredi Karti' : m.method === 'banka_karti' ? 'Banka Karti' : m.method === 'havale' ? 'Havale/EFT' : m.method === 'cari' ? 'Cari' : m.method}: ${m.amount.toFixed(2)} TL`).join(' | ')
       : '-';
+    doc2.setFont(fontName, 'normal');
     doc2.setFontSize(9);
     doc2.setTextColor(80);
-    doc2.text(`Ödeme: ${odeme}`, 14, finalY + 7);
+    doc2.text(`Odeme: ${odeme}`, 14, finalY + 7);
     if (sale.note) doc2.text(`Not: ${sale.note}`, 14, finalY + 14);
 
     doc2.save(`satis-fisi-${sale.id?.slice(0, 8) || 'export'}.pdf`);
@@ -1250,30 +1193,49 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
         saleType: 'direct',
       });
 
-      if (dsCustomerMode === 'existing' && dsSelectedPatient && dsPartialPayment && dsRemainingDebt) {
+      if (dsPartialPayment && dsRemainingDebt) {
         const debtAmount = parseFloat(dsRemainingDebt);
         if (debtAmount > 0) {
           const debtRef = doc(collection(db, 'pharmacy_debts'));
-          batch.set(debtRef, {
-            clinicId: doctorProfile?.clinicId,
-            patientId: dsSelectedPatient.id,
-            patientTcNo: dsSelectedPatient.tcNo,
-            patientName: dsSelectedPatient.fullName,
-            amount: debtAmount,
-            items: dsSaleItems.map(i => ({ name: getMedicationDisplayName(i.medication), price: i.medication.price, quantity: i.quantity })),
-            reason: 'Direkt eczane satışı eksik ödeme',
-            debtSource: 'direct_sale',
-            isPaid: false,
-            createdAt: new Date().toISOString(),
-            saleDate: new Date().toISOString(),
-            saleId: saleRef.id,
-          });
-          batch.update(doc(db, 'patients', dsSelectedPatient.id), {
-            pharmacyHasDebt: true,
-            pharmacyDebtAmount: debtAmount,
-            pharmacyDebtDate: new Date().toISOString(),
-            pharmacyDebtReason: `Direkt eczane satışı borcu: ${debtAmount.toFixed(2)} TL`,
-          });
+          if (dsCustomerMode === 'existing' && dsSelectedPatient) {
+            batch.set(debtRef, {
+              clinicId: doctorProfile?.clinicId,
+              patientId: dsSelectedPatient.id,
+              patientTcNo: dsSelectedPatient.tcNo,
+              patientName: dsSelectedPatient.fullName,
+              amount: debtAmount,
+              items: dsSaleItems.map(i => ({ name: getMedicationDisplayName(i.medication), price: i.medication.price, quantity: i.quantity })),
+              reason: 'Direkt eczane satışı eksik ödeme',
+              debtSource: 'direct_sale',
+              isNewCustomer: false,
+              isPaid: false,
+              createdAt: new Date().toISOString(),
+              saleDate: new Date().toISOString(),
+              saleId: saleRef.id,
+            });
+            batch.update(doc(db, 'patients', dsSelectedPatient.id), {
+              pharmacyHasDebt: true,
+              pharmacyDebtAmount: debtAmount,
+              pharmacyDebtDate: new Date().toISOString(),
+              pharmacyDebtReason: `Direkt eczane satışı borcu: ${debtAmount.toFixed(2)} TL`,
+            });
+          } else if (dsCustomerMode === 'new') {
+            batch.set(debtRef, {
+              clinicId: doctorProfile?.clinicId,
+              patientId: null,
+              patientTcNo: `DIREKT_${saleRef.id}`,
+              patientName: dsNewCustomerName.trim(),
+              amount: debtAmount,
+              items: dsSaleItems.map(i => ({ name: getMedicationDisplayName(i.medication), price: i.medication.price, quantity: i.quantity })),
+              reason: 'Direkt eczane satışı eksik ödeme (Yeni Müşteri)',
+              debtSource: 'direct_sale',
+              isNewCustomer: true,
+              isPaid: false,
+              createdAt: new Date().toISOString(),
+              saleDate: new Date().toISOString(),
+              saleId: saleRef.id,
+            });
+          }
         }
       }
 
@@ -1740,22 +1702,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
               </span>
             )}
           </button>
-          <button
-            onClick={() => {
-              setActiveTab('sales_history');
-              setShowAddForm(false);
-              setSearchTerm('');
-              setFilterCategory('all');
-              fetchCompletedSales();
-            }}
-            className={`px-8 py-3 rounded-xl font-medium transition-all duration-200 ${
-              activeTab === 'sales_history'
-                ? 'bg-gradient-to-r from-green-600 to-green-700 text-white shadow-lg'
-                : 'bg-white/10 text-white/70 hover:bg-white/20'
-            }`}
-          >
-            📋 Satış Geçmişi
-          </button>
+
           <button
             onClick={() => {
               setActiveTab('direct_sale');
@@ -1886,7 +1833,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
           ) : null}
 
           {/* Action Buttons and Filters - Only for medications and devices tabs */}
-          {activeTab !== 'patients' && activeTab !== 'pharmacy_debt' && activeTab !== 'sales_history' && activeTab !== 'direct_sale' && (
+          {activeTab !== 'patients' && activeTab !== 'pharmacy_debt' && activeTab !== 'direct_sale' && (
           <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
             <div className="mb-6 flex flex-wrap items-center gap-3">
               <button
@@ -2318,7 +2265,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                     />
                   </div>
-                  
+
                   <select
                     value={pharmacyDebtSortBy}
                     onChange={(e) => setPharmacyDebtSortBy(e.target.value as 'name' | 'amount' | 'date')}
@@ -2328,12 +2275,47 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                     <option value="amount" className="text-gray-900 bg-white">Borç Tutarı (Yüksek)</option>
                     <option value="name" className="text-gray-900 bg-white">İsim</option>
                   </select>
-                  
+
                   <button
                     onClick={() => fetchPatientsWithPharmacyDebts()}
                     className="px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white hover:bg-white/20 transition-all duration-200"
                   >
                     🔄 Yenile
+                  </button>
+                </div>
+
+                {/* Debt Type Filter Buttons */}
+                <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-white/10">
+                  <span className="text-white/50 text-sm mr-1">Borç Türü:</span>
+                  <button
+                    onClick={() => setPharmacyDebtTypeFilter('all')}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
+                      pharmacyDebtTypeFilter === 'all'
+                        ? 'bg-white/30 text-white border border-white/50'
+                        : 'bg-white/10 text-white/60 border border-white/20 hover:bg-white/20'
+                    }`}
+                  >
+                    🔵 Tümü
+                  </button>
+                  <button
+                    onClick={() => setPharmacyDebtTypeFilter('direct_sale')}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
+                      pharmacyDebtTypeFilter === 'direct_sale'
+                        ? 'bg-teal-600/70 text-white border border-teal-400/70'
+                        : 'bg-teal-900/30 text-teal-300 border border-teal-500/30 hover:bg-teal-700/40'
+                    }`}
+                  >
+                    🛒 Eczane Satış
+                  </button>
+                  <button
+                    onClick={() => setPharmacyDebtTypeFilter('treatment_patient')}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
+                      pharmacyDebtTypeFilter === 'treatment_patient'
+                        ? 'bg-purple-600/70 text-white border border-purple-400/70'
+                        : 'bg-purple-900/30 text-purple-300 border border-purple-500/30 hover:bg-purple-700/40'
+                    }`}
+                  >
+                    💊 Tedavi Hastası
                   </button>
                 </div>
               </div>
@@ -2358,14 +2340,25 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
               ) : (
                 <>
                   <h3 className="text-lg font-semibold text-white mb-4">
-                    💳 Borçlu Hastalar ({patientsWithDebt.length})
+                    💳 Borçlu Hastalar ({patientsWithDebt.filter(p => {
+                      const type = getPatientDebtType(p.debts);
+                      if (pharmacyDebtTypeFilter === 'all') return true;
+                      if (pharmacyDebtTypeFilter === 'direct_sale') return type === 'direct_sale' || type === 'mixed';
+                      return type === 'treatment_patient' || type === 'mixed';
+                    }).length})
                   </h3>
                   <div className="space-y-3">
                     {patientsWithDebt
-                      .filter(patient =>
-                        patient.patientName.toLowerCase().includes(pharmacyDebtSearchTerm.toLowerCase()) ||
-                        patient.tcNo.includes(pharmacyDebtSearchTerm)
-                      )
+                      .filter(patient => {
+                        const matchesSearch =
+                          patient.patientName.toLowerCase().includes(pharmacyDebtSearchTerm.toLowerCase()) ||
+                          patient.tcNo.includes(pharmacyDebtSearchTerm);
+                        if (!matchesSearch) return false;
+                        if (pharmacyDebtTypeFilter === 'all') return true;
+                        const type = getPatientDebtType(patient.debts);
+                        if (pharmacyDebtTypeFilter === 'direct_sale') return type === 'direct_sale' || type === 'mixed';
+                        return type === 'treatment_patient' || type === 'mixed';
+                      })
                       .sort((a, b) => {
                         if (pharmacyDebtSortBy === 'amount') {
                           return b.totalDebt - a.totalDebt;
@@ -2420,8 +2413,14 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                             </div>
                           </div>
 
-                          {/* Debt Details */}
-                          <div className="mt-4 pt-4 border-t border-white/10">
+                          {/* Debt Details + Pay Button */}
+                          <div className="mt-4 pt-4 border-t border-white/10 flex flex-col gap-3">
+                            <button
+                              onClick={() => handleOpenDebtPaymentFromDebtList(patient)}
+                              className="w-full py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 shadow-lg hover:shadow-green-500/25"
+                            >
+                              💳 Borç Öde
+                            </button>
                             <details className="cursor-pointer group">
                               <summary className="flex items-center justify-between text-sm text-white/70 hover:text-white transition-colors">
                                 <span className="flex items-center gap-2">
@@ -2471,204 +2470,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
             </div>
           )}
 
-          {/* Sales History */}
-          {activeTab === 'sales_history' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-white">
-                  📋 Satış Geçmişi ({completedSales.length})
-                </h3>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      setShowDebtorsModal(true);
-                      setSelectedDebtorForPayment(null);
-                      setDebtorPaymentMethods([{ method: 'nakit', amount: 0 }]);
-                      fetchPatientsWithPharmacyDebts();
-                    }}
-                    className="relative px-4 py-2 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 rounded-xl text-white font-medium transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-red-500/25"
-                  >
-                    💳 Borçlular
-                    {patientsWithDebt.length > 0 && (
-                      <span className="absolute -top-2 -right-2 w-5 h-5 bg-yellow-400 text-red-700 text-xs font-bold flex items-center justify-center rounded-full border-2 border-[#1a1f37]">
-                        {patientsWithDebt.length}
-                      </span>
-                    )}
-                  </button>
-                  <button
-                    onClick={exportSalesHistoryToExcel}
-                    disabled={completedSales.length === 0}
-                    className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:from-gray-500 disabled:to-gray-600 disabled:cursor-not-allowed rounded-xl text-white font-medium transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-green-500/25"
-                  >
-                    📥 Raporu İndir
-                  </button>
-                  <button
-                    onClick={fetchCompletedSales}
-                    className="px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl text-white/80 hover:text-white transition-all duration-200 flex items-center gap-2"
-                  >
-                    🔄 Yenile
-                  </button>
-                </div>
-              </div>
 
-              {completedSales.length === 0 ? (
-                <div className="text-center py-12">
-                  <div className="text-6xl mb-4">📋</div>
-                  <h3 className="text-xl font-semibold text-white mb-2">
-                    Satış Kaydı Yok
-                  </h3>
-                  <p className="text-white/60">
-                    Henüz tamamlanmış satış bulunmamaktadır.
-                  </p>
-                </div>
-              ) : (
-                <div className="bg-white/5 border border-white/20 rounded-2xl overflow-hidden">
-                  <table className="w-full">
-                    <thead className="bg-white/10">
-                      <tr>
-                        <th className="px-6 py-4 text-left text-white/80 font-medium">Hasta</th>
-                        <th className="px-6 py-4 text-left text-white/80 font-medium">Satış Tarihi</th>
-                        <th className="px-6 py-4 text-left text-white/80 font-medium">İlaçlar</th>
-                        <th className="px-6 py-4 text-left text-white/80 font-medium">Ödeme Yöntemi</th>
-                        <th className="px-6 py-4 text-right text-white/80 font-medium">Tutar</th>
-                        <th className="px-6 py-4 text-center text-white/80 font-medium">İşlem</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/10">
-                      {completedSales.map((sale) => (
-                        <tr key={sale.id} className="hover:bg-white/5 transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center text-white">
-                                👤
-                              </div>
-                              <div>
-                                <p className="text-white font-medium">{sale.fullName}</p>
-                                <p className="text-white/50 text-sm">TC: {sale.tcNo}</p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <p className="text-white">
-                              {sale.pharmacySaleDate 
-                                ? new Date(sale.pharmacySaleDate).toLocaleDateString('tr-TR')
-                                : '-'
-                              }
-                            </p>
-                            <p className="text-white/50 text-sm">
-                              {sale.pharmacySaleDate 
-                                ? new Date(sale.pharmacySaleDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-                                : ''
-                              }
-                            </p>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex flex-wrap gap-1">
-                              {sale.pharmacySoldItems?.slice(0, 3).map((item: any, idx: number) => (
-                                <span 
-                                  key={idx} 
-                                  className="px-2 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-full"
-                                >
-                                  {item.name}
-                                </span>
-                              ))}
-                              {sale.pharmacySoldItems?.length > 3 && (
-                                <span className="px-2 py-1 bg-white/10 text-white/60 text-xs rounded-full">
-                                  +{sale.pharmacySoldItems.length - 3} daha
-                                </span>
-                              )}
-                              {!sale.pharmacySoldItems?.length && (
-                                <span className="text-white/50 text-sm">-</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            {sale.pharmacyPaymentMethods && sale.pharmacyPaymentMethods.length > 1 ? (
-                              <div className="flex flex-col gap-1">
-                                {sale.pharmacyPaymentMethods.map((pm: PaymentMethodEntry, idx: number) => (
-                                  <span key={idx} className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                                    pm.method === 'nakit' ? 'bg-green-500/20 text-green-300'
-                                    : pm.method === 'kredi_karti' ? 'bg-blue-500/20 text-blue-300'
-                                    : pm.method === 'banka_karti' ? 'bg-purple-500/20 text-purple-300'
-                                    : pm.method === 'cari' ? 'bg-orange-500/20 text-orange-300'
-                                    : 'bg-yellow-500/20 text-yellow-300'
-                                  }`}>
-                                    {pm.method === 'nakit' ? '💵' : pm.method === 'kredi_karti' ? '💳' : pm.method === 'banka_karti' ? '💳' : pm.method === 'havale' ? '🏦' : '📋'} {pm.amount.toFixed(2)} TL
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                                sale.pharmacyPaymentMethod === 'nakit'
-                                  ? 'bg-green-500/20 text-green-300'
-                                  : sale.pharmacyPaymentMethod === 'kredi_karti'
-                                  ? 'bg-blue-500/20 text-blue-300'
-                                  : sale.pharmacyPaymentMethod === 'banka_karti'
-                                  ? 'bg-purple-500/20 text-purple-300'
-                                  : sale.pharmacyPaymentMethod === 'cari'
-                                  ? 'bg-orange-500/20 text-orange-300'
-                                  : 'bg-yellow-500/20 text-yellow-300'
-                              }`}>
-                                {sale.pharmacyPaymentMethod === 'nakit' ? '💵 Nakit' :
-                                 sale.pharmacyPaymentMethod === 'kredi_karti' ? '💳 Kredi Kartı' :
-                                 sale.pharmacyPaymentMethod === 'banka_karti' ? '💳 Banka Kartı' :
-                                 sale.pharmacyPaymentMethod === 'havale' ? '🏦 Havale/EFT' :
-                                 sale.pharmacyPaymentMethod === 'cari' ? '📋 Cari' :
-                                 sale.pharmacyPaymentMethod || '-'}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <p className="text-white font-bold text-lg">
-                              {sale.pharmacyPaymentAmount 
-                                ? `${sale.pharmacyPaymentAmount.toFixed(2)} TL`
-                                : '-'
-                              }
-                            </p>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <button
-                              onClick={() => setSelectedSaleDetail(sale)}
-                              className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 hover:text-blue-200 rounded-lg transition-all duration-200 flex items-center gap-2 mx-auto"
-                            >
-                              🔍 Detay
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {/* Sales Summary */}
-              {completedSales.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-                  <div className="bg-gradient-to-r from-green-500/20 to-emerald-600/20 border border-green-500/30 rounded-2xl p-4">
-                    <div className="text-green-300 text-2xl mb-1">💰</div>
-                    <div className="text-white text-2xl font-bold">
-                      {completedSales.reduce((sum, sale) => sum + (sale.pharmacyPaymentAmount || 0), 0).toFixed(2)} TL
-                    </div>
-                    <div className="text-white/70 text-sm">Toplam Satış</div>
-                  </div>
-                  <div className="bg-gradient-to-r from-blue-500/20 to-cyan-600/20 border border-blue-500/30 rounded-2xl p-4">
-                    <div className="text-blue-300 text-2xl mb-1">📦</div>
-                    <div className="text-white text-2xl font-bold">
-                      {completedSales.length}
-                    </div>
-                    <div className="text-white/70 text-sm">Toplam İşlem</div>
-                  </div>
-                  <div className="bg-gradient-to-r from-purple-500/20 to-pink-600/20 border border-purple-500/30 rounded-2xl p-4">
-                    <div className="text-purple-300 text-2xl mb-1">💊</div>
-                    <div className="text-white text-2xl font-bold">
-                      {completedSales.reduce((sum, sale) => sum + (sale.pharmacySoldItems?.length || 0), 0)}
-                    </div>
-                    <div className="text-white/70 text-sm">Satılan İlaç</div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
 
           {/* ─── ECZANE SATIŞ TAB ─── */}
           {activeTab === 'direct_sale' && (
@@ -4330,7 +4132,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                   </button>
                   <button
                     onClick={handleProcessPharmacyPayment}
-                    disabled={loading || !pharmacyPaymentAmount || parseFloat(pharmacyPaymentAmount) < 0 || selectedMedicines.length === 0}
+                    disabled={loading || !pharmacyPaymentAmount || parseFloat(pharmacyPaymentAmount) < 0 || (selectedMedicines.length === 0 && selectedDebts.length === 0)}
                     className="px-8 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-xl font-bold text-lg transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-green-500/30"
                   >
                     {loading ? (
