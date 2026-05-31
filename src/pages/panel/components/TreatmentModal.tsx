@@ -119,11 +119,17 @@ interface AnamrezData {
   };
 }
 
+interface DoctorProfile {
+  clinicId: string;
+  fullName: string;
+}
+
 interface TreatmentModalProps {
   isOpen: boolean;
   onClose: () => void;
   patient: Patient | null;
   onStartTreatment: (patient: Patient, treatmentOptions: TreatmentOptions) => void;
+  doctorProfile?: DoctorProfile | null;
 }
 
 // ─── Pure helpers (no React state) ──────────────────────────────────────────
@@ -166,7 +172,8 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
   isOpen,
   onClose,
   patient,
-  onStartTreatment
+  onStartTreatment,
+  doctorProfile
 }) => {
   console.log('🎬 TreatmentModal: Component render', { 
     isOpen, 
@@ -196,6 +203,16 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
   const [medicationOptions, setMedicationOptions] = useState<string[]>([]);
   const [applicationOptions, setApplicationOptions] = useState<string[]>([]);
 
+  // Inline "Yeni Uygulama Tanımla" popover state
+  const [showNewAppForm, setShowNewAppForm] = useState(false);
+  const [newAppName, setNewAppName] = useState('');
+  const [newAppPrice, setNewAppPrice] = useState<string>('');
+  const [newAppDescription, setNewAppDescription] = useState('');
+  const [newAppSaving, setNewAppSaving] = useState(false);
+
+  // "Klinik İçin Kaydet" (clinic-wide save) state
+  const [savingClinicProtocol, setSavingClinicProtocol] = useState(false);
+
   // Sonraki Muayeneyi Planla
   const [showNextAppointment, setShowNextAppointment] = useState(false);
   const [nextAppDate, setNextAppDate] = useState<Date>(new Date());
@@ -221,58 +238,103 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
     return 'adult';
   };
 
-  useEffect(() => {
-    const fetchMedicationOptions = async () => {
-      if (!patient?.clinicId) return;
-      try {
-        const medicationsQuery = query(
-          collection(db, 'medications'),
-          where('clinicId', '==', patient.clinicId)
-        );
-        const snapshot = await getDocs(medicationsQuery);
-        const options = snapshot.docs
-          .map((doc) => doc.data()?.name)
-          .filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
-        setMedicationOptions(Array.from(new Set(options)).sort((a, b) => a.localeCompare(b, 'tr')));
-      } catch (error) {
-        console.error('❌ TreatmentModal: Error fetching medications:', error);
-      }
-    };
+  const fetchMedicationOptions = async () => {
+    if (!patient?.clinicId) return;
+    try {
+      const medicationsQuery = query(
+        collection(db, 'medications'),
+        where('clinicId', '==', patient.clinicId)
+      );
+      const snapshot = await getDocs(medicationsQuery);
+      const options = snapshot.docs
+        .map((doc) => doc.data()?.name)
+        .filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
+      setMedicationOptions(Array.from(new Set(options)).sort((a, b) => a.localeCompare(b, 'tr')));
+    } catch (error) {
+      console.error('❌ TreatmentModal: Error fetching medications:', error);
+    }
+  };
 
+  const fetchApplicationOptions = async () => {
+    if (!patient?.clinicId) return;
+    try {
+      const applicationsSnapshot = await getDocs(collection(db, 'medicalApplications'));
+      const clinicNames = new Set<string>();
+      const options: string[] = [];
+
+      applicationsSnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data?.clinicId === patient.clinicId && typeof data?.name === 'string') {
+          options.push(data.name);
+          clinicNames.add(data.name);
+        }
+      });
+
+      applicationsSnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data?.clinicId === 'STANDARD' && typeof data?.name === 'string' && !clinicNames.has(data.name)) {
+          options.push(data.name);
+        }
+      });
+
+      setApplicationOptions(Array.from(new Set(options)).sort((a, b) => a.localeCompare(b, 'tr')));
+    } catch (error) {
+      console.error('❌ TreatmentModal: Error fetching applications:', error);
+    }
+  };
+
+  useEffect(() => {
     fetchMedicationOptions();
   }, [patient?.clinicId]);
 
   useEffect(() => {
-    const fetchApplicationOptions = async () => {
-      if (!patient?.clinicId) return;
-      try {
-        const applicationsSnapshot = await getDocs(collection(db, 'medicalApplications'));
-        const clinicNames = new Set<string>();
-        const options: string[] = [];
-
-        applicationsSnapshot.forEach((doc) => {
-          const data = doc.data();
-          if (data?.clinicId === patient.clinicId && typeof data?.name === 'string') {
-            options.push(data.name);
-            clinicNames.add(data.name);
-          }
-        });
-
-        applicationsSnapshot.forEach((doc) => {
-          const data = doc.data();
-          if (data?.clinicId === 'STANDARD' && typeof data?.name === 'string' && !clinicNames.has(data.name)) {
-            options.push(data.name);
-          }
-        });
-
-        setApplicationOptions(Array.from(new Set(options)).sort((a, b) => a.localeCompare(b, 'tr')));
-      } catch (error) {
-        console.error('❌ TreatmentModal: Error fetching applications:', error);
-      }
-    };
-
     fetchApplicationOptions();
   }, [patient?.clinicId]);
+
+  // ── Create a new medical application (clinic-scoped) inline ───────────────
+  const handleCreateApplication = async () => {
+    if (!patient?.clinicId) return;
+    const name = newAppName.trim();
+    const price = parseFloat(newAppPrice);
+    if (!name) { alert('Lütfen uygulama adı girin.'); return; }
+    if (!Number.isFinite(price) || price <= 0) { alert('Lütfen geçerli bir fiyat girin.'); return; }
+
+    try {
+      setNewAppSaving(true);
+      await addDoc(collection(db, 'medicalApplications'), {
+        name,
+        description: newAppDescription.trim(),
+        price,
+        clinicId: patient.clinicId,
+        createdBy: doctorProfile?.fullName || 'Doktor',
+        createdAt: new Date().toISOString(),
+      });
+      await fetchApplicationOptions();
+
+      // Auto-fill last empty main-treatment slot or append a new one
+      if (editedProtocol) {
+        const mts = [...(editedProtocol.phases.mainTreatments || [])];
+        const emptyIdx = mts.findIndex(mt => !mt.treatment || mt.treatment === 'YENİ ANA UYGULAMA');
+        if (emptyIdx >= 0) {
+          mts[emptyIdx] = { ...mts[emptyIdx], treatment: name };
+        } else {
+          mts.push({ treatment: name, description: newAppDescription.trim() });
+        }
+        setEditedProtocol({
+          ...editedProtocol,
+          phases: { ...editedProtocol.phases, mainTreatments: mts }
+        });
+      }
+
+      setNewAppName(''); setNewAppPrice(''); setNewAppDescription('');
+      setShowNewAppForm(false);
+    } catch (error) {
+      console.error('❌ Error creating application:', error);
+      alert('Uygulama oluşturulurken hata oluştu.');
+    } finally {
+      setNewAppSaving(false);
+    }
+  };
 
   const renderMedicationSelect = (
     value: string,
@@ -355,11 +417,15 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
 
     return (
       <div className="mb-8">
+        {/* Clinic isolation notice */}
+        <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-xl p-3 mb-2 text-sm flex items-center gap-2">
+          🔒 Bu protokol yalnızca kendi kliniğiniz için oluşturulur. Diğer klinikler etkilenmez.
+        </div>
         {/* Editing Header */}
         <div className="bg-gradient-to-r from-orange-600 to-red-600 text-white rounded-t-2xl p-6">
           <div className="text-center">
             <h3 className="text-2xl font-bold mb-2 flex items-center justify-center gap-2">
-              ✏️ Protokol Düzenleniyor - {patient?.fullName}
+              ✏️ {editedProtocol.originalProtocolId ? 'Protokol Düzenleniyor' : 'Yeni Protokol'} - {patient?.fullName}
             </h3>
             <p className="text-white/90 text-lg font-medium mb-4">
               <input
@@ -400,7 +466,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
               disabled={!editedProtocol?.phases?.remember}
               className="px-3 py-2 bg-orange-100 hover:bg-orange-200 border border-orange-200 text-orange-700 rounded-lg text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              + İlaç Ekle
+              + Faz Ekle
             </button>
           </div>
           {/* Dynamic Regeneration Cards – unlimited */}
@@ -574,24 +640,77 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
               ))}
 
               {/* Add New Main Application Button */}
-              <button
-                onClick={() => {
-                  const newMainTreatment = {
-                    treatment: 'YENİ ANA UYGULAMA',
-                    description: ''
-                  };
-                  setEditedProtocol({
-                    ...editedProtocol,
-                    phases: {
-                      ...editedProtocol.phases,
-                      mainTreatments: [...editedProtocol.phases.mainTreatments, newMainTreatment]
-                    }
-                  });
-                }}
-                className="w-full px-4 py-3 bg-purple-100 hover:bg-purple-200 border-2 border-dashed border-purple-300 rounded-lg text-purple-700 font-medium transition-all duration-200 flex items-center justify-center gap-2"
-              >
-                + Yeni Ana Uygulama Ekle
-              </button>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    const newMainTreatment = {
+                      treatment: 'YENİ ANA UYGULAMA',
+                      description: ''
+                    };
+                    setEditedProtocol({
+                      ...editedProtocol,
+                      phases: {
+                        ...editedProtocol.phases,
+                        mainTreatments: [...editedProtocol.phases.mainTreatments, newMainTreatment]
+                      }
+                    });
+                  }}
+                  className="px-4 py-3 bg-purple-100 hover:bg-purple-200 border-2 border-dashed border-purple-300 rounded-lg text-purple-700 font-medium transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  + Mevcut Uygulamadan Seç
+                </button>
+                <button
+                  onClick={() => setShowNewAppForm(true)}
+                  className="px-4 py-3 bg-emerald-100 hover:bg-emerald-200 border-2 border-dashed border-emerald-300 rounded-lg text-emerald-700 font-medium transition-all duration-200 flex items-center justify-center gap-2"
+                  title="Sisteme yeni bir uygulama tanımla (yalnızca bu klinik için)"
+                >
+                  🆕 Yeni Uygulama Tanımla
+                </button>
+              </div>
+
+              {showNewAppForm && (
+                <div className="mt-3 p-4 bg-emerald-50 border border-emerald-300 rounded-lg">
+                  <h6 className="text-sm font-bold text-emerald-800 mb-2">🆕 Klinik için Yeni Uygulama</h6>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <input
+                      type="text"
+                      placeholder="Uygulama adı"
+                      value={newAppName}
+                      onChange={(e) => setNewAppName(e.target.value)}
+                      className="border border-gray-300 rounded px-3 py-2 text-sm"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Fiyat (₺)"
+                      value={newAppPrice}
+                      onChange={(e) => setNewAppPrice(e.target.value)}
+                      className="border border-gray-300 rounded px-3 py-2 text-sm"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Açıklama (ops.)"
+                      value={newAppDescription}
+                      onChange={(e) => setNewAppDescription(e.target.value)}
+                      className="border border-gray-300 rounded px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={handleCreateApplication}
+                      disabled={newAppSaving}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-sm font-medium disabled:opacity-50"
+                    >
+                      {newAppSaving ? 'Kaydediliyor...' : '💾 Kaydet ve Ekle'}
+                    </button>
+                    <button
+                      onClick={() => { setShowNewAppForm(false); setNewAppName(''); setNewAppPrice(''); setNewAppDescription(''); }}
+                      className="px-3 py-1.5 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded text-sm font-medium"
+                    >
+                      İptal
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -623,7 +742,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
           </div>
 
           {/* Edit Action Buttons */}
-          <div className="flex items-center justify-between pt-6 border-t border-gray-200">
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-6 border-t border-gray-200">
             <button
               onClick={handleCancelEdit}
               className="px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-xl font-medium transition-all duration-200"
@@ -631,22 +750,39 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
               ❌ İptal Et
             </button>
 
-            <button
-              onClick={handleSaveCustomProtocol}
-              disabled={loading}
-              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl font-medium transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              {loading ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  Kaydediliyor...
-                </>
-              ) : (
-                <>
-                  💾 Kaydet
-                </>
-              )}
-            </button>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={handleSaveAsClinicProtocol}
+                disabled={loading || savingClinicProtocol}
+                title="Bu protokolü kliniğinizin kütüphanesine kaydeder (tüm doktorların erişimine açar). Diğer klinikleri etkilemez."
+                className="px-6 py-3 bg-gradient-to-r from-emerald-600 to-green-700 hover:from-emerald-700 hover:to-green-800 text-white rounded-xl font-medium transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {savingClinicProtocol ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Kaydediliyor...
+                  </>
+                ) : (
+                  <>🏥 Klinik İçin Kaydet</>
+                )}
+              </button>
+
+              <button
+                onClick={handleSaveCustomProtocol}
+                disabled={loading || savingClinicProtocol}
+                title="Sadece bu hastaya özel olarak kaydeder."
+                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl font-medium transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {loading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Kaydediliyor...
+                  </>
+                ) : (
+                  <>👤 Sadece Bu Hastaya</>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1364,6 +1500,88 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
     });
   };
 
+  // Start creating a brand-new protocol from scratch (clinic-scoped)
+  const handleStartNewProtocol = () => {
+    if (!patient) return;
+    const defaultSystem =
+      anamrezData?.selectedDiagnosisSystems?.[0] || 'Genel';
+    const ageGroup = getPatientAgeGroup(patient.birthDate) as '2-7' | '8-14' | 'adult';
+    const blank: SavedProtocol = {
+      id: `new_${Date.now()}`,
+      name: `${defaultSystem} Protokolü`,
+      diagnosisSystem: defaultSystem,
+      ageGroup,
+      phases: {
+        remember: { treatment: '', dosage: '' },
+        regenerations: [],
+        mainTreatments: [],
+      },
+      frequency: 'Haftalık',
+      symptomConditions: [],
+      toxicityRequired: false,
+      conditionsLogic: 'any',
+      clinicId: patient.clinicId,
+      priority: 1,
+      control: '4 AYDA 1 KONTROL',
+      createdBy: doctorProfile?.fullName || 'Doktor',
+      createdAt: new Date().toISOString(),
+      // Mark as new (no originalProtocolId) – used by Save buttons below
+      originalProtocolId: undefined,
+    };
+    setEditedProtocol(blank);
+    setIsEditing(true);
+  };
+
+  // Save the edited protocol as a NEW clinic-wide protocol (visible to all
+  // doctors in the same clinic). Other clinics are not affected because the
+  // doc is stamped with clinicId.
+  const handleSaveAsClinicProtocol = async () => {
+    if (!editedProtocol || !patient?.clinicId) return;
+    if (!editedProtocol.name?.trim()) {
+      alert('Lütfen protokol adı girin.');
+      return;
+    }
+    try {
+      setSavingClinicProtocol(true);
+
+      const { regeneration1, regeneration2, regeneration3, regeneration4, ...cleanPhases } =
+        editedProtocol.phases;
+
+      const cleanProtocolData: any = {
+        name: editedProtocol.name.trim(),
+        diagnosisSystem: editedProtocol.diagnosisSystem,
+        ageGroup: editedProtocol.ageGroup,
+        phases: {
+          ...cleanPhases,
+          regenerations: editedProtocol.phases.regenerations || [],
+          mainTreatments: editedProtocol.phases.mainTreatments || [],
+        },
+        frequency: editedProtocol.frequency || '',
+        symptomConditions: editedProtocol.symptomConditions || [],
+        toxicityRequired: editedProtocol.toxicityRequired || false,
+        conditionsLogic: editedProtocol.conditionsLogic || 'any',
+        clinicId: patient.clinicId, // hard-stamped: never STANDARD
+        priority: editedProtocol.priority || 1,
+        control: editedProtocol.control || '4 AYDA 1 KONTROL',
+        createdBy: doctorProfile?.fullName || editedProtocol.createdBy || 'Doktor',
+        createdAt: editedProtocol.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      await addDoc(collection(db, 'treatmentProtocols'), cleanProtocolData);
+
+      setIsEditing(false);
+      setEditedProtocol(null);
+      await fetchSavedProtocols();
+      alert('Protokol klinik kütüphanesine kaydedildi!');
+    } catch (error) {
+      console.error('❌ Error saving clinic protocol:', error);
+      alert('Klinik protokolü kaydedilirken hata oluştu.');
+    } finally {
+      setSavingClinicProtocol(false);
+    }
+  };
+
   // Save customized protocol for this patient (ONLY SAVE, DO NOTHING ELSE)
   const handleSaveCustomProtocol = async () => {
     if (!editedProtocol || !patient) return;
@@ -1376,16 +1594,21 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
 
       // Strip legacy regeneration1-4 fields; save only the regenerations array
       const { regeneration1, regeneration2, regeneration3, regeneration4, ...cleanPhases } = editedProtocol.phases;
-      const customizedProtocolData = {
+      const customizedProtocolData: any = {
         ...editedProtocol,
         phases: { ...cleanPhases, regenerations: editedProtocol.phases.regenerations || [] },
         patientId: patient.id,
         patientName: patient.fullName,
-        originalProtocolId: editedProtocol.originalProtocolId,
         customizedAt: new Date().toISOString(),
-        customizedBy: editedProtocol.customizedBy || 'Dr.', // You can get this from user context
+        customizedBy: editedProtocol.customizedBy || doctorProfile?.fullName || 'Dr.',
         isCustomized: true
       };
+      // Firestore rejects `undefined` — only include originalProtocolId when present
+      if (editedProtocol.originalProtocolId) {
+        customizedProtocolData.originalProtocolId = editedProtocol.originalProtocolId;
+      } else {
+        delete customizedProtocolData.originalProtocolId;
+      }
 
       console.log('💾 TreatmentModal: About to save customized protocol to patient record:', {
         patientId: patient.id,
@@ -1651,10 +1874,21 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
 
           {/* Treatment Options */}
           <div className="bg-green-50 border border-green-200 rounded-xl p-6">
-            <h3 className="text-gray-900 font-semibold mb-4 flex items-center gap-2">
-              <span className="text-lg">💊</span>
-              Tedavi Seçenekleri
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-gray-900 font-semibold flex items-center gap-2">
+                <span className="text-lg">💊</span>
+                Tedavi Seçenekleri
+              </h3>
+              {!isEditing && (
+                <button
+                  onClick={handleStartNewProtocol}
+                  className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white rounded-lg text-sm font-semibold transition-all shadow-sm flex items-center gap-2"
+                  title="Bu klinik için yeni bir tedavi protokolü oluşturun"
+                >
+                  ➕ Yeni Protokol Oluştur
+                </button>
+              )}
+            </div>
 
             <div className="space-y-4">
               {(fetchingAnamnez || fetchingProtocols) ? (

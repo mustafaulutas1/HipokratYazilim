@@ -150,6 +150,12 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const [dsAllPatients, setDsAllPatients] = useState<PharmacyPatient[]>([]);
   const [dsSelectedPatient, setDsSelectedPatient] = useState<PharmacyPatient | null>(null);
   const [dsNewCustomerName, setDsNewCustomerName] = useState('');
+  const [dsNewCustomerPhone, setDsNewCustomerPhone] = useState('');
+  const [dsNewCustomerTcNo, setDsNewCustomerTcNo] = useState('');
+  const [dsNewCustomerAddress, setDsNewCustomerAddress] = useState('');
+  const [dsNewCustomerLocked, setDsNewCustomerLocked] = useState(false);
+  // After-sale success indicator { name, savedAsPatient }
+  const [dsRecentSaveInfo, setDsRecentSaveInfo] = useState<{ name: string; savedAsPatient: boolean } | null>(null);
   const [dsSaleItems, setDsSaleItems] = useState<{ medication: SavedMedication; quantity: number }[]>([]);
   const [dsAppSearch, setDsAppSearch] = useState('');
   const [dsPaymentMethods, setDsPaymentMethods] = useState<PaymentMethodEntry[]>([{ method: 'nakit', amount: 0 }]);
@@ -1168,14 +1174,34 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       setDsLoading(true);
       const batch = writeBatch(db);
 
+      // If this is a Yeni Müşteri, create a clinic-scoped patient record so they
+      // appear in "Mevcut Hastalar" next time. All extra fields are optional.
+      let newPatientId: string | null = null;
+      if (dsCustomerMode === 'new' && doctorProfile?.clinicId) {
+        const newPatientRef = doc(collection(db, 'patients'));
+        batch.set(newPatientRef, {
+          clinicId: doctorProfile.clinicId,
+          fullName: customerName,
+          phone: dsNewCustomerPhone.trim() || '',
+          tcNo: dsNewCustomerTcNo.trim() || '',
+          address: dsNewCustomerAddress.trim() || '',
+          source: 'pharmacy_walkin',
+          createdAt: new Date().toISOString(),
+          createdBy: doctorProfile.fullName || 'Eczane',
+        });
+        newPatientId = newPatientRef.id;
+      }
+
       const saleRef = doc(collection(db, 'direct_sales'));
       batch.set(saleRef, {
         clinicId: doctorProfile?.clinicId,
         createdBy: doctorProfile?.fullName,
         customerType: dsCustomerMode,
         customerName,
-        customerTcNo: dsCustomerMode === 'existing' ? (dsSelectedPatient?.tcNo || '') : '',
-        patientId: dsCustomerMode === 'existing' ? (dsSelectedPatient?.id || null) : null,
+        customerTcNo: dsCustomerMode === 'existing' ? (dsSelectedPatient?.tcNo || '') : dsNewCustomerTcNo.trim(),
+        customerPhone: dsCustomerMode === 'existing' ? (dsSelectedPatient?.phone || '') : dsNewCustomerPhone.trim(),
+        customerAddress: dsCustomerMode === 'existing' ? '' : dsNewCustomerAddress.trim(),
+        patientId: dsCustomerMode === 'existing' ? (dsSelectedPatient?.id || null) : newPatientId,
         items: dsSaleItems.map(i => ({
           name: getMedicationDisplayName(i.medication),
           medicationId: i.medication.id,
@@ -1222,8 +1248,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
           } else if (dsCustomerMode === 'new') {
             batch.set(debtRef, {
               clinicId: doctorProfile?.clinicId,
-              patientId: null,
-              patientTcNo: `DIREKT_${saleRef.id}`,
+              patientId: newPatientId,
+              patientTcNo: dsNewCustomerTcNo.trim() || `DIREKT_${saleRef.id}`,
               patientName: dsNewCustomerName.trim(),
               amount: debtAmount,
               items: dsSaleItems.map(i => ({ name: getMedicationDisplayName(i.medication), price: i.medication.price, quantity: i.quantity })),
@@ -1242,8 +1268,18 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       await batch.commit();
       alert(`Satış başarıyla tamamlandı! Toplam: ${totalAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL`);
 
+      setDsRecentSaveInfo({
+        name: customerName,
+        savedAsPatient: dsCustomerMode === 'new' && !!newPatientId,
+      });
+      setTimeout(() => setDsRecentSaveInfo(null), 6000);
+
       setDsSelectedPatient(null);
       setDsNewCustomerName('');
+      setDsNewCustomerPhone('');
+      setDsNewCustomerTcNo('');
+      setDsNewCustomerAddress('');
+      setDsNewCustomerLocked(false);
       setDsPatientSearch('');
       setDsSaleItems([]);
       setDsAppSearch('');
@@ -1253,6 +1289,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       setDsRemainingDebt('');
       setDsPaymentModalOpen(false);
       fetchDirectSales();
+      fetchAllPatientsForDirectSale();
     } catch (e) {
       console.error('Error completing direct sale:', e);
       alert('Satış tamamlanırken bir hata oluştu.');
@@ -2687,7 +2724,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       👥 Mevcut Hastalar
                     </button>
                     <button
-                      onClick={() => { setDsCustomerMode('new'); setDsSelectedPatient(null); setDsPatientSearch(''); }}
+                      onClick={() => { setDsCustomerMode('new'); setDsSelectedPatient(null); setDsPatientSearch(''); setDsNewCustomerLocked(false); }}
                       className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${
                         dsCustomerMode === 'new'
                           ? 'bg-purple-600 text-white shadow-md'
@@ -2706,16 +2743,96 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       placeholder="İsim veya TC ile ara..."
                       className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white text-sm placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-teal-500/50"
                     />
+                  ) : dsNewCustomerLocked ? (
+                    <div className="bg-emerald-500/15 border-2 border-emerald-400/40 rounded-xl p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="inline-flex items-center gap-1.5 text-emerald-300 text-xs font-semibold">
+                          🔒 Müşteri Kaydedildi
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setDsNewCustomerLocked(false)}
+                          className="text-white/60 hover:text-white text-xs underline"
+                        >
+                          ✏️ Düzenle
+                        </button>
+                      </div>
+                      <div className="space-y-1 text-sm">
+                        <p className="text-white font-semibold truncate">{dsNewCustomerName || '—'}</p>
+                        {dsNewCustomerTcNo && <p className="text-white/70 text-xs">TC: {dsNewCustomerTcNo}</p>}
+                        {dsNewCustomerPhone && <p className="text-white/70 text-xs">☎ {dsNewCustomerPhone}</p>}
+                        {dsNewCustomerAddress && <p className="text-white/70 text-xs truncate">📍 {dsNewCustomerAddress}</p>}
+                        {!dsNewCustomerTcNo && !dsNewCustomerPhone && !dsNewCustomerAddress && (
+                          <p className="text-white/40 text-xs italic">İletişim bilgisi yok</p>
+                        )}
+                      </div>
+                    </div>
                   ) : (
-                    <input
-                      type="text"
-                      value={dsNewCustomerName}
-                      onChange={(e) => setDsNewCustomerName(e.target.value)}
-                      placeholder="Müşteri adı soyadı..."
-                      className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white text-sm placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-                    />
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        value={dsNewCustomerName}
+                        onChange={(e) => setDsNewCustomerName(e.target.value)}
+                        placeholder="Müşteri adı soyadı..."
+                        className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white text-sm placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                      />
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={dsNewCustomerTcNo}
+                        onChange={(e) => setDsNewCustomerTcNo(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                        placeholder="TC Kimlik No (opsiyonel)"
+                        className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white text-sm placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                      />
+                      <input
+                        type="text"
+                        inputMode="tel"
+                        value={dsNewCustomerPhone}
+                        onChange={(e) => setDsNewCustomerPhone(e.target.value)}
+                        placeholder="Telefon (opsiyonel)"
+                        className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white text-sm placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                      />
+                      <textarea
+                        rows={2}
+                        value={dsNewCustomerAddress}
+                        onChange={(e) => setDsNewCustomerAddress(e.target.value)}
+                        placeholder="Adres (opsiyonel)"
+                        className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white text-sm placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500/50 resize-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!dsNewCustomerName.trim()) {
+                            alert('Lütfen önce müşteri adını girin.');
+                            return;
+                          }
+                          setDsNewCustomerLocked(true);
+                        }}
+                        disabled={!dsNewCustomerName.trim()}
+                        className="w-full px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white text-sm font-semibold rounded-xl transition-all shadow-md disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        💾 Müşteriyi Kaydet
+                      </button>
+                      <p className="text-white/40 text-xs leading-snug">
+                        ℹ️ İletişim bilgileri opsiyoneldir. Müşteri, satış tamamlandığında klinik hasta listesine eklenir.
+                      </p>
+                    </div>
                   )}
                 </div>
+
+                {dsRecentSaveInfo && (
+                  <div className="mx-4 mb-3 bg-emerald-500/20 border border-emerald-400/40 rounded-xl px-3 py-2.5 flex items-start gap-2 animate-pulse">
+                    <span className="text-emerald-300 text-lg leading-none">✅</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-emerald-200 text-sm font-semibold truncate">Satış tamamlandı</p>
+                      <p className="text-emerald-300/80 text-xs truncate">
+                        {dsRecentSaveInfo.savedAsPatient
+                          ? `${dsRecentSaveInfo.name} müşteri olarak kaydedildi`
+                          : `${dsRecentSaveInfo.name}`}
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Patient list */}
                 {dsCustomerMode === 'existing' ? (

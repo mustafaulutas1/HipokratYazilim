@@ -1224,6 +1224,7 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
         onClose={() => setIsTreatmentModalOpen(false)}
         patient={treatmentPatient}
         onStartTreatment={handleStartTreatment}
+        doctorProfile={doctorProfile}
       />
 
       <DoctorReplyModal
