@@ -96,6 +96,7 @@ interface PharmacyPatient {
   pharmacyDebtAmount?: number;
   pharmacyDebtDate?: string;
   pharmacyDebtReason?: string;
+  phone?: string;
 }
 
 const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorProfile }) => {
