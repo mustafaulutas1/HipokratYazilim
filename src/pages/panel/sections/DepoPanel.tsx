@@ -242,6 +242,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
   const handleSave = async () => {
     if (!doctorProfile?.clinicId) return;
     if (!formData.productName.trim() || !formData.stockCode.trim()) { alert('Ürün adı ve stok kodu zorunludur.'); return; }
+    if (!formData.consumptionType) { alert('Tüketim türü zorunludur. Lütfen "İşlem Bazlı Tüketim" veya "Genel Bazlı Tüketim" seçeneklerinden birini seçin.'); return; }
     setSaving(true);
     const colName = activeDepo === 'ana' ? 'anaDepoUrunler' : 'katDepoUrunler';
     try {
@@ -1841,7 +1842,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
               ))}
               {activeDepo === 'ana' && (
                 <div>
-                  <label className="block text-white/70 text-sm mb-2">Tüketim Türü</label>
+                  <label className="block text-white/70 text-sm mb-2">Tüketim Türü *</label>
                   <div className="flex flex-col gap-2">
                     <label className="flex items-center gap-3 cursor-pointer p-3 rounded-xl border transition-all hover:bg-white/5"
                       style={{ borderColor: formData.consumptionType === 'islem-bazli' ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.15)', background: formData.consumptionType === 'islem-bazli' ? 'rgba(99,102,241,0.1)' : undefined }}>
