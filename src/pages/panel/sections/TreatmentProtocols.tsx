@@ -10,8 +10,23 @@ interface TreatmentProtocolsProps {
   doctorProfile: {
     clinicId: string;
     fullName: string;
+    userType?: string;
+    role?: string;
+    isClinicOwner?: boolean;
   } | null;
 }
+
+// Roles allowed to set / change application prices in this screen.
+const PRICE_MANAGEMENT_ROLES = ['admin', 'assistant', 'accounting'];
+
+const canManageApplicationPrices = (
+  profile: { userType?: string; role?: string; isClinicOwner?: boolean } | null
+): boolean => {
+  if (!profile) return false;
+  if (profile.isClinicOwner) return true;
+  const role = profile.role || profile.userType || '';
+  return PRICE_MANAGEMENT_ROLES.includes(role);
+};
 
 // Available symptoms from anamnesis
 const AVAILABLE_SYMPTOMS = [
@@ -1141,6 +1156,7 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
         isOpen={showApplicationModal}
         onClose={() => setShowApplicationModal(false)}
         doctorProfile={doctorProfile}
+        canManagePrices={canManageApplicationPrices(doctorProfile)}
         onApplicationsUpdate={() => {
           // Trigger refresh of applications in selector
           setRefreshApplications(prev => prev + 1);

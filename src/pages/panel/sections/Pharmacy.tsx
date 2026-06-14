@@ -5,6 +5,7 @@ import MultiPaymentMethodSelector from '../../../components/UI/MultiPaymentMetho
 import type { PaymentMethodEntry } from '../../../components/UI/MultiPaymentMethodSelector';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { utils, writeFile } from 'xlsx';
 import { loadTurkishPdfFont } from '../../../utils/pdfFont';
 
 interface Medication {
@@ -97,10 +98,26 @@ interface PharmacyPatient {
   pharmacyDebtDate?: string;
   pharmacyDebtReason?: string;
   phone?: string;
+  // Prescription change tracking (set by call-center/doctor/assistant via patient profile)
+  prescriptionMedications?: Array<{ name: string; dosage?: string; type?: string }>;
+  prescriptionChanged?: boolean;
+  prescriptionChangedAt?: string;
+  pharmacyChangeNote?: string;
+  prescriptionChanges?: Array<{
+    changedAt: string;
+    changedBy: string;
+    changedByRole?: string;
+    instructedBy?: string;
+    previousMeds: Array<{ name: string; dosage?: string }>;
+    newMeds: Array<{ name: string; dosage?: string }>;
+    reason?: string;
+  }>;
 }
 
 const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorProfile }) => {
-  const [activeTab, setActiveTab] = useState<'medications' | 'devices' | 'patients' | 'pharmacy_debt' | 'direct_sale'>('medications');
+  const [activeTab, setActiveTab] = useState<'medications' | 'devices' | 'patients' | 'pharmacy_debt' | 'direct_sale' | 'prescription_changes'>('medications');
+  const [prescriptionChangePatients, setPrescriptionChangePatients] = useState<PharmacyPatient[]>([]);
+  const [prescriptionChangeSearch, setPrescriptionChangeSearch] = useState('');
   const [savedMedications, setSavedMedications] = useState<SavedMedication[]>([]);
   const [savedDevices, setSavedDevices] = useState<SavedMedicalDevice[]>([]);
   const [protocolNames, setProtocolNames] = useState<string[]>([]);
@@ -373,6 +390,58 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     } catch (error) {
       console.error('Error fetching patients:', error);
     }
+  };
+
+  // Fetch all patients that have at least one prescription change (for reporting).
+  const fetchPrescriptionChanges = async () => {
+    if (!doctorProfile?.clinicId) return;
+    try {
+      const patientsRef = collection(db, 'patients');
+      const patientsQuery = query(patientsRef, where('clinicId', '==', doctorProfile.clinicId));
+      const snapshot = await getDocs(patientsQuery);
+      const patients: PharmacyPatient[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data() as PharmacyPatient;
+        if (data.prescriptionChanges && data.prescriptionChanges.length > 0) {
+          patients.push({ ...data, id: doc.id });
+        }
+      });
+      patients.sort((a, b) => new Date(b.prescriptionChangedAt || b.updatedAt || b.createdAt).getTime() - new Date(a.prescriptionChangedAt || a.updatedAt || a.createdAt).getTime());
+      setPrescriptionChangePatients(patients);
+    } catch (error) {
+      console.error('Error fetching prescription changes:', error);
+    }
+  };
+
+  // Flatten all changes across patients into report rows (newest first).
+  const prescriptionChangeRows = prescriptionChangePatients
+    .flatMap((p) => (p.prescriptionChanges || []).map((c) => ({ patient: p, change: c })))
+    .filter(({ patient }) => {
+      const q = prescriptionChangeSearch.trim().toLowerCase();
+      if (!q) return true;
+      return (patient.fullName || '').toLowerCase().includes(q) || (patient.tcNo || '').toLowerCase().includes(q);
+    })
+    .sort((a, b) => new Date(b.change.changedAt).getTime() - new Date(a.change.changedAt).getTime());
+
+  const medsToText = (meds: Array<{ name: string; dosage?: string }>) =>
+    meds.map((m) => (m.dosage ? `${m.name} (${m.dosage})` : m.name)).join(', ');
+
+  const exportPrescriptionChangesExcel = () => {
+    const rows = prescriptionChangeRows.map(({ patient, change }) => ({
+      'Hasta Adı': patient.fullName,
+      'TC No': patient.tcNo || '-',
+      'Değişiklik Tarihi': new Date(change.changedAt).toLocaleString('tr-TR'),
+      'Önceki İlaçlar': medsToText(change.previousMeds || []),
+      'Yeni İlaçlar': medsToText(change.newMeds || []),
+      'Değiştiren': change.changedBy + (change.changedByRole ? ` (${change.changedByRole})` : ''),
+      'Talimatı Veren': change.instructedBy || '-',
+      'Neden': change.reason || '-',
+    }));
+    const ws = utils.json_to_sheet(rows);
+    ws['!cols'] = [22, 14, 20, 30, 30, 22, 20, 30].map((w) => ({ wch: w }));
+    const wb = utils.book_new();
+    utils.book_append_sheet(wb, ws, 'Reçete Değişiklikleri');
+    writeFile(wb, `Recete_Degisiklikleri_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
 
@@ -678,6 +747,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       fetchMedications();
       fetchDevices();
       fetchPatients();
+      fetchPrescriptionChanges();
 
       // Fetch treatment protocol names for medication name dropdown
       const fetchProtocolNames = async () => {
@@ -720,18 +790,41 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
 
   // Find a saved medication by protocol/display name or barcode name
   const findMedicationByName = (medName: string) => {
-    const lower = medName.toLowerCase().replace(/\s*-\s*/g, '-');
+    const norm = (s?: string) => (s || '').toLowerCase().replace(/\s*-\s*/g, '-').trim();
+    const lower = norm(medName);
+    if (!lower) return undefined;
+
+    // 1) Prefer an exact match on display / protocol / barcode name.
+    const exact = savedMedications.find(sm =>
+      norm(getMedicationDisplayName(sm)) === lower ||
+      norm(sm.protocolName) === lower ||
+      norm(sm.name) === lower
+    );
+    if (exact) return exact;
+
+    // 2) Fall back to a loose contains match — but skip empty fields, otherwise
+    //    `lower.includes('')` is always true and every empty-field medication
+    //    would match every prescription.
     return savedMedications.find(sm => {
-      const displayLower = getMedicationDisplayName(sm).toLowerCase().replace(/\s*-\s*/g, '-');
-      const protocolLower = (sm.protocolName || '').toLowerCase().replace(/\s*-\s*/g, '-');
-      const nameLower = sm.name.toLowerCase().replace(/\s*-\s*/g, '-');
-      return displayLower.includes(lower) || lower.includes(displayLower) ||
-             protocolLower.includes(lower) || lower.includes(protocolLower) ||
-             nameLower.includes(lower) || lower.includes(nameLower);
+      const displayLower = norm(getMedicationDisplayName(sm));
+      const protocolLower = norm(sm.protocolName);
+      const nameLower = norm(sm.name);
+      return (displayLower && (displayLower.includes(lower) || lower.includes(displayLower)))
+        || (protocolLower && (protocolLower.includes(lower) || lower.includes(protocolLower)))
+        || (nameLower && (nameLower.includes(lower) || lower.includes(nameLower)));
     });
   };
 
   const getPrescribedMedicines = (patient: PharmacyPatient) => {
+    // A call-center/doctor/assistant edit overrides the protocol-derived list.
+    if (patient.prescriptionMedications && patient.prescriptionMedications.length > 0) {
+      return patient.prescriptionMedications.map(m => ({
+        name: m.name,
+        dosage: m.dosage || '',
+        type: m.type || 'Değişiklik',
+      }));
+    }
+
     const protocol = patient.treatmentOptions?.customizedProtocol || patient.treatmentOptions?.selectedProtocol;
     if (!protocol?.phases) return [];
 
@@ -949,6 +1042,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
         pharmacyStatus: 'completed',
         pharmacySaleCompletedAt: new Date().toISOString(),
         pharmacySaleDate: new Date().toISOString(),
+        // The (possibly changed) prescription has now been dispensed.
+        prescriptionChanged: false,
         pharmacySoldItems: approvedMedicines,
         pharmacyRemovedItems: removedMedicines,
         pharmacyPaymentAmount: totalPaymentReceived,
@@ -1756,6 +1851,21 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
           >
             🛒 Eczane Satış
           </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('prescription_changes');
+              setShowAddForm(false);
+              fetchPrescriptionChanges();
+            }}
+            className={`px-8 py-3 rounded-xl font-medium transition-all duration-200 ${
+              activeTab === 'prescription_changes'
+                ? 'bg-gradient-to-r from-orange-600 to-amber-600 text-white shadow-lg'
+                : 'bg-white/10 text-white/70 hover:bg-white/20'
+            }`}
+          >
+            🔁 Reçete Değişiklikleri
+          </button>
         </div>
       </div>
 
@@ -2251,6 +2361,20 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                             </div>
                           </div>
                         )}
+                        {/* Prescription Changed Badge */}
+                        {patient.prescriptionChanged && (
+                          <div className="mb-3 p-2 bg-orange-500/20 border border-orange-400/40 rounded-lg">
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg">🔁</span>
+                              <div>
+                                <p className="text-orange-200 text-xs font-bold">REÇETE DEĞİŞTİ</p>
+                                {patient.pharmacyChangeNote && (
+                                  <p className="text-orange-100 text-xs">{patient.pharmacyChangeNote}</p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                         <div className="flex items-center gap-4 mb-4">
                           <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl text-white ${
                             patient.pharmacyHasDebt && patient.pharmacyDebtAmount && patient.pharmacyDebtAmount > 0
@@ -2280,6 +2404,96 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                         >
                           💊 İlaç Satışı Yap
                         </button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Prescription Changes Report */}
+          {activeTab === 'prescription_changes' && (
+            <div className="space-y-4">
+              <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+                <div className="flex flex-wrap items-center gap-3 justify-between">
+                  <div className="flex-1 min-w-[250px]">
+                    <input
+                      type="text"
+                      value={prescriptionChangeSearch}
+                      onChange={(e) => setPrescriptionChangeSearch(e.target.value)}
+                      placeholder="Hasta adı veya TC No ile ara..."
+                      className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => fetchPrescriptionChanges()}
+                      className="px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white hover:bg-white/20 transition-all duration-200"
+                    >
+                      🔄 Yenile
+                    </button>
+                    <button
+                      onClick={exportPrescriptionChangesExcel}
+                      disabled={prescriptionChangeRows.length === 0}
+                      className="px-4 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-xl text-white font-medium transition-all duration-200"
+                    >
+                      📊 Excel İndir
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {prescriptionChangeRows.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-6xl mb-4">🔁</div>
+                  <h3 className="text-xl font-semibold text-white mb-2">Reçete Değişikliği Yok</h3>
+                  <p className="text-white/60">Henüz hiçbir hasta için reçete değişikliği yapılmamış.</p>
+                </div>
+              ) : (
+                <>
+                  <h3 className="text-lg font-semibold text-white">
+                    🔁 Reçete Değişiklikleri ({prescriptionChangeRows.length})
+                  </h3>
+                  <div className="space-y-3">
+                    {prescriptionChangeRows.map(({ patient, change }, idx) => (
+                      <div key={`${patient.id}-${idx}`} className="bg-white/5 border border-white/20 rounded-xl p-5">
+                        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                          <div>
+                            <h4 className="text-white font-semibold">{patient.fullName}</h4>
+                            <p className="text-white/50 text-xs">TC: {patient.tcNo || '-'}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-white/70 text-sm">{new Date(change.changedAt).toLocaleString('tr-TR')}</p>
+                            <p className="text-white/40 text-xs">
+                              {change.changedBy}{change.changedByRole ? ` (${change.changedByRole})` : ''}
+                              {change.instructedBy ? ` • Talimat: ${change.instructedBy}` : ''}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div>
+                            <p className="text-white/40 text-xs mb-1">Önceki İlaçlar</p>
+                            <div className="flex flex-wrap gap-1">
+                              {(change.previousMeds || []).length > 0 ? change.previousMeds.map((m, j) => (
+                                <span key={j} className="px-2 py-0.5 bg-red-500/15 text-red-200 border border-red-400/30 rounded text-xs line-through">
+                                  {m.name}{m.dosage ? ` (${m.dosage})` : ''}
+                                </span>
+                              )) : <span className="text-white/30 text-xs">-</span>}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-white/40 text-xs mb-1">Yeni İlaçlar</p>
+                            <div className="flex flex-wrap gap-1">
+                              {(change.newMeds || []).map((m, j) => (
+                                <span key={j} className="px-2 py-0.5 bg-green-500/15 text-green-200 border border-green-400/30 rounded text-xs">
+                                  {m.name}{m.dosage ? ` (${m.dosage})` : ''}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                        {change.reason && <p className="text-white/60 text-xs mt-2">📝 {change.reason}</p>}
                       </div>
                     ))}
                   </div>

@@ -127,6 +127,11 @@ interface AdditionalTreatmentRequest {
 
 const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
   const { user } = useAuth();
+  // Yönetici görünümü: admin (klinik sahibi de admin'dir) ve asistan rolleri,
+  // tüm doktorların hastalarını görüp doktor gibi işlem yapabilir.
+  const role = doctorProfile?.role || doctorProfile?.userType || '';
+  const isSupervisor = role === 'admin' || role === 'assistant';
+  const [collapsedDoctors, setCollapsedDoctors] = useState<Record<string, boolean>>({});
   const [assignedPatients, setAssignedPatients] = useState<AssignedPatient[]>([]);
   const [stats, setStats] = useState<PatientStats>({
     totalAssigned: 0,
@@ -165,12 +170,18 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
     console.log('🔍 DoctorPanel: Setting up real-time listener for clinicId:', doctorProfile.clinicId);
     console.log('🔍 DoctorPanel: Doctor profile:', doctorProfile);
 
-    // Main query - Show patients assigned to the current doctor only
-    const patientsQuery = query(
-      collection(db, 'patients'),
-      where('clinicId', '==', doctorProfile.clinicId),
-      where('assignedDoctorId', '==', user?.uid)
-    );
+    // Main query - Doktor: yalnızca kendi hastaları; Yönetici (admin/asistan):
+    // kliniğin tüm hastaları (doktora göre gruplanır).
+    const patientsQuery = isSupervisor
+      ? query(
+          collection(db, 'patients'),
+          where('clinicId', '==', doctorProfile.clinicId)
+        )
+      : query(
+          collection(db, 'patients'),
+          where('clinicId', '==', doctorProfile.clinicId),
+          where('assignedDoctorId', '==', user?.uid)
+        );
 
     const unsubscribe = onSnapshot(patientsQuery, (snapshot) => {
       console.log('📊 DoctorPanel: Query returned:', snapshot.docs.length, 'patients for clinicId:', doctorProfile.clinicId);
@@ -206,12 +217,18 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
       const today = new Date().toDateString();
       
       // Query completed patients separately for stats only
-      const completedQuery = query(
-        collection(db, 'patients'),
-        where('clinicId', '==', doctorProfile.clinicId),
-        where('assignedDoctorId', '==', user?.uid),
-        where('status', '==', 'treatment_completed')
-      );
+      const completedQuery = isSupervisor
+        ? query(
+            collection(db, 'patients'),
+            where('clinicId', '==', doctorProfile.clinicId),
+            where('status', '==', 'treatment_completed')
+          )
+        : query(
+            collection(db, 'patients'),
+            where('clinicId', '==', doctorProfile.clinicId),
+            where('assignedDoctorId', '==', user?.uid),
+            where('status', '==', 'treatment_completed')
+          );
       
       onSnapshot(completedQuery, (completedSnapshot) => {
         const completedPatients = completedSnapshot.docs.map(doc => doc.data());
@@ -278,13 +295,20 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
 
     console.log('🔍 DoctorPanel: Setting up additional treatment requests listener for doctor:', user.uid);
     
-    const requestsQuery = query(
-      collection(db, 'additionalTreatmentRequests'),
-      where('clinicId', '==', doctorProfile.clinicId),
-      where('toDoctorId', '==', user.uid),
-      orderBy('createdAt', 'desc'),
-      limit(50)
-    );
+    const requestsQuery = isSupervisor
+      ? query(
+          collection(db, 'additionalTreatmentRequests'),
+          where('clinicId', '==', doctorProfile.clinicId),
+          orderBy('createdAt', 'desc'),
+          limit(50)
+        )
+      : query(
+          collection(db, 'additionalTreatmentRequests'),
+          where('clinicId', '==', doctorProfile.clinicId),
+          where('toDoctorId', '==', user.uid),
+          orderBy('createdAt', 'desc'),
+          limit(50)
+        );
 
     const unsubscribe = onSnapshot(requestsQuery, (snapshot) => {
       const fetchedRequests = snapshot.docs.map(doc => ({
@@ -302,11 +326,16 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
     }, (error) => {
       console.error('❌ DoctorPanel: Error listening to treatment requests:', error);
       // If index doesn't exist yet, try simpler query
-      const simpleQuery = query(
-        collection(db, 'additionalTreatmentRequests'),
-        where('clinicId', '==', doctorProfile.clinicId),
-        where('toDoctorId', '==', user.uid)
-      );
+      const simpleQuery = isSupervisor
+        ? query(
+            collection(db, 'additionalTreatmentRequests'),
+            where('clinicId', '==', doctorProfile.clinicId)
+          )
+        : query(
+            collection(db, 'additionalTreatmentRequests'),
+            where('clinicId', '==', doctorProfile.clinicId),
+            where('toDoctorId', '==', user.uid)
+          );
       
       onSnapshot(simpleQuery, (snapshot) => {
         const fetchedRequests = snapshot.docs.map(doc => ({
@@ -659,6 +688,193 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
     }
   };
 
+  // Tek bir hasta kartı — hem doktor hem yönetici görünümünde kullanılır.
+  const renderPatientCard = (patient: AssignedPatient) => (
+    <div
+      key={patient.id}
+      className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 backdrop-blur-sm border border-white/20 rounded-2xl p-6 shadow-lg"
+    >
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-4">
+          <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center shadow-lg">
+            <span className="text-white text-2xl">👤</span>
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-2xl font-bold text-white">{patient.fullName}</h3>
+              {patient.appointmentType && (
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${
+                  patient.appointmentType === 'ilk_muayene'
+                    ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300'
+                    : patient.appointmentType === 'muayene'
+                    ? 'bg-amber-500/20 border-amber-400/50 text-amber-300'
+                    : patient.appointmentType === 'kontrol'
+                    ? 'bg-violet-500/20 border-violet-400/50 text-violet-300'
+                    : patient.appointmentType === 'rutin_tedavi'
+                    ? 'bg-teal-500/20 border-teal-400/50 text-teal-300'
+                    : 'bg-blue-500/20 border-blue-400/50 text-blue-300'
+                }`}>
+                  {patient.appointmentType === 'ilk_muayene' ? 'İlk Muayene'
+                    : patient.appointmentType === 'muayene' ? 'Muayene'
+                    : patient.appointmentType === 'kontrol' ? 'Kontrol'
+                    : patient.appointmentType === 'rutin_tedavi' ? 'Rutin'
+                    : 'Tedavi'}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              {getStatusBadge(patient.status)}
+              <span className="text-white/60 text-sm">
+                {formatTimeSince(patient.assignedAt)}
+              </span>
+            </div>
+            {patient.assignedDoctorName && (
+              <div className="mt-2">
+                <span className="px-3 py-1 bg-gradient-to-r from-green-500/20 to-blue-500/20 border border-green-500/30 text-green-300 text-sm rounded-full font-medium">
+                  👨‍⚕️ Dr. {patient.assignedDoctorName}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <button
+            onClick={() => handleViewAnamnez(patient)}
+            className="px-4 py-2 bg-purple-500/30 hover:bg-purple-500/40 border border-purple-500/50 rounded-xl text-purple-200 hover:text-white text-sm font-medium transition-all duration-200 flex items-center gap-2"
+          >
+            📋 Anamnez Görüntüle
+          </button>
+
+          {patient.status === 'assigned_to_doctor' && (() => {
+            if (patient.additionalTreatmentPending === true) {
+              const pendingEkTedavi = treatmentRequests.find(
+                r => r.patientId === patient.id && r.status === 'pending'
+              );
+              return (
+                <button
+                  onClick={() => pendingEkTedavi
+                    ? handleOpenTreatmentRequestModal(pendingEkTedavi)
+                    : undefined}
+                  className="px-4 py-2 bg-orange-500/30 hover:bg-orange-500/40 border border-orange-500/50 rounded-xl text-orange-200 hover:text-white text-sm font-medium transition-all duration-200 flex items-center gap-2"
+                >
+                  💊 Ek Tedaviyi Onayla
+                </button>
+              );
+            }
+            return (
+              <button
+                onClick={() => handleOpenTreatmentModal(patient)}
+                className="px-4 py-2 bg-blue-500/30 hover:bg-blue-500/40 border border-blue-500/50 rounded-xl text-blue-200 hover:text-white text-sm font-medium transition-all duration-200 flex items-center gap-2"
+              >
+                🏥 Tedaviye Başla
+              </button>
+            );
+          })()}
+
+          {patient.status === 'in_treatment' && (
+            <button
+              onClick={() => handleCompleteTreatment(patient)}
+              className="px-4 py-2 bg-green-500/30 hover:bg-green-500/40 border border-green-500/50 rounded-xl text-green-200 hover:text-white text-sm font-medium transition-all duration-200 flex items-center gap-2"
+            >
+              ✅ Tedaviyi Tamamla
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4">
+          <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
+            <span className="text-lg">📱</span>
+            İletişim Bilgileri
+          </h4>
+          <div className="space-y-2 text-sm">
+            <p className="text-white/70">
+              <span className="font-medium text-white/90">TC No:</span> {patient.tcNo}
+            </p>
+            <p className="text-white/70">
+              <span className="font-medium text-white/90">Telefon:</span> {patient.phone}
+            </p>
+            <p className="text-white/70">
+              <span className="font-medium text-white/90">Acil Telefon:</span> {patient.emergencyPhone || 'Belirtilmemiş'}
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4">
+          <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
+            <span className="text-lg">👨‍⚕️</span>
+            Hasta Bilgileri
+          </h4>
+          <div className="space-y-2 text-sm">
+            <p className="text-white/70">
+              <span className="font-medium text-white/90">Yaş:</span> {patient.birthDate ?
+                new Date().getFullYear() - new Date(patient.birthDate).getFullYear() : 'Belirtilmemiş'
+              }
+            </p>
+            <p className="text-white/70">
+              <span className="font-medium text-white/90">Cinsiyet:</span> {patient.gender === 'Erkek' ? 'Erkek' : patient.gender === 'Kadın' ? 'Kadın' : patient.gender === 'male' ? 'Erkek' : patient.gender === 'female' ? 'Kadın' : patient.gender || 'Belirtilmemiş'}
+            </p>
+            <p className="text-white/70">
+              <span className="font-medium text-white/90">Geliş Nedeni:</span> {patient.visitReason}
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4">
+          <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
+            <span className="text-lg">⏰</span>
+            Zaman Bilgileri
+          </h4>
+          <div className="space-y-2 text-sm">
+            <p className="text-white/70">
+              <span className="font-medium text-white/90">Atanma:</span> {formatDate(patient.assignedAt)}
+            </p>
+            {patient.anamrezCompletedAt && (
+              <p className="text-white/70">
+                <span className="font-medium text-white/90">Anamnez:</span> {formatDate(patient.anamrezCompletedAt)}
+              </p>
+            )}
+            <p className="text-white/70">
+              <span className="font-medium text-white/90">Kayıt:</span> {formatDate(patient.createdAt)}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {patient.selectedDiagnosisSystems && patient.selectedDiagnosisSystems.length > 0 && (
+        <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4">
+          <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
+            <span className="text-lg">🔍</span>
+            Seçilen Tanı Sistemleri
+          </h4>
+          <div className="flex flex-wrap gap-2">
+            {patient.selectedDiagnosisSystems.map((system, index) => (
+              <span
+                key={index}
+                className="px-3 py-1 bg-gradient-to-r from-purple-500/20 to-blue-500/20 border border-purple-500/30 text-purple-300 text-sm rounded-full font-medium"
+              >
+                {system}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  // Yönetici görünümü için hastaları atanan doktora göre grupla.
+  const patientsByDoctor = (() => {
+    const groups: Record<string, { doctorName: string; patients: AssignedPatient[] }> = {};
+    assignedPatients.forEach(p => {
+      const key = p.assignedDoctorId || 'unknown';
+      if (!groups[key]) groups[key] = { doctorName: p.assignedDoctorName || 'Atanmamış', patients: [] };
+      groups[key].patients.push(p);
+    });
+    return Object.entries(groups).sort((a, b) => a[1].doctorName.localeCompare(b[1].doctorName, 'tr'));
+  })();
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -688,15 +904,21 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
         <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
           <div className="text-center mb-8">
             <h1 className="text-4xl font-bold text-white mb-2">
-              Doktor Paneli
+              {isSupervisor ? 'Doktor Paneli — Yönetici Görünümü' : 'Doktor Paneli'}
             </h1>
             <p className="text-white/70 text-lg">
-              Tüm doktor atamalarını görüntüleyin ve yönetin
+              {isSupervisor
+                ? 'Tüm doktorların hastalarını görüntüleyin ve doktor adına işlem yapın'
+                : 'Tüm doktor atamalarını görüntüleyin ve yönetin'}
             </p>
             {doctorProfile && (
               <div className="mt-4 p-4 bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl inline-block shadow-sm">
-                <p className="text-white font-semibold">Dr. {doctorProfile.fullName}</p>
-                <p className="text-white/70 text-sm">{doctorProfile.specialization} • {doctorProfile.department}</p>
+                <p className="text-white font-semibold">{isSupervisor ? doctorProfile.fullName : `Dr. ${doctorProfile.fullName}`}</p>
+                <p className="text-white/70 text-sm">
+                  {isSupervisor
+                    ? (role === 'admin' ? 'Yönetici / Klinik Sahibi' : 'Asistan')
+                    : `${doctorProfile.specialization} • ${doctorProfile.department}`}
+                </p>
               </div>
             )}
           </div>
@@ -1011,11 +1233,38 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
           <div className="flex items-center gap-3 mb-6">
             <span className="text-3xl">👤</span>
             <h2 className="text-2xl font-bold text-white">
-              Tüm Doktor Atamaları {assignedPatients.length > 0 ? `(${assignedPatients.length} hasta)` : ''}
+              {isSupervisor ? 'Tüm Doktorların Hastaları' : 'Tüm Doktor Atamaları'} {assignedPatients.length > 0 ? `(${assignedPatients.length} hasta)` : ''}
             </h2>
           </div>
 
           {assignedPatients.length > 0 ? (
+            isSupervisor ? (
+              <div className="space-y-8">
+                {patientsByDoctor.map(([docId, group]) => {
+                  const isCollapsed = collapsedDoctors[docId];
+                  return (
+                    <div key={docId} className="border border-white/15 rounded-2xl overflow-hidden">
+                      <button
+                        onClick={() => setCollapsedDoctors(prev => ({ ...prev, [docId]: !prev[docId] }))}
+                        className="w-full flex items-center justify-between gap-3 px-5 py-4 bg-white/10 hover:bg-white/15 transition-all"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">👨‍⚕️</span>
+                          <span className="text-white font-bold text-lg">Dr. {group.doctorName}</span>
+                          <span className="px-2 py-0.5 bg-blue-500/20 border border-blue-400/40 rounded-full text-blue-200 text-xs font-semibold">{group.patients.length} hasta</span>
+                        </div>
+                        <span className={`text-white/60 transform transition-transform ${isCollapsed ? '' : 'rotate-180'}`}>▼</span>
+                      </button>
+                      {!isCollapsed && (
+                        <div className="p-4 space-y-6 bg-black/10">
+                          {group.patients.map((patient) => renderPatientCard(patient))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
             <div className="space-y-6">
               {assignedPatients.map((patient) => (
                 <div 
@@ -1192,12 +1441,13 @@ const DoctorPanel: React.FC<DoctorPanelProps> = ({ doctorProfile }) => {
                 </div>
               ))}
             </div>
+            )
           ) : (
             <div className="text-center py-12">
               <div className="text-8xl mb-6">🩺</div>
               <h3 className="text-white text-2xl font-semibold mb-4">Atanmış Hasta Yok</h3>
               <p className="text-white/70 text-lg mb-2">
-                Size henüz hasta ataması yapılmamış.
+                {isSupervisor ? 'Klinikte aktif doktor ataması bulunmuyor.' : 'Size henüz hasta ataması yapılmamış.'}
               </p>
               <p className="text-white/50 text-sm">
                 Asistan tarafından hasta ataması yapıldığında burada görünecektir.

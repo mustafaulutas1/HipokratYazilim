@@ -667,6 +667,8 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
           setSelectedPatientForDetails(null);
         }}
         patient={selectedPatientForDetails}
+        doctorProfile={doctorProfile}
+        onPatientUpdated={fetchPatients}
       />
 
       {/* Past History Modal - Using AnamrezFormModal in past history mode */}

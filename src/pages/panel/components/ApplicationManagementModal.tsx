@@ -28,13 +28,17 @@ interface ApplicationManagementModalProps {
   onClose: () => void;
   doctorProfile: DoctorProfile | null;
   onApplicationsUpdate?: () => void;
+  // When false, price-related actions (add / edit / delete / bulk update) are hidden.
+  // The list and prices stay visible in read-only mode.
+  canManagePrices?: boolean;
 }
 
 const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
   isOpen,
   onClose,
   doctorProfile,
-  onApplicationsUpdate
+  onApplicationsUpdate,
+  canManagePrices = false
 }) => {
   const [savedApplications, setSavedApplications] = useState<SavedApplication[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -109,6 +113,8 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
   }, [isOpen, doctorProfile?.clinicId]);
 
   const saveApplication = async () => {
+    if (!canManagePrices) return;
+
     if (!formData.name.trim()) {
       alert('Lütfen uygulama adı girin.');
       return;
@@ -178,6 +184,8 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
   };
 
   const deleteApplication = async (applicationId: string) => {
+    if (!canManagePrices) return;
+
     const application = savedApplications.find(app => app.id === applicationId);
     
     // Prevent deleting standard applications
@@ -212,6 +220,8 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
   };
 
   const applyPercentageIncrease = async () => {
+    if (!canManagePrices) return;
+
     const percentage = parseFloat(percentageIncrease);
 
     if (isNaN(percentage) || percentage === 0) {
@@ -292,27 +302,29 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
         <div className="p-6 max-h-[calc(90vh-120px)] overflow-y-auto">
           {!showAddForm ? (
             <>
-              {/* Action Buttons */}
-              <div className="mb-6 flex items-center gap-3">
-                <button
-                  onClick={() => setShowAddForm(true)}
-                  className="px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-xl font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center gap-2"
-                >
-                  ➕ Yeni Uygulama Ekle
-                </button>
-
-                {savedApplications.length > 0 && (
+              {/* Action Buttons - only for roles allowed to manage prices */}
+              {canManagePrices && (
+                <div className="mb-6 flex items-center gap-3">
                   <button
-                    onClick={() => setShowPriceUpdateSection(!showPriceUpdateSection)}
-                    className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center gap-2"
+                    onClick={() => setShowAddForm(true)}
+                    className="px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-xl font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center gap-2"
                   >
-                    📊 {showPriceUpdateSection ? 'Gizle' : 'Toplu Fiyat Güncelle'}
+                    ➕ Yeni Uygulama Ekle
                   </button>
-                )}
-              </div>
+
+                  {savedApplications.length > 0 && (
+                    <button
+                      onClick={() => setShowPriceUpdateSection(!showPriceUpdateSection)}
+                      className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center gap-2"
+                    >
+                      📊 {showPriceUpdateSection ? 'Gizle' : 'Toplu Fiyat Güncelle'}
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Percentage Increase Section */}
-              {showPriceUpdateSection && savedApplications.length > 0 && (
+              {canManagePrices && showPriceUpdateSection && savedApplications.length > 0 && (
                 <div className="mb-6 p-5 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-400/30 rounded-xl">
                   <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                     📊 Toplu Fiyat Güncelleme
@@ -422,22 +434,24 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
                           </div>
                         </div>
                         
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => editApplication(application)}
-                            className="px-3 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-blue-300 hover:text-blue-200 transition-all duration-200 text-sm"
-                          >
-                            {application.clinicId === 'STANDARD' ? '📋 Kopyala' : '✏️ Düzenle'}
-                          </button>
-                          {application.clinicId !== 'STANDARD' && (
+                        {canManagePrices && (
+                          <div className="flex items-center gap-2">
                             <button
-                              onClick={() => deleteApplication(application.id)}
-                              className="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-all duration-200 text-sm"
+                              onClick={() => editApplication(application)}
+                              className="px-3 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-blue-300 hover:text-blue-200 transition-all duration-200 text-sm"
                             >
-                              🗑️ Sil
+                              {application.clinicId === 'STANDARD' ? '📋 Kopyala' : '✏️ Düzenle'}
                             </button>
-                          )}
-                        </div>
+                            {application.clinicId !== 'STANDARD' && (
+                              <button
+                                onClick={() => deleteApplication(application.id)}
+                                className="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-all duration-200 text-sm"
+                              >
+                                🗑️ Sil
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}

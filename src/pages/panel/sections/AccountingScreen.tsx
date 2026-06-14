@@ -41,6 +41,9 @@ interface PaymentPatient {
   paymentDate?: string;
   paymentMethod?: string;
   paymentMethods?: PaymentMethodEntry[];
+  // Discount applied at payment time = expected (catalog) total minus what was actually
+  // charged, excluding any portion deferred as debt. 0 / undefined when no discount.
+  discountAmount?: number;
   updatedAt?: string;
   treatmentApplied?: boolean;
   treatmentNotAppliedReason?: string;
@@ -145,6 +148,19 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
   const [debtPaymentNote, setDebtPaymentNote] = useState<string>('');
   const [debtSearchQuery, setDebtSearchQuery] = useState<string>('');
   const [reportPeriod, setReportPeriod] = useState<string>('daily');
+  // Report modal filters — applied on top of the loaded period; they drive both the
+  // on-screen lists/summary and the exported Excel (only matching rows are exported).
+  const [reportFilters, setReportFilters] = useState({
+    search: '',        // hasta adı / TC / telefon
+    method: 'all',     // ödeme/iade yöntemi
+    minAmount: '',
+    maxAmount: '',
+    startDate: '',     // dönem içinde özel tarih aralığı
+    endDate: '',
+    onlyDiscount: false, // sadece indirim yapılmış ödemeler
+    recordType: 'all' as 'all' | 'payments' | 'refunds',
+  });
+  const [reportFiltersOpen, setReportFiltersOpen] = useState(false);
   const [medicalApplicationPrices, setMedicalApplicationPrices] = useState<MedicalApplicationPrice[]>([]);
   const [lastAutoCalculatedAmount, setLastAutoCalculatedAmount] = useState<string>('');
   const [reportData, setReportData] = useState<{
@@ -477,13 +493,25 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       
       // Determine if there's new debt from this transaction
       const newDebtAmount = isPartialPayment && remainingDebtAmount ? parseFloat(remainingDebtAmount) : 0;
-      
+
+      // Discount = expected (catalog) total for the same selections minus the amount
+      // actually charged, excluding any portion the patient deferred as debt. This lets
+      // the accounting report surface "İndirim Tutarı" per payment.
+      const expectedAmount = calculateAutoPaymentAmount(
+        selectedPatient,
+        selectedApplications,
+        includeMuayene,
+        includeDebtInPayment
+      );
+      const discountAmount = Math.max(0, Math.round((expectedAmount - currentPayment - newDebtAmount) * 100) / 100);
+
       // Total debt = new debt from this payment + any previous debt NOT being paid off
       const totalRemainingDebt = newDebtAmount + (!includeDebtInPayment && selectedPatient.debtAmount ? selectedPatient.debtAmount : 0);
       
       const updateData: any = {
         paymentCompleted: true,
         paymentAmount: currentPayment,
+        discountAmount: discountAmount,
         paymentDate: new Date().toISOString(),
         paymentMethod: paymentMethod,
         // Multi-payment method support
@@ -873,6 +901,95 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
     }
   };
 
+  // Per-payment discount. Uses the stored discountAmount; for older records that predate
+  // the field, best-effort fallback to (originalExpectedAmount − paymentAmount).
+  const getDiscountAmount = (p: PaymentPatient): number => {
+    if (typeof p.discountAmount === 'number') return p.discountAmount;
+    const expected = Number(p.originalExpectedAmount) || 0;
+    const paid = Number(p.paymentAmount) || 0;
+    return expected > paid ? Math.round((expected - paid) * 100) / 100 : 0;
+  };
+
+  // ── Report filtering ────────────────────────────────────────────────────────
+  const matchesReportText = (p: PaymentPatient): boolean => {
+    const q = reportFilters.search.trim().toLowerCase();
+    if (!q) return true;
+    return [p.fullName, p.tcNo, p.phone].some(v => (v || '').toLowerCase().includes(q));
+  };
+
+  const matchesReportAmount = (amount: number): boolean => {
+    const min = parseFloat(reportFilters.minAmount);
+    const max = parseFloat(reportFilters.maxAmount);
+    if (!isNaN(min) && amount < min) return false;
+    if (!isNaN(max) && amount > max) return false;
+    return true;
+  };
+
+  const matchesReportDate = (dateStr?: string): boolean => {
+    if (!reportFilters.startDate && !reportFilters.endDate) return true;
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    if (reportFilters.startDate) {
+      const s = new Date(reportFilters.startDate); s.setHours(0, 0, 0, 0);
+      if (d < s) return false;
+    }
+    if (reportFilters.endDate) {
+      const e = new Date(reportFilters.endDate); e.setHours(23, 59, 59, 999);
+      if (d > e) return false;
+    }
+    return true;
+  };
+
+  const matchesReportMethod = (p: PaymentPatient, kind: 'payment' | 'refund'): boolean => {
+    if (reportFilters.method === 'all') return true;
+    const methods = kind === 'payment' ? (p.paymentMethods || []) : (p.refundMethods || []);
+    const primary = kind === 'payment' ? p.paymentMethod : p.refundMethod;
+    if (methods.length > 0) return methods.some(m => m.method === reportFilters.method);
+    return (primary || 'nakit') === reportFilters.method;
+  };
+
+  const filteredPayments = (reportFilters.recordType === 'refunds' ? [] : reportData.payments).filter(p =>
+    matchesReportText(p) &&
+    matchesReportAmount(p.paymentAmount || 0) &&
+    matchesReportDate(p.paymentDate || p.updatedAt || p.createdAt) &&
+    matchesReportMethod(p, 'payment') &&
+    (!reportFilters.onlyDiscount || getDiscountAmount(p) > 0)
+  );
+
+  // Discounts only apply to payments; when "only discount" is on, refunds are excluded.
+  const filteredRefunds = (reportFilters.recordType === 'payments' || reportFilters.onlyDiscount ? [] : reportData.refunds).filter(p =>
+    matchesReportText(p) &&
+    matchesReportAmount(p.refundAmount || 0) &&
+    matchesReportDate(p.refundDate || p.updatedAt || p.createdAt) &&
+    matchesReportMethod(p, 'refund')
+  );
+
+  const filteredTotalPayments = filteredPayments.reduce((s, p) => s + (p.paymentAmount || 0), 0);
+  const filteredTotalRefunds = filteredRefunds.reduce((s, p) => s + (p.refundAmount || 0), 0);
+  const filteredTotalDiscount = filteredPayments.reduce((s, p) => s + getDiscountAmount(p), 0);
+  const filteredNetRevenue = filteredTotalPayments - filteredTotalRefunds;
+
+  // Unique patient names present in the loaded period (for the patient picker).
+  const reportPatientNames = Array.from(
+    new Set([...reportData.payments, ...reportData.refunds].map(p => p.fullName).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b, 'tr'));
+
+  const activeReportFilterCount = [
+    reportFilters.search !== '',
+    reportFilters.method !== 'all',
+    reportFilters.minAmount !== '',
+    reportFilters.maxAmount !== '',
+    reportFilters.startDate !== '',
+    reportFilters.endDate !== '',
+    reportFilters.onlyDiscount,
+    reportFilters.recordType !== 'all',
+  ].filter(Boolean).length;
+
+  const resetReportFilters = () => setReportFilters({
+    search: '', method: 'all', minAmount: '', maxAmount: '',
+    startDate: '', endDate: '', onlyDiscount: false, recordType: 'all',
+  });
+
   const generateExcelReport = async () => {
     const periodText = reportPeriod === 'daily' ? 'Günlük' : reportPeriod === 'weekly' ? 'Haftalık' : 'Aylık';
     const currentDate = new Date().toLocaleDateString('tr-TR');
@@ -940,23 +1057,32 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       if (opts.numFmt) cell.numFmt = opts.numFmt;
     };
 
+    // ── Filtrelenmiş veri (ekrandaki filtreler Excel'e de uygulanır) ───────────
+    const payments = filteredPayments;
+    const refunds = filteredRefunds;
+    const totalPayments = filteredTotalPayments;
+    const totalRefunds = filteredTotalRefunds;
+    const netRevenue = filteredNetRevenue;
+    const totalDiscount = filteredTotalDiscount;
+    const paymentCount = payments.length;
+    const refundCount = refunds.length;
+
     // ── Ek istatistikler hesapla ──────────────────────────────────────────────
-    const { totalPayments, totalRefunds, netRevenue, paymentCount, refundCount } = reportData.periodStats;
     const avgPayment = paymentCount > 0 ? totalPayments / paymentCount : 0;
-    const maxPayment = reportData.payments.reduce((m, p) => Math.max(m, p.paymentAmount || 0), 0);
-    const minPayment = reportData.payments.length > 0
-      ? reportData.payments.reduce((m, p) => Math.min(m, p.paymentAmount || Infinity), Infinity)
+    const maxPayment = payments.reduce((m, p) => Math.max(m, p.paymentAmount || 0), 0);
+    const minPayment = payments.length > 0
+      ? payments.reduce((m, p) => Math.min(m, p.paymentAmount || Infinity), Infinity)
       : 0;
 
     // Tarih aralığı
-    const payDates = reportData.payments.map(p => new Date(p.paymentDate || p.updatedAt || p.createdAt || '').getTime()).filter(Boolean);
+    const payDates = payments.map(p => new Date(p.paymentDate || p.updatedAt || p.createdAt || '').getTime()).filter(Boolean);
     const periodStart = payDates.length ? new Date(Math.min(...payDates)).toLocaleDateString('tr-TR') : '-';
     const periodEnd   = payDates.length ? new Date(Math.max(...payDates)).toLocaleDateString('tr-TR') : '-';
     const dateRange   = payDates.length ? `${periodStart} – ${periodEnd}` : '-';
 
     // Ödeme yöntemi dağılımı
     const methodTotals: Record<string, { count: number; amount: number }> = {};
-    reportData.payments.forEach(p => {
+    payments.forEach(p => {
       if (p.paymentMethods && p.paymentMethods.length > 0) {
         p.paymentMethods.forEach((m: any) => {
           if ((m.amount || 0) > 0) {
@@ -1019,6 +1145,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       ['Ortalama Ödeme Tutarı', avgPayment,    '#,##0.00 ₺',  C.greenText],
       ['En Yüksek Ödeme',       maxPayment,    '#,##0.00 ₺',  C.greenText],
       ['En Düşük Ödeme',        minPayment === Infinity ? 0 : minPayment, '#,##0.00 ₺', C.greenText],
+      ['Toplam İndirim Tutarı', totalDiscount, '#,##0.00 ₺',  C.redText],
       ['Toplam İade Sayısı',    refundCount,   '#,##0 "adet"', C.redText],
       ['Toplam İade Tutarı',    totalRefunds,  '#,##0.00 ₺',  C.redText],
       ['Net Gelir',             netRevenue,    '#,##0.00 ₺',  C.headerBg],
@@ -1049,20 +1176,21 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
     }
 
     // ── ÖDEMELER SAYFASI ─────────────────────────────────────────────────────
-    if (reportData.payments.length > 0) {
+    if (payments.length > 0) {
       const PS = workbook.addWorksheet('Ödemeler', { views: [{ showGridLines: false, state: 'frozen', ySplit: 2 }] });
       PS.columns = [
         { width: 26 }, // Hasta Adı
         { width: 15 }, // TC No
         { width: 15 }, // Telefon
         { width: 20 }, // Tutar
+        { width: 18 }, // İndirim Tutarı
         { width: 14 }, // Tarih
         { width: 10 }, // Saat
         { width: 22 }, // Yöntem
       ];
 
       // Başlık
-      PS.mergeCells('A1:G1');
+      PS.mergeCells('A1:H1');
       const ph = PS.getCell('A1');
       ph.value = `Ödeme Detayları  ·  ${periodText}  ·  ${currentDate}`;
       ph.font = { bold: true, size: 12, color: { argb: C.white }, name: 'Calibri' };
@@ -1072,41 +1200,43 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       PS.getRow(1).height = 28;
 
       // Kolon başlıkları
-      ['Hasta Adı', 'TC No', 'Telefon', 'Ödeme Tutarı', 'Tarih', 'Saat', 'Ödeme Yöntemi'].forEach((h, i) => {
+      ['Hasta Adı', 'TC No', 'Telefon', 'Ödeme Tutarı', 'İndirim Tutarı', 'Tarih', 'Saat', 'Ödeme Yöntemi'].forEach((h, i) => {
         colHeader(PS.getRow(2).getCell(i + 1), h, C.greenBg);
       });
       PS.getRow(2).height = 22;
 
       // Veri satırları
-      reportData.payments.forEach((p, idx) => {
+      payments.forEach((p, idx) => {
         const alt = idx % 2 === 1;
+        const discount = getDiscountAmount(p);
         const r = PS.addRow([]);
         r.height = 20;
         dataCell(r.getCell(1), p.fullName, { alt });
         dataCell(r.getCell(2), p.tcNo || '-', { alt });
         dataCell(r.getCell(3), p.phone || '-', { alt });
         dataCell(r.getCell(4), p.paymentAmount || 0, { numFmt: '#,##0.00 ₺', align: 'right', alt });
-        dataCell(r.getCell(5), p.paymentDate ? new Date(p.paymentDate).toLocaleDateString('tr-TR') : '-', { align: 'center', alt });
-        dataCell(r.getCell(6), p.paymentDate ? new Date(p.paymentDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '-', { align: 'center', alt });
-        dataCell(r.getCell(7), (p.paymentMethods?.length ?? 0) > 0 ? formatPaymentMethods(p.paymentMethods!) : getPaymentMethodLabel(p.paymentMethod || 'nakit'), { alt });
+        dataCell(r.getCell(5), discount > 0 ? discount : '-', { numFmt: discount > 0 ? '#,##0.00 ₺' : undefined, align: 'right', alt });
+        dataCell(r.getCell(6), p.paymentDate ? new Date(p.paymentDate).toLocaleDateString('tr-TR') : '-', { align: 'center', alt });
+        dataCell(r.getCell(7), p.paymentDate ? new Date(p.paymentDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '-', { align: 'center', alt });
+        dataCell(r.getCell(8), (p.paymentMethods?.length ?? 0) > 0 ? formatPaymentMethods(p.paymentMethods!) : getPaymentMethodLabel(p.paymentMethod || 'nakit'), { alt });
       });
 
       // Toplam satırı
       const tr = PS.addRow([]);
       tr.height = 24;
-      ['TOPLAM', '', '', totalPayments, '', '', ''].forEach((v, i) => {
+      ['TOPLAM', '', '', totalPayments, totalDiscount, '', '', ''].forEach((v, i) => {
         const c = tr.getCell(i + 1);
         c.value = v || null;
         c.font = { bold: true, size: 10, color: { argb: C.white }, name: 'Calibri' };
         c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${C.greenBg}` } };
-        c.alignment = { horizontal: i === 3 ? 'right' : 'left', vertical: 'middle' };
+        c.alignment = { horizontal: (i === 3 || i === 4) ? 'right' : 'left', vertical: 'middle' };
         c.border = allBorders(C.greenBg);
-        if (i === 3) c.numFmt = '#,##0.00 ₺';
+        if (i === 3 || i === 4) c.numFmt = '#,##0.00 ₺';
       });
     }
 
     // ── İADELER SAYFASI ──────────────────────────────────────────────────────
-    if (reportData.refunds.length > 0) {
+    if (refunds.length > 0) {
       const RS = workbook.addWorksheet('İadeler', { views: [{ showGridLines: false, state: 'frozen', ySplit: 2 }] });
       RS.columns = [
         { width: 26 }, { width: 15 }, { width: 15 },
@@ -1128,7 +1258,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       });
       RS.getRow(2).height = 22;
 
-      reportData.refunds.forEach((p, idx) => {
+      refunds.forEach((p, idx) => {
         const alt = idx % 2 === 1;
         const r = RS.addRow([]);
         r.height = 20;
@@ -2941,26 +3071,162 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                 </div>
               </div>
 
+              {/* Filtreler */}
+              <div className="bg-gray-50 border border-gray-200 rounded-lg">
+                <div className="flex items-center justify-between p-4">
+                  <button
+                    type="button"
+                    onClick={() => setReportFiltersOpen(o => !o)}
+                    className="flex items-center gap-2 font-semibold text-gray-800"
+                  >
+                    <span className={`text-gray-500 transition-transform duration-200 ${reportFiltersOpen ? 'rotate-90' : ''}`}>▶</span>
+                    <span className="text-lg">🔎</span> Filtreler
+                    {activeReportFilterCount > 0 && (
+                      <span className="ml-1 px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                        {activeReportFilterCount} aktif
+                      </span>
+                    )}
+                  </button>
+                  {reportFiltersOpen && (
+                    <button
+                      onClick={resetReportFilters}
+                      className="text-xs text-gray-500 hover:text-gray-800 underline"
+                    >
+                      Filtreleri Temizle
+                    </button>
+                  )}
+                </div>
+
+                {reportFiltersOpen && (
+                <div className="px-4 pb-4 space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="md:col-span-3">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Hasta</label>
+                    <select
+                      value={reportFilters.search}
+                      onChange={(e) => setReportFilters(f => ({ ...f, search: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">Tüm Hastalar</option>
+                      {reportPatientNames.map(name => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Kayıt Türü</label>
+                    <select
+                      value={reportFilters.recordType}
+                      onChange={(e) => setReportFilters(f => ({ ...f, recordType: e.target.value as 'all' | 'payments' | 'refunds' }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="all">Ödemeler + İadeler</option>
+                      <option value="payments">Sadece Ödemeler</option>
+                      <option value="refunds">Sadece İadeler</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Ödeme Yöntemi</label>
+                    <select
+                      value={reportFilters.method}
+                      onChange={(e) => setReportFilters(f => ({ ...f, method: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="all">Tümü</option>
+                      <option value="nakit">Nakit</option>
+                      <option value="kartkredi">Kredi Kartı</option>
+                      <option value="kartdebit">Banka Kartı</option>
+                      <option value="havale">Havale/EFT</option>
+                      <option value="cek">Çek</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-end">
+                    <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none py-2">
+                      <input
+                        type="checkbox"
+                        checked={reportFilters.onlyDiscount}
+                        onChange={(e) => setReportFilters(f => ({ ...f, onlyDiscount: e.target.checked }))}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      Sadece indirim yapılanlar
+                    </label>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Min. Tutar (TL)</label>
+                    <input
+                      type="number"
+                      value={reportFilters.minAmount}
+                      onChange={(e) => setReportFilters(f => ({ ...f, minAmount: e.target.value }))}
+                      placeholder="0"
+                      min="0"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Maks. Tutar (TL)</label>
+                    <input
+                      type="number"
+                      value={reportFilters.maxAmount}
+                      onChange={(e) => setReportFilters(f => ({ ...f, maxAmount: e.target.value }))}
+                      placeholder="—"
+                      min="0"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Başlangıç Tarihi</label>
+                    <input
+                      type="date"
+                      value={reportFilters.startDate}
+                      onChange={(e) => setReportFilters(f => ({ ...f, startDate: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Bitiş Tarihi</label>
+                    <input
+                      type="date"
+                      value={reportFilters.endDate}
+                      onChange={(e) => setReportFilters(f => ({ ...f, endDate: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Filtreler aşağıdaki listeleri ve indirilen Excel'i etkiler — yalnızca eşleşen kayıtlar gösterilir/aktarılır.
+                </p>
+                </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                   <h4 className="font-semibold text-green-900 mb-3 flex items-center gap-2">
                     <span className="text-lg">💰</span>
-                    Ödemeler ({reportData.periodStats.paymentCount})
+                    Ödemeler ({filteredPayments.length})
                   </h4>
                   <div className="space-y-2 text-sm text-green-800">
-                    <p><span className="font-medium">Toplam Tutar:</span> {formatCurrency(reportData.periodStats.totalPayments)}</p>
-                    <p><span className="font-medium">Ortalama:</span> {reportData.periodStats.paymentCount > 0 ? formatCurrency(reportData.periodStats.totalPayments / reportData.periodStats.paymentCount) : '₺0,00'}</p>
+                    <p><span className="font-medium">Toplam Tutar:</span> {formatCurrency(filteredTotalPayments)}</p>
+                    <p><span className="font-medium">Ortalama:</span> {filteredPayments.length > 0 ? formatCurrency(filteredTotalPayments / filteredPayments.length) : '₺0,00'}</p>
+                    <p><span className="font-medium">Toplam İndirim:</span> {formatCurrency(filteredTotalDiscount)}</p>
                   </div>
                 </div>
 
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                   <h4 className="font-semibold text-red-900 mb-3 flex items-center gap-2">
                     <span className="text-lg">🔄</span>
-                    İadeler ({reportData.periodStats.refundCount})
+                    İadeler ({filteredRefunds.length})
                   </h4>
                   <div className="space-y-2 text-sm text-red-800">
-                    <p><span className="font-medium">Toplam Tutar:</span> {formatCurrency(reportData.periodStats.totalRefunds)}</p>
-                    <p><span className="font-medium">Ortalama:</span> {reportData.periodStats.refundCount > 0 ? formatCurrency(reportData.periodStats.totalRefunds / reportData.periodStats.refundCount) : '₺0,00'}</p>
+                    <p><span className="font-medium">Toplam Tutar:</span> {formatCurrency(filteredTotalRefunds)}</p>
+                    <p><span className="font-medium">Ortalama:</span> {filteredRefunds.length > 0 ? formatCurrency(filteredTotalRefunds / filteredRefunds.length) : '₺0,00'}</p>
                   </div>
                 </div>
               </div>
@@ -2968,7 +3234,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <h4 className="font-semibold text-blue-900 mb-2">Net Gelir</h4>
                 <div className="text-2xl font-bold text-blue-800">
-                  {formatCurrency(reportData.periodStats.netRevenue)}
+                  {formatCurrency(filteredNetRevenue)}
                 </div>
                 <p className="text-blue-600 text-sm mt-1">
                   {reportPeriod === 'daily' && 'Bugünkü net gelir'}
@@ -2978,7 +3244,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
               </div>
 
               {/* Ödemeler Listesi */}
-              {reportData.payments.length > 0 && (
+              {filteredPayments.length > 0 && (
                 <div className="bg-white border border-gray-200 rounded-lg p-4">
                   <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
                     <span className="text-lg">💰</span>
@@ -2986,7 +3252,9 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   </h4>
                   <div className="max-h-40 overflow-y-auto">
                     <div className="space-y-2">
-                      {reportData.payments.map((payment) => (
+                      {filteredPayments.map((payment) => {
+                        const discount = getDiscountAmount(payment);
+                        return (
                         <div key={payment.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                           <div>
                             <p className="font-medium text-sm">{payment.fullName}</p>
@@ -2994,19 +3262,23 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                           </div>
                           <div className="text-right">
                             <p className="font-medium text-sm text-green-600">{formatCurrency(payment.paymentAmount || 0)}</p>
+                            {discount > 0 && (
+                              <p className="text-xs text-orange-600 font-medium">İndirim: {formatCurrency(discount)}</p>
+                            )}
                             <p className="text-xs text-gray-600">{payment.paymentMethods && payment.paymentMethods.length > 0
                               ? formatPaymentMethods(payment.paymentMethods)
                               : getPaymentMethodLabel(payment.paymentMethod || 'nakit')}</p>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
               )}
 
               {/* İadeler Listesi */}
-              {reportData.refunds.length > 0 && (
+              {filteredRefunds.length > 0 && (
                 <div className="bg-white border border-gray-200 rounded-lg p-4">
                   <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
                     <span className="text-lg">🔄</span>
@@ -3014,7 +3286,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   </h4>
                   <div className="max-h-40 overflow-y-auto">
                     <div className="space-y-2">
-                      {reportData.refunds.map((refund) => (
+                      {filteredRefunds.map((refund) => (
                         <div key={refund.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                           <div>
                             <p className="font-medium text-sm">{refund.fullName}</p>
@@ -3033,14 +3305,16 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                 </div>
               )}
 
-              {reportData.payments.length === 0 && reportData.refunds.length === 0 && (
+              {filteredPayments.length === 0 && filteredRefunds.length === 0 && (
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
                   <div className="text-4xl mb-2">📊</div>
                   <h4 className="font-semibold text-gray-700 mb-2">Veri Bulunamadı</h4>
                   <p className="text-gray-600 text-sm">
-                    {reportPeriod === 'daily' && 'Bugün için ödeme veya iade kaydı bulunmuyor.'}
-                    {reportPeriod === 'weekly' && 'Bu hafta için ödeme veya iade kaydı bulunmuyor.'}
-                    {reportPeriod === 'monthly' && 'Bu ay için ödeme veya iade kaydı bulunmuyor.'}
+                    {reportData.payments.length > 0 || reportData.refunds.length > 0
+                      ? 'Seçilen filtrelere uyan kayıt bulunamadı.'
+                      : reportPeriod === 'daily' ? 'Bugün için ödeme veya iade kaydı bulunmuyor.'
+                      : reportPeriod === 'weekly' ? 'Bu hafta için ödeme veya iade kaydı bulunmuyor.'
+                      : 'Bu ay için ödeme veya iade kaydı bulunmuyor.'}
                   </p>
                 </div>
               )}
@@ -3055,7 +3329,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
               </button>
               <button
                 onClick={generateExcelReport}
-                disabled={reportData.payments.length === 0 && reportData.refunds.length === 0}
+                disabled={filteredPayments.length === 0 && filteredRefunds.length === 0}
                 className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg font-medium transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 📥 Excel İndir

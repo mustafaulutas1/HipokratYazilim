@@ -18,6 +18,20 @@ interface DepoPanelProps {
   } | null;
 }
 
+type DepoCategory = 'kirtasiye' | 'teknik' | 'temizlik' | 'sarf';
+
+// Ana depo kategorileri. "sarf" mevcut tüketim-türü akışını (İşlem/Genel Bazlı)
+// korur; "teknik" kat deposuna transfer edilmez; "temizlik" ve "kirtasiye"
+// asistan rolünün sorumluluğundadır.
+const DEPO_CATEGORIES: { key: DepoCategory; label: string; icon: string; accent: string }[] = [
+  { key: 'kirtasiye', label: 'Kırtasiye', icon: '✏️', accent: 'sky' },
+  { key: 'teknik', label: 'Teknik Depo', icon: '🔧', accent: 'slate' },
+  { key: 'temizlik', label: 'Temizlik Deposu', icon: '🧹', accent: 'teal' },
+  { key: 'sarf', label: 'Sarf Malzeme', icon: '💉', accent: 'rose' },
+];
+// Asistan rolünün depoda görebileceği kategoriler
+const ASISTAN_CATEGORIES: DepoCategory[] = ['temizlik', 'kirtasiye'];
+
 interface DepoUrun {
   id?: string;
   productName: string;
@@ -27,6 +41,7 @@ interface DepoUrun {
   purchaseDate: string;
   quantity: number;
   consumptionType?: 'islem-bazli' | 'genel-bazli';
+  category?: DepoCategory;
   clinicId: string;
   createdBy: string;
   createdAt: string;
@@ -118,18 +133,28 @@ const emptyUrun = (): Omit<DepoUrun, 'id' | 'clinicId' | 'createdBy' | 'createdA
   purchaseDate: new Date().toISOString().split('T')[0],
   quantity: 0,
   consumptionType: undefined,
+  category: undefined,
 });
 
 const todayDate = () => new Date().toISOString().split('T')[0];
 const nowTime = () => new Date().toTimeString().slice(0, 5);
 
 const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
+  // Depo Yönetimi ekranına erişebilen herkes tüm sekmeleri görebilir ve tüm
+  // işlemleri yapabilir. Rol bazlı kısıtlamalar kaldırıldı; erişim kontrolü
+  // artık yalnızca ekrana ulaşım izniyle (depo yetkisi) sağlanıyor.
+  const isAdmin = true;
+  const isBashemshire = false;
+  const isDepoyonetici = true;
+  const isNurse = false;
+  const canManage = true;
+
+  // Asistan rolü depoda yalnızca Temizlik ve Kırtasiye kategorilerini görür/yönetir.
   const userRole = doctorProfile?.role || doctorProfile?.userType || '';
-  const isAdmin = userRole === 'admin';
-  const isBashemshire = userRole === 'bashemshire';
-  const isDepoyonetici = userRole === 'depoyonetici';
-  const isNurse = userRole === 'nurse';
-  const canManage = isAdmin || isDepoyonetici;
+  const isAsistan = userRole === 'assistant';
+  const visibleCategories = isAsistan
+    ? DEPO_CATEGORIES.filter(c => ASISTAN_CATEGORIES.includes(c.key))
+    : DEPO_CATEGORIES;
 
   const [activeTab, setActiveTab] = useState<'ana-depo' | 'kat-deposu' | 'eslestirme' | 'malzeme-talebi'>('ana-depo');
   const [katActiveTab, setKatActiveTab] = useState<'stok' | 'kullanim'>('stok');
@@ -235,14 +260,16 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
   const openEdit = (urun: DepoUrun, depo: 'ana' | 'kat') => {
     setActiveDepo(depo);
     setEditingUrun(urun);
-    setFormData({ productName: urun.productName, stockCode: urun.stockCode, companyName: (urun as any).companyName || '', cost: urun.cost, purchaseDate: urun.purchaseDate, quantity: urun.quantity, consumptionType: urun.consumptionType });
+    setFormData({ productName: urun.productName, stockCode: urun.stockCode, companyName: (urun as any).companyName || '', cost: urun.cost, purchaseDate: urun.purchaseDate, quantity: urun.quantity, consumptionType: urun.consumptionType, category: urun.category });
     setShowAddModal(true);
   };
 
   const handleSave = async () => {
     if (!doctorProfile?.clinicId) return;
     if (!formData.productName.trim() || !formData.stockCode.trim()) { alert('Ürün adı ve stok kodu zorunludur.'); return; }
-    if (!formData.consumptionType) { alert('Tüketim türü zorunludur. Lütfen "İşlem Bazlı Tüketim" veya "Genel Bazlı Tüketim" seçeneklerinden birini seçin.'); return; }
+    if (activeDepo === 'ana' && !formData.category) { alert('Kategori zorunludur. Lütfen bir depo kategorisi seçin.'); return; }
+    // Tüketim türü yalnızca Sarf Malzeme kategorisi için zorunlu (mevcut işlem/genel akışı korunur).
+    if (activeDepo === 'ana' && formData.category === 'sarf' && !formData.consumptionType) { alert('Sarf Malzeme için tüketim türü zorunludur. Lütfen "İşlem Bazlı Tüketim" veya "Genel Bazlı Tüketim" seçeneklerinden birini seçin.'); return; }
     setSaving(true);
     const colName = activeDepo === 'ana' ? 'anaDepoUrunler' : 'katDepoUrunler';
     try {
@@ -325,6 +352,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
             await updateDoc(doc(db, 'katDepoUrunler', existing.id), {
               quantity: existing.quantity + actual,
               ...(anaUrun.consumptionType ? { consumptionType: anaUrun.consumptionType } : {}),
+              ...(anaUrun.category ? { category: anaUrun.category } : {}),
               updatedAt: new Date().toISOString(),
             });
           } else {
@@ -333,6 +361,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
               cost: anaUrun.cost ?? 0, purchaseDate: anaUrun.purchaseDate ?? todayDate(),
               quantity: actual,
               ...(anaUrun.consumptionType ? { consumptionType: anaUrun.consumptionType } : {}),
+              ...(anaUrun.category ? { category: anaUrun.category } : {}),
               clinicId: doctorProfile.clinicId,
               createdBy: doctorProfile.fullName, createdAt: new Date().toISOString(),
             });
@@ -681,6 +710,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
           await updateDoc(doc(db, 'katDepoUrunler', existing.id), {
             quantity: existing.quantity + ti.quantity,
             ...(anaUrun?.consumptionType ? { consumptionType: anaUrun.consumptionType } : {}),
+            ...(anaUrun?.category ? { category: anaUrun.category } : {}),
             updatedAt: new Date().toISOString(),
           });
         } else {
@@ -691,6 +721,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
             purchaseDate: anaUrun?.purchaseDate ?? todayDate(),
             quantity: ti.quantity,
             ...(anaUrun?.consumptionType ? { consumptionType: anaUrun.consumptionType } : {}),
+            ...(anaUrun?.category ? { category: anaUrun.category } : {}),
             clinicId: doctorProfile.clinicId,
             createdBy: doctorProfile.fullName,
             createdAt: new Date().toISOString(),
@@ -914,10 +945,52 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
     </div>
   );
 
+  // Tüketim türü alt-gruplaması (İşlem / Genel / Kategorisiz). Sarf Malzeme ve
+  // henüz kategorilenmemiş ürünler için kullanılır; mevcut görünümü korur.
+  const renderConsumptionGroups = (items: DepoUrun[], depo: 'ana' | 'kat') => {
+    const islemBazli = items.filter(u => u.consumptionType === 'islem-bazli');
+    const genelBazli = items.filter(u => u.consumptionType === 'genel-bazli');
+    const kategorisiz = items.filter(u => !u.consumptionType);
+    return (
+      <>
+        {islemBazli.length > 0 && (
+          <div className="border-b border-white/10">
+            <div className="px-4 py-2.5 bg-indigo-500/10 flex items-center gap-2">
+              <span className="text-indigo-300 text-base">⚙️</span>
+              <p className="text-indigo-300 font-semibold text-sm">İşlem Bazlı Tüketim</p>
+              <span className="ml-auto px-2 py-0.5 bg-indigo-500/20 border border-indigo-400/40 rounded-full text-indigo-300 text-xs">{islemBazli.length} ürün</span>
+            </div>
+            {renderUrunRows(islemBazli, depo)}
+          </div>
+        )}
+        {genelBazli.length > 0 && (
+          <div className="border-b border-white/10">
+            <div className="px-4 py-2.5 bg-green-500/10 flex items-center gap-2">
+              <span className="text-green-300 text-base">📦</span>
+              <p className="text-green-300 font-semibold text-sm">Genel Bazlı Tüketim</p>
+              <span className="ml-auto px-2 py-0.5 bg-green-500/20 border border-green-400/40 rounded-full text-green-300 text-xs">{genelBazli.length} ürün</span>
+            </div>
+            {renderUrunRows(genelBazli, depo)}
+          </div>
+        )}
+        {kategorisiz.length > 0 && (
+          <div className="border-b border-white/10">
+            <div className="px-4 py-2.5 bg-white/5 flex items-center gap-2">
+              <span className="text-white/40 text-base">📋</span>
+              <p className="text-white/40 font-semibold text-sm">Tüketim Türü Belirtilmemiş</p>
+              <span className="ml-auto px-2 py-0.5 bg-white/10 border border-white/20 rounded-full text-white/40 text-xs">{kategorisiz.length} ürün</span>
+            </div>
+            {renderUrunRows(kategorisiz, depo)}
+          </div>
+        )}
+      </>
+    );
+  };
+
   const UrunTable: React.FC<{ urunler: DepoUrun[]; depo: 'ana' | 'kat' }> = ({ urunler, depo }) => {
-    const islemBazli = urunler.filter(u => u.consumptionType === 'islem-bazli');
-    const genelBazli = urunler.filter(u => u.consumptionType === 'genel-bazli');
-    const kategorisiz = urunler.filter(u => !u.consumptionType);
+    // Eski (kategorisiz) ürünler "Diğer" başlığı altında, mevcut tüketim-türü
+    // görünümüyle aynen gösterilir; böylece mevcut işlevsellik bozulmaz.
+    const uncategorized = urunler.filter(u => !u.category);
 
     return (
       <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl overflow-hidden">
@@ -926,7 +999,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
             {depo === 'ana' ? '🏭 Ana Depo Stok Listesi' : '🏥 Kat Deposu Stok Listesi'}
           </h3>
           <div className="flex gap-2">
-            {depo === 'ana' && canManage && (
+            {depo === 'ana' && canManage && !isAsistan && (
               <button
                 onClick={openTransferModal}
                 className="px-4 py-2 bg-amber-500 hover:bg-amber-600 rounded-xl text-white font-semibold text-sm transition-all flex items-center gap-2"
@@ -952,39 +1025,36 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
           </div>
         ) : (
           <>
-            {/* İşlem Bazlı Tüketim */}
-            <div className="border-b border-white/10">
-              <div className="px-4 py-2.5 bg-indigo-500/10 flex items-center gap-2">
-                <span className="text-indigo-300 text-base">⚙️</span>
-                <p className="text-indigo-300 font-semibold text-sm">İşlem Bazlı Tüketim</p>
-                <span className="ml-auto px-2 py-0.5 bg-indigo-500/20 border border-indigo-400/40 rounded-full text-indigo-300 text-xs">{islemBazli.length} ürün</span>
-              </div>
-              {islemBazli.length === 0 ? (
-                <div className="p-6 text-center text-white/40 text-sm">Bu kategoride henüz ürün yok.</div>
-              ) : renderUrunRows(islemBazli, depo)}
-            </div>
-
-            {/* Genel Bazlı Tüketim */}
-            <div className={kategorisiz.length > 0 ? 'border-b border-white/10' : ''}>
-              <div className="px-4 py-2.5 bg-green-500/10 flex items-center gap-2">
-                <span className="text-green-300 text-base">📦</span>
-                <p className="text-green-300 font-semibold text-sm">Genel Bazlı Tüketim</p>
-                <span className="ml-auto px-2 py-0.5 bg-green-500/20 border border-green-400/40 rounded-full text-green-300 text-xs">{genelBazli.length} ürün</span>
-              </div>
-              {genelBazli.length === 0 ? (
-                <div className="p-6 text-center text-white/40 text-sm">Bu kategoride henüz ürün yok.</div>
-              ) : renderUrunRows(genelBazli, depo)}
-            </div>
-
-            {/* Kategorisiz */}
-            {kategorisiz.length > 0 && (
-              <div>
-                <div className="px-4 py-2.5 bg-white/5 flex items-center gap-2">
-                  <span className="text-white/40 text-base">📋</span>
-                  <p className="text-white/40 font-semibold text-sm">Kategorisiz</p>
-                  <span className="ml-auto px-2 py-0.5 bg-white/10 border border-white/20 rounded-full text-white/40 text-xs">{kategorisiz.length} ürün</span>
+            {/* 4 ana kategori (asistan rolünde yalnızca Temizlik + Kırtasiye) */}
+            {visibleCategories.map(cat => {
+              const items = urunler.filter(u => u.category === cat.key);
+              return (
+                <div key={cat.key} className="border-b border-white/10">
+                  <div className="px-4 py-3 bg-white/5 flex items-center gap-2">
+                    <span className="text-lg">{cat.icon}</span>
+                    <p className="text-white font-bold text-sm">{cat.label}</p>
+                    <span className="ml-auto px-2 py-0.5 bg-white/10 border border-white/20 rounded-full text-white/70 text-xs">{items.length} ürün</span>
+                  </div>
+                  {items.length === 0 ? (
+                    <div className="p-6 text-center text-white/40 text-sm">Bu kategoride henüz ürün yok.</div>
+                  ) : cat.key === 'sarf' ? (
+                    renderConsumptionGroups(items, depo)
+                  ) : (
+                    renderUrunRows(items, depo)
+                  )}
                 </div>
-                {renderUrunRows(kategorisiz, depo)}
+              );
+            })}
+
+            {/* Diğer — kategorisi olmayan eski ürünler (asistan görmez) */}
+            {!isAsistan && uncategorized.length > 0 && (
+              <div>
+                <div className="px-4 py-3 bg-white/5 flex items-center gap-2">
+                  <span className="text-lg">📋</span>
+                  <p className="text-white/60 font-bold text-sm">Diğer (Kategorisiz)</p>
+                  <span className="ml-auto px-2 py-0.5 bg-white/10 border border-white/20 rounded-full text-white/50 text-xs">{uncategorized.length} ürün</span>
+                </div>
+                {renderConsumptionGroups(uncategorized, depo)}
               </div>
             )}
           </>
@@ -1842,6 +1912,33 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
               ))}
               {activeDepo === 'ana' && (
                 <div>
+                  <label className="block text-white/70 text-sm mb-2">Kategori *</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(isAsistan ? DEPO_CATEGORIES.filter(c => ASISTAN_CATEGORIES.includes(c.key)) : DEPO_CATEGORIES).map(cat => {
+                      const selected = formData.category === cat.key;
+                      return (
+                        <button
+                          key={cat.key}
+                          type="button"
+                          onClick={() => setFormData(prev => ({
+                            ...prev,
+                            category: cat.key,
+                            // Sarf dışı kategorilerde tüketim türü kullanılmaz
+                            consumptionType: cat.key === 'sarf' ? prev.consumptionType : undefined,
+                          }))}
+                          className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium transition-all ${
+                            selected ? 'bg-green-500/15 border-green-400/60 text-white' : 'bg-white/5 border-white/15 text-white/60 hover:bg-white/10'
+                          }`}
+                        >
+                          <span className="text-base">{cat.icon}</span>{cat.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {activeDepo === 'ana' && (formData.category === 'sarf' || (!formData.category && editingUrun)) && (
+                <div>
                   <label className="block text-white/70 text-sm mb-2">Tüketim Türü *</label>
                   <div className="flex flex-col gap-2">
                     <label className="flex items-center gap-3 cursor-pointer p-3 rounded-xl border transition-all hover:bg-white/5"
@@ -1931,8 +2028,8 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                 {/* Tüketim türü sekme butonları */}
                 <div className="flex gap-2 mb-3">
                   {([
-                    { key: 'islem-bazli', label: '⚙️ İşlem Bazlı Tüketim', activeClass: 'bg-indigo-500/20 border-indigo-400/60 text-indigo-300', count: anaDepoUrunler.filter(u => u.consumptionType === 'islem-bazli').length },
-                    { key: 'genel-bazli', label: '📦 Genel Bazlı Tüketim', activeClass: 'bg-green-500/20 border-green-400/60 text-green-300', count: anaDepoUrunler.filter(u => u.consumptionType === 'genel-bazli').length },
+                    { key: 'islem-bazli', label: '⚙️ İşlem Bazlı Tüketim', activeClass: 'bg-indigo-500/20 border-indigo-400/60 text-indigo-300', count: anaDepoUrunler.filter(u => u.category !== 'teknik' && u.consumptionType === 'islem-bazli').length },
+                    { key: 'genel-bazli', label: '📦 Genel Bazlı Tüketim', activeClass: 'bg-green-500/20 border-green-400/60 text-green-300', count: anaDepoUrunler.filter(u => u.category !== 'teknik' && u.consumptionType === 'genel-bazli').length },
                   ] as const).map(tab => (
                     <button
                       key={tab.key}
@@ -1971,7 +2068,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
 
                     <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                       {anaDepoUrunler
-                        .filter(u => u.consumptionType === transferProductTab)
+                        .filter(u => u.category !== 'teknik' && u.consumptionType === transferProductTab)
                         .filter(u => u.productName.toLowerCase().includes(transferSearch.toLowerCase()) || u.stockCode.toLowerCase().includes(transferSearch.toLowerCase()))
                         .sort((a, b) => a.productName.localeCompare(b.productName, 'tr'))
                         .map(urun => {
@@ -2013,7 +2110,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                             </div>
                           );
                         })}
-                      {anaDepoUrunler.filter(u => u.consumptionType === transferProductTab).filter(u =>
+                      {anaDepoUrunler.filter(u => u.category !== 'teknik' && u.consumptionType === transferProductTab).filter(u =>
                         u.productName.toLowerCase().includes(transferSearch.toLowerCase()) || u.stockCode.toLowerCase().includes(transferSearch.toLowerCase())
                       ).length === 0 && (
                         <div className="p-6 text-center text-white/40 text-sm">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, doc, updateDoc, arrayUnion, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, updateDoc, arrayUnion, getDoc, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage } from '../../../firebase/config';
 import { toast } from 'react-toastify';
@@ -77,6 +77,41 @@ interface Patient {
   indirim_tipi?: 'yuzde' | 'tutar';
   indirim_orani?: number;
   indirim_tutar?: number;
+  // Prescription / medication tracking
+  prescriptionMedications?: PrescriptionMed[];
+  prescriptionChanges?: PrescriptionChange[];
+  prescriptionReceiptOverrides?: Record<string, 'received' | 'not_received'>;
+  prescriptionChanged?: boolean;
+  prescriptionChangedAt?: string;
+  pharmacyChangeNote?: string;
+  // Pharmacy sale data (what the patient actually purchased)
+  pharmacySoldItems?: Array<{ name: string; price?: number; quantity?: number }>;
+  pharmacyRemovedItems?: Array<{ name: string }>;
+  pharmacySaleDate?: string;
+  pharmacyStatus?: string;
+}
+
+interface PrescriptionMed {
+  name: string;
+  dosage?: string;
+  type?: string;
+}
+
+// Common dosage options for the prescription editor (dropdown instead of free text).
+const DOSE_OPTIONS = [
+  '1X1', '2X1', '3X1', '1X1 T', '2X1 T', '3X1 T', '1X2', '1X3',
+  'Günde 1', 'Günde 2', 'Günde 3', 'Haftada 1', 'Haftada 2',
+  'İhtiyaç halinde', 'Kür boyunca',
+];
+
+interface PrescriptionChange {
+  changedAt: string;
+  changedBy: string;
+  changedByRole?: string;
+  instructedBy?: string;
+  previousMeds: PrescriptionMed[];
+  newMeds: PrescriptionMed[];
+  reason?: string;
 }
 
 interface MediaFile {
@@ -93,9 +128,11 @@ interface PatientDetailsModalProps {
   onClose: () => void;
   patient: Patient | null;
   initialTab?: string;
+  doctorProfile?: any;
+  onPatientUpdated?: () => void;
 }
 
-const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClose, patient, initialTab = 'personal' }) => {
+const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClose, patient, initialTab = 'personal', doctorProfile, onPatientUpdated }) => {
   const [activeTab, setActiveTab] = useState(initialTab);
   const [historyRecords, setHistoryRecords] = useState<PatientHistoryRecord[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -109,6 +146,233 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
   const [loadingMedia, setLoadingMedia] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<MediaFile | null>(null);
+
+  // ── Prescription (İlaç Bilgileri) state ──────────────────────────────────
+  const [showPrescriptionEditor, setShowPrescriptionEditor] = useState(false);
+  const [editMeds, setEditMeds] = useState<PrescriptionMed[]>([]);
+  const [changeReason, setChangeReason] = useState('');
+  const [instructedBy, setInstructedBy] = useState('');
+  const [savingPrescription, setSavingPrescription] = useState(false);
+  // Live copy of the patient doc so prescription/pharmacy data (Alındı status,
+  // overrides, change history) stays current after sales/edits without a refresh.
+  const [livePatient, setLivePatient] = useState<Patient | null>(null);
+
+  // Subscribe to the patient document while the modal is open.
+  useEffect(() => {
+    if (!isOpen || !patient?.id) {
+      setLivePatient(null);
+      return;
+    }
+    const unsub = onSnapshot(doc(db, 'patients', patient.id), (snap) => {
+      if (snap.exists()) setLivePatient({ id: snap.id, ...snap.data() } as Patient);
+    });
+    return () => unsub();
+  }, [isOpen, patient?.id]);
+
+  // The effective patient: live doc if available, otherwise the passed-in prop.
+  const livePat: Patient | null = livePatient ?? patient;
+  // Dropdown option sources for the prescription editor.
+  const [medicationOptions, setMedicationOptions] = useState<string[]>([]);
+  const [staffOptions, setStaffOptions] = useState<string[]>([]);
+  // Full medication catalog, used to resolve prescription codes (ARD-REM) to the
+  // same commercial name the pharmacy shows (e.g. "RTM NATURE ÇÖREKOTU...").
+  const [medicationCatalog, setMedicationCatalog] = useState<any[]>([]);
+
+  // Load medication catalog + clinic staff (doctors/assistants) for the editor dropdowns.
+  useEffect(() => {
+    const clinicId = doctorProfile?.clinicId;
+    if (!isOpen || !clinicId) return;
+
+    const loadOptions = async () => {
+      try {
+        // Medications the pharmacy actually stocks/sells.
+        const medsSnap = await getDocs(query(collection(db, 'medications'), where('clinicId', '==', clinicId)));
+        const catalog = medsSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+        setMedicationCatalog(catalog);
+        const medNames = catalog
+          .map(m => (m.protocolName || m.description || m.name || '').trim())
+          .filter(Boolean);
+        setMedicationOptions(Array.from(new Set(medNames)).sort((a, b) => a.localeCompare(b, 'tr')));
+
+        // Clinic staff who can be recorded as the instructing doctor/assistant.
+        const [docSnap, cuSnap] = await Promise.all([
+          getDocs(query(collection(db, 'doctors'), where('clinicId', '==', clinicId))),
+          getDocs(query(collection(db, 'clinicUsers'), where('clinicId', '==', clinicId))),
+        ]);
+        const names: string[] = [];
+        docSnap.forEach(d => { const n = (d.data() as any).fullName; if (n) names.push(n); });
+        cuSnap.forEach(d => {
+          const u = d.data() as any;
+          const role = u.role || u.userType;
+          if ((role === 'doctor' || role === 'assistant') && u.fullName) names.push(u.fullName);
+        });
+        setStaffOptions(Array.from(new Set(names)).sort((a, b) => a.localeCompare(b, 'tr')));
+      } catch (e) {
+        console.error('Reçete editörü seçenekleri yüklenemedi:', e);
+      }
+    };
+    loadOptions();
+  }, [isOpen, doctorProfile?.clinicId]);
+
+  // Build a <select>'s option list, always including the current value so an
+  // existing protocol/custom entry is never silently dropped.
+  const withCurrent = (options: string[], current?: string) => {
+    const list = [...options];
+    if (current && !list.includes(current)) list.unshift(current);
+    return list;
+  };
+
+  // Close the editor whenever a different patient is opened.
+  useEffect(() => {
+    setShowPrescriptionEditor(false);
+  }, [patient?.id]);
+
+  // Roles allowed to change a patient's prescription (call-center acts on
+  // doctor/assistant instruction).
+  const userRole = doctorProfile?.role || doctorProfile?.userType || '';
+  const canEditPrescription =
+    doctorProfile?.isClinicOwner === true ||
+    ['admin', 'assistant', 'doctor', 'call-center'].includes(userRole);
+
+  // Normalize a medication name for loose matching against pharmacy sale items.
+  const normalizeMedName = (n: string) => (n || '').toLowerCase().replace(/\s*-\s*/g, '-').trim();
+
+  // Catalog display name (commercial name) — mirrors the pharmacy's logic.
+  const catalogDisplayName = (m: any) => (m?.protocolName || m?.description || m?.name || '').trim();
+
+  // Find the catalog medication matching a prescription entry (loose match, same
+  // approach the pharmacy uses), then resolve to its commercial display name.
+  const findCatalogMed = (medName: string) => {
+    const lower = normalizeMedName(medName);
+    if (!lower) return undefined;
+    return medicationCatalog.find((sm) => {
+      const dn = normalizeMedName(catalogDisplayName(sm));
+      const pn = normalizeMedName(sm.protocolName || '');
+      const nn = normalizeMedName(sm.name || '');
+      return (dn && (dn.includes(lower) || lower.includes(dn)))
+        || (pn && (pn.includes(lower) || lower.includes(pn)))
+        || (nn && (nn.includes(lower) || lower.includes(nn)));
+    });
+  };
+
+  const resolveMedName = (name: string): string => {
+    const m = findCatalogMed(name);
+    return m ? catalogDisplayName(m) : name;
+  };
+
+  // The active prescription: explicit/edited list if present, otherwise derived
+  // from the patient's treatment protocol phases.
+  const derivePrescriptionFromProtocol = (p: Patient): PrescriptionMed[] => {
+    const protocol: any = p.treatmentOptions?.customizedProtocol || p.treatmentOptions?.selectedProtocol;
+    const phases = protocol?.phases;
+    if (!phases) return [];
+    const meds: PrescriptionMed[] = [];
+    const add = (ph: any, type: string) => {
+      if (ph?.treatment && ph.treatment !== '-') meds.push({ name: ph.treatment, dosage: ph.dosage || '', type });
+    };
+    add(phases.remember, 'Remember');
+    add(phases.regeneration1, 'Regeneration 1');
+    add(phases.regeneration2, 'Regeneration 2');
+    add(phases.regeneration3, 'Regeneration 3');
+    add(phases.regeneration4, 'Regeneration 4');
+    return meds;
+  };
+
+  const getActivePrescription = (p: Patient): PrescriptionMed[] => {
+    if (p.prescriptionMedications && p.prescriptionMedications.length > 0) return p.prescriptionMedications;
+    return derivePrescriptionFromProtocol(p);
+  };
+
+  const getPrescriptionChanges = (p: Patient): PrescriptionChange[] => {
+    const changes = p.prescriptionChanges ?? [];
+    return [...changes].sort((a, b) => new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime());
+  };
+
+  // Whether a prescribed medication has been picked up from the pharmacy.
+  // Manual override wins; otherwise auto-derived from pharmacySoldItems.
+  const getReceiptStatus = (p: Patient, medName: string): boolean => {
+    const overrides = p.prescriptionReceiptOverrides ?? {};
+    const ov = overrides[medName];
+    if (ov) return ov === 'received';
+    const sold = p.pharmacySoldItems || [];
+    const b = normalizeMedName(resolveMedName(medName));
+    return sold.some(it => {
+      const a = normalizeMedName(it.name);
+      return a === b || a.includes(b) || b.includes(a);
+    });
+  };
+
+  const openPrescriptionEditor = () => {
+    if (!livePat) return;
+    // Resolve codes to commercial names so the dropdown shows the same names as
+    // the pharmacy and future saves store consistent values.
+    setEditMeds(getActivePrescription(livePat).map(m => ({ ...m, name: resolveMedName(m.name) })));
+    setChangeReason('');
+    setInstructedBy('');
+    setShowPrescriptionEditor(true);
+  };
+
+  const toggleReceiptOverride = async (medName: string, received: boolean) => {
+    if (!livePat) return;
+    const current = livePat.prescriptionReceiptOverrides ?? {};
+    const next = { ...current, [medName]: received ? 'received' as const : 'not_received' as const };
+    // Optimistic update; the onSnapshot subscription will confirm.
+    setLivePatient(prev => prev ? { ...prev, prescriptionReceiptOverrides: next } : prev);
+    try {
+      await updateDoc(doc(db, 'patients', livePat.id), { prescriptionReceiptOverrides: next });
+      onPatientUpdated?.();
+    } catch (e) {
+      console.error('Receipt override update failed:', e);
+      toast.error('Alındı durumu güncellenemedi.');
+    }
+  };
+
+  const savePrescriptionChange = async () => {
+    if (!livePat) return;
+    const cleaned = editMeds
+      .map(m => ({ name: (m.name || '').trim(), dosage: (m.dosage || '').trim(), type: m.type || 'Değişiklik' }))
+      .filter(m => m.name);
+    if (cleaned.length === 0) {
+      toast.error('En az bir ilaç girmelisiniz.');
+      return;
+    }
+    // Sanitize: Firestore arrayUnion rejects objects containing `undefined`.
+    const sanitizeMeds = (list: PrescriptionMed[]) =>
+      list.map(m => ({ name: m.name, dosage: m.dosage || '', type: m.type || '' }));
+    const previousMeds = sanitizeMeds(getActivePrescription(livePat));
+    const changeRecord: PrescriptionChange = {
+      changedAt: new Date().toISOString(),
+      changedBy: doctorProfile?.fullName || 'Bilinmiyor',
+      changedByRole: userRole || '',
+      previousMeds,
+      newMeds: cleaned,
+      ...(instructedBy.trim() ? { instructedBy: instructedBy.trim() } : {}),
+      ...(changeReason.trim() ? { reason: changeReason.trim() } : {}),
+    };
+    setSavingPrescription(true);
+    try {
+      await updateDoc(doc(db, 'patients', livePat.id), {
+        prescriptionMedications: cleaned,
+        prescriptionChanges: arrayUnion(changeRecord),
+        prescriptionChanged: true,
+        prescriptionChangedAt: changeRecord.changedAt,
+        // A fresh change resets any prior manual "alındı" overrides for accuracy.
+        prescriptionReceiptOverrides: {},
+        pharmacyChangeNote: changeReason.trim() || 'Reçete değişikliği',
+        // Re-queue the patient to the pharmacy so the new medication is dispensed.
+        pharmacyStatus: 'waiting',
+        updatedAt: new Date().toISOString(),
+      });
+      setShowPrescriptionEditor(false);
+      toast.success('Reçete güncellendi ve eczaneye iletildi.');
+      onPatientUpdated?.();
+    } catch (e) {
+      console.error('Prescription change failed:', e);
+      toast.error('Reçete güncellenirken hata oluştu.');
+    } finally {
+      setSavingPrescription(false);
+    }
+  };
 
   // Fetch patient history records from both collections
   useEffect(() => {
@@ -548,6 +812,7 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
     { id: 'contact', label: 'İletişim', icon: '📞' },
     { id: 'medical', label: 'Tıbbi Bilgi', icon: '🏥' },
     { id: 'treatment', label: 'Tedavi Bilgileri', icon: '💊' },
+    { id: 'medications', label: 'İlaç Bilgileri', icon: '💉' },
     { id: 'history', label: 'Geçmiş Kayıtları', icon: '📜' },
     // Only show media tab if hasMediaGallery is enabled in anamnez
     ...(patient.optionalScans?.hasMediaGallery ? [{ id: 'media', label: 'Fotoğraflar ve Videolar', icon: '📷' }] : []),
@@ -1023,6 +1288,138 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
                 )}
               </div>
             )}
+
+            {/* Medications (İlaç Bilgileri) Tab */}
+            {activeTab === 'medications' && (() => {
+              const p = livePat;
+              if (!p) return null;
+              const meds = getActivePrescription(p);
+              const changes = getPrescriptionChanges(p);
+              const prescribedDate = p.prescriptionChangedAt || p.treatmentStartedAt || p.updatedAt;
+              return (
+                <div className="space-y-6">
+                  {/* Aktif Reçete */}
+                  <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                    <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                      <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                        💉 Güncel Reçete
+                        {p.prescriptionChanged && (
+                          <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs font-medium">🔁 Değiştirildi</span>
+                        )}
+                      </h3>
+                      {canEditPrescription && (
+                        <button
+                          onClick={openPrescriptionEditor}
+                          className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white rounded-lg text-sm font-medium transition-all"
+                        >
+                          ✏️ Reçeteyi Değiştir
+                        </button>
+                      )}
+                    </div>
+
+                    {meds.length === 0 ? (
+                      <div className="text-center py-8 text-gray-500">
+                        <div className="text-4xl mb-2">💊</div>
+                        <p>Bu hasta için kayıtlı ilaç bulunmuyor.</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-gray-200 text-left text-gray-500">
+                              <th className="py-2 pr-3">İlaç</th>
+                              <th className="py-2 pr-3">Doz</th>
+                              <th className="py-2 pr-3">Tarih</th>
+                              <th className="py-2 pr-3">Durum</th>
+                              <th className="py-2 pr-3">Alınma Tarihi</th>
+                              {canEditPrescription && <th className="py-2">İşlem</th>}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {meds.map((m, i) => {
+                              const received = getReceiptStatus(p, m.name);
+                              return (
+                                <tr key={i} className="border-b border-gray-100">
+                                  <td className="py-2 pr-3 font-medium text-gray-800">{resolveMedName(m.name)}</td>
+                                  <td className="py-2 pr-3 text-gray-600">{m.dosage || '-'}</td>
+                                  <td className="py-2 pr-3 text-gray-600">{prescribedDate ? formatDate(prescribedDate) : '-'}</td>
+                                  <td className="py-2 pr-3">
+                                    {received ? (
+                                      <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-medium">✓ Alındı</span>
+                                    ) : (
+                                      <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-xs font-medium">✕ Alınmadı</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2 pr-3 text-gray-600">{received && p.pharmacySaleDate ? formatDate(p.pharmacySaleDate) : '-'}</td>
+                                  {canEditPrescription && (
+                                    <td className="py-2">
+                                      <button
+                                        onClick={() => toggleReceiptOverride(m.name, !received)}
+                                        className="px-2 py-1 text-xs rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition-all"
+                                        title="Alındı durumunu elle değiştir"
+                                      >
+                                        {received ? 'Alınmadı işaretle' : 'Alındı işaretle'}
+                                      </button>
+                                    </td>
+                                  )}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Reçete Değişiklik Geçmişi */}
+                  <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                      🕑 Reçete Değişiklik Geçmişi
+                    </h3>
+                    {changes.length === 0 ? (
+                      <p className="text-gray-500 text-sm">Henüz reçete değişikliği yapılmamış.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {changes.map((c, i) => (
+                          <div key={i} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                            <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                              <span className="text-sm font-semibold text-gray-700">{formatDate(c.changedAt)}</span>
+                              <span className="text-xs text-gray-500">
+                                {c.changedBy}{c.changedByRole ? ` (${c.changedByRole})` : ''}
+                                {c.instructedBy ? ` • Talimat: ${c.instructedBy}` : ''}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div>
+                                <p className="text-xs text-gray-500 mb-1">Önceki İlaçlar</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {c.previousMeds.length > 0 ? c.previousMeds.map((m, j) => (
+                                    <span key={j} className="px-2 py-0.5 bg-red-50 text-red-600 border border-red-200 rounded text-xs line-through">
+                                      {resolveMedName(m.name)}{m.dosage ? ` (${m.dosage})` : ''}
+                                    </span>
+                                  )) : <span className="text-xs text-gray-400">-</span>}
+                                </div>
+                              </div>
+                              <div>
+                                <p className="text-xs text-gray-500 mb-1">Yeni İlaçlar</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {c.newMeds.map((m, j) => (
+                                    <span key={j} className="px-2 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded text-xs">
+                                      {resolveMedName(m.name)}{m.dosage ? ` (${m.dosage})` : ''}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                            {c.reason && <p className="text-xs text-gray-600 mt-2">📝 {c.reason}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* History Records Tab */}
             {activeTab === 'history' && (() => {
@@ -2138,6 +2535,107 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
         patient={patient}
         anamrezRecord={selectedHistoryRecord}
       />
+
+      {/* Prescription Change Editor */}
+      {showPrescriptionEditor && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+            <div className="p-5 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-purple-50 to-indigo-50">
+              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">💉 Reçeteyi Değiştir</h3>
+              <button onClick={() => setShowPrescriptionEditor(false)} className="text-gray-500 hover:text-gray-700 text-xl font-bold">✕</button>
+            </div>
+
+            <div className="p-5 overflow-y-auto flex-1 space-y-4">
+              <p className="text-sm text-gray-500">
+                Değişiklik kaydedildiğinde hasta tekrar eczane kuyruğuna eklenir ve yeni ilaç eczanede satışa hazır olur.
+                Önceki reçete geçmişte saklanır.
+              </p>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">İlaçlar</label>
+                {editMeds.map((m, i) => (
+                  <div key={i} className="flex gap-2 items-center">
+                    <select
+                      value={m.name}
+                      onChange={(e) => setEditMeds(prev => prev.map((x, j) => j === i ? { ...x, name: e.target.value } : x))}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    >
+                      <option value="">İlaç seçin...</option>
+                      {withCurrent(medicationOptions, m.name).map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={m.dosage || ''}
+                      onChange={(e) => setEditMeds(prev => prev.map((x, j) => j === i ? { ...x, dosage: e.target.value } : x))}
+                      className="w-36 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    >
+                      <option value="">Doz seçin...</option>
+                      {withCurrent(DOSE_OPTIONS, m.dosage).map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => setEditMeds(prev => prev.filter((_, j) => j !== i))}
+                      className="px-2 py-2 text-red-500 hover:bg-red-50 rounded-lg"
+                      title="Kaldır"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={() => setEditMeds(prev => [...prev, { name: '', dosage: '', type: 'Değişiklik' }])}
+                  className="text-sm text-purple-600 hover:text-purple-800 font-medium"
+                >
+                  + İlaç Ekle
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Talimatı Veren (Doktor/Asistan)</label>
+                <select
+                  value={instructedBy}
+                  onChange={(e) => setInstructedBy(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                >
+                  <option value="">Talimatı veren kişiyi seçin...</option>
+                  {withCurrent(staffOptions, instructedBy).map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Değişiklik Nedeni / Notu</label>
+                <textarea
+                  value={changeReason}
+                  onChange={(e) => setChangeReason(e.target.value)}
+                  rows={2}
+                  placeholder="Reçete neden değiştirildi?"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
+              <button
+                onClick={() => setShowPrescriptionEditor(false)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg text-gray-700 font-medium transition-all"
+              >
+                İptal
+              </button>
+              <button
+                onClick={savePrescriptionChange}
+                disabled={savingPrescription}
+                className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white font-medium rounded-lg transition-all disabled:opacity-50"
+              >
+                {savingPrescription ? 'Kaydediliyor...' : '💾 Kaydet ve Eczaneye Gönder'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
