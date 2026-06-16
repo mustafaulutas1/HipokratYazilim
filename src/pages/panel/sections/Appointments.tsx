@@ -164,14 +164,11 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
       );
       const snap = await getDocs(qDay);
       
-      // Client-side filtering by date range and current admin's doctorId
-      const ownerUid = doctorProfile?.uid;
+      // Client-side filtering by date range (clinic-wide; clinicId already scopes the query)
       const allAppointments = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
       const list = allAppointments.filter(apt => {
         const aptDate = apt.dateISO || '';
-        const dateOk = aptDate >= startDate && aptDate <= endDate;
-        const ownerOk = !ownerUid || apt.doctorId === ownerUid;
-        return dateOk && ownerOk;
+        return aptDate >= startDate && aptDate <= endDate;
       });
       
       list.sort((a,b) => {
@@ -214,13 +211,11 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
       const snap = await getDocs(
         query(collection(db, 'appointments'), where('clinicId', '==', doctorProfile.clinicId))
       );
-      const ownerUid = doctorProfile?.uid;
       const searchTerm = calendarPatientFilter.toLowerCase().trim();
       const all = snap.docs
         .map(d => ({ id: d.id, ...(d.data() as any) }))
         .filter(apt =>
-          apt.patientName?.toLowerCase().includes(searchTerm) &&
-          (!ownerUid || apt.doctorId === ownerUid)
+          apt.patientName?.toLowerCase().includes(searchTerm)
         );
       all.sort((a, b) => {
         const dateCompare = String(a.dateISO || '').localeCompare(String(b.dateISO || ''));
@@ -1239,16 +1234,13 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
         onAdded={() => {
           (async () => {
             if (!doctorProfile?.clinicId) return;
-            const ownerUid = doctorProfile?.uid;
             const qDay = query(
               collection(db, 'appointments'),
               where('clinicId', '==', doctorProfile.clinicId)
             );
             const snap = await getDocs(qDay);
             const allAppointments = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-            const list = allAppointments.filter(apt =>
-              apt.dateISO === dateISO && (!ownerUid || apt.doctorId === ownerUid)
-            );
+            const list = allAppointments.filter(apt => apt.dateISO === dateISO);
             list.sort((a,b) => String(a.start||'').localeCompare(String(b.start||'')));
             setAppointments(list);
 
@@ -1309,16 +1301,13 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
         onCancelled={() => {
           (async () => {
             if (!doctorProfile?.clinicId) return;
-            const ownerUid = doctorProfile?.uid;
             const qDay = query(
               collection(db, 'appointments'),
               where('clinicId', '==', doctorProfile.clinicId)
             );
             const snap = await getDocs(qDay);
             const allAppointments = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-            const list = allAppointments.filter(apt =>
-              apt.dateISO === dateISO && (!ownerUid || apt.doctorId === ownerUid)
-            );
+            const list = allAppointments.filter(apt => apt.dateISO === dateISO);
             list.sort((a,b) => String(a.start||'').localeCompare(String(b.start||'')));
             setAppointments(list);
           })();
@@ -1326,16 +1315,13 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
         onStatusUpdated={() => {
           (async () => {
             if (!doctorProfile?.clinicId) return;
-            const ownerUid = doctorProfile?.uid;
             const qDay = query(
               collection(db, 'appointments'),
               where('clinicId', '==', doctorProfile.clinicId)
             );
             const snap = await getDocs(qDay);
             const allAppointments = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-            const list = allAppointments.filter(apt =>
-              apt.dateISO === dateISO && (!ownerUid || apt.doctorId === ownerUid)
-            );
+            const list = allAppointments.filter(apt => apt.dateISO === dateISO);
             list.sort((a,b) => String(a.start||'').localeCompare(String(b.start||'')));
             setAppointments(list);
           })();
