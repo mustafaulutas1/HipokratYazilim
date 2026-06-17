@@ -57,6 +57,8 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
   const [dayAppointments, setDayAppointments] = useState<any[]>([]);
   const [notes, setNotes] = useState<string>('');
   const [cancelledAppointments, setCancelledAppointments] = useState<Array<{ cancelReason: string; cancelledAt: string; dateISO: string; typeName: string }>>([]);
+  const [patientHistory, setPatientHistory] = useState<Array<{ id: string; dateISO: string; start: string; typeName: string; status: string; notes: string }>>([]);
+  const [patientHistoryLoading, setPatientHistoryLoading] = useState(false);
 
   // Quick reservation fields (for non-registered patients)
   const [useQuickReservation, setUseQuickReservation] = useState<boolean>(false);
@@ -167,32 +169,55 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
     }
   }, [isOpen, editedAppointment, initialDate, initialTime, initialPatientId, initialTypeId]);
 
-  // Fetch cancelled appointments for selected patient
+  // Fetch the selected patient's full appointment history (derives both the
+  // cancelled warning and the active/past timeline from a single query)
   useEffect(() => {
     if (!isOpen || !selectedPatient || useQuickReservation) {
       setCancelledAppointments([]);
+      setPatientHistory([]);
       return;
     }
     (async () => {
-      const cancelledQuery = query(
+      setPatientHistoryLoading(true);
+      const allQuery = query(
         collection(db, 'appointments'),
-        where('patientId', '==', selectedPatient),
-        where('status', '==', 'cancelled')
+        where('patientId', '==', selectedPatient)
       );
-      const snap = await getDocs(cancelledQuery);
-      const results = snap.docs.map(d => {
-        const data = d.data() as any;
-        return {
+      const snap = await getDocs(allQuery);
+      const all = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+
+      // Cancelled records → warning banner
+      const cancelled = all
+        .filter(a => a.status === 'cancelled')
+        .map(data => ({
           cancelReason: data.cancelReason || '',
           cancelledAt: data.cancelledAt || '',
           dateISO: data.dateISO || '',
           typeName: data.typeName || '',
-        };
-      });
-      results.sort((a, b) => (b.cancelledAt || '').localeCompare(a.cancelledAt || ''));
-      setCancelledAppointments(results);
+        }))
+        .sort((a, b) => (b.cancelledAt || '').localeCompare(a.cancelledAt || ''));
+      setCancelledAppointments(cancelled);
+
+      // Non-cancelled records → timeline (exclude the appointment being edited)
+      const history = all
+        .filter(a => a.status !== 'cancelled' && a.id !== editedAppointment?.id)
+        .map(a => ({
+          id: a.id,
+          dateISO: a.dateISO || '',
+          start: a.start || a.time || '',
+          typeName: a.typeName || a.type || '',
+          status: a.status || 'pending',
+          notes: a.notes || '',
+        }))
+        .sort((a, b) => {
+          const dateCmp = String(b.dateISO).localeCompare(String(a.dateISO));
+          if (dateCmp !== 0) return dateCmp;
+          return String(b.start).localeCompare(String(a.start));
+        });
+      setPatientHistory(history);
+      setPatientHistoryLoading(false);
     })();
-  }, [isOpen, selectedPatient, useQuickReservation]);
+  }, [isOpen, selectedPatient, useQuickReservation, editedAppointment?.id]);
 
   // Gün randevularını çek (disable için). Edit modda mevcut id'yi hariç tut.
   useEffect(() => {
@@ -213,6 +238,34 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
       setDayAppointments(filtered);
     })();
   }, [isOpen, selectedDate, editedAppointment, doctorProfile?.uid, doctorId]);
+
+  // Calendar day highlights for the selected patient's appointments
+  const appointmentDayModifiers = useMemo(() => {
+    const toDate = (iso: string): Date | null => {
+      const [y, m, d] = (iso || '').split('-').map(Number);
+      if (!y || !m || !d) return null;
+      return new Date(y, m - 1, d);
+    };
+    const todayISO = new Date().toISOString().slice(0, 10);
+    const upcoming: Date[] = [];
+    const past: Date[] = [];
+    patientHistory.forEach(ap => {
+      const dt = toDate(ap.dateISO);
+      if (!dt) return;
+      (ap.dateISO >= todayISO ? upcoming : past).push(dt);
+    });
+    const cancelled: Date[] = [];
+    cancelledAppointments.forEach(ca => {
+      const dt = toDate(ca.dateISO);
+      if (dt) cancelled.push(dt);
+    });
+    return { upcoming, past, cancelled };
+  }, [patientHistory, cancelledAppointments]);
+
+  const hasAnyDayHighlight =
+    appointmentDayModifiers.upcoming.length > 0 ||
+    appointmentDayModifiers.past.length > 0 ||
+    appointmentDayModifiers.cancelled.length > 0;
 
   const selectedTypeObj = useMemo(() => types.find(t => t.id === selectedType), [types, selectedType]);
 
@@ -677,12 +730,27 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
                   Randevu Tarihi
                 </label>
                 <div className="bg-white/90 backdrop-blur-sm border border-purple-300/50 rounded-2xl p-3 pb-1 shadow-sm">
+                  <style>{`
+                    .rdp-day_apptUpcoming:not(.rdp-day_selected){background-color:#dcfce7;color:#15803d;font-weight:700;border-radius:10px;}
+                    .rdp-day_apptPast:not(.rdp-day_selected){background-color:#eff6ff;color:#2563eb;font-weight:700;border-radius:10px;}
+                    .rdp-day_apptCancelled:not(.rdp-day_selected){box-shadow:inset 0 0 0 2px #fca5a5;border-radius:10px;}
+                  `}</style>
                   <DayPicker
                     mode="single"
                     selected={selectedDate}
                     onSelect={(d)=>d && setSelectedDate(d)}
                     disabled={{ before: new Date(new Date().setHours(0,0,0,0)) }}
                     className="w-full"
+                    modifiers={{
+                      apptUpcoming: appointmentDayModifiers.upcoming,
+                      apptPast: appointmentDayModifiers.past,
+                      apptCancelled: appointmentDayModifiers.cancelled,
+                    }}
+                    modifiersClassNames={{
+                      apptUpcoming: 'rdp-day_apptUpcoming',
+                      apptPast: 'rdp-day_apptPast',
+                      apptCancelled: 'rdp-day_apptCancelled',
+                    }}
                     styles={{
                       month: { fontSize: '14px', width: '100%' },
                       caption: { fontSize: '16px', marginBottom: '8px' },
@@ -692,6 +760,29 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
                       nav: { fontSize: '14px' }
                     }}
                   />
+                  {/* Legend */}
+                  {hasAnyDayHighlight && (
+                    <div className="flex items-center gap-4 flex-wrap px-2 pb-2 pt-1 text-[11px] text-gray-600">
+                      {appointmentDayModifiers.upcoming.length > 0 && (
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-3 h-3 rounded-md" style={{ backgroundColor: '#dcfce7', boxShadow: 'inset 0 0 0 1px #86efac' }} />
+                          Yaklaşan randevu
+                        </span>
+                      )}
+                      {appointmentDayModifiers.past.length > 0 && (
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-3 h-3 rounded-md" style={{ backgroundColor: '#eff6ff', boxShadow: 'inset 0 0 0 1px #bfdbfe' }} />
+                          Geçmiş randevu
+                        </span>
+                      )}
+                      {appointmentDayModifiers.cancelled.length > 0 && (
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-3 h-3 rounded-md" style={{ boxShadow: 'inset 0 0 0 2px #fca5a5' }} />
+                          İptal edilmiş
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Cancelled Appointments Warning */}
@@ -722,6 +813,80 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* Patient Appointment History */}
+                {selectedPatient && !useQuickReservation && (
+                  <div className="mt-4 bg-white border border-gray-200 rounded-2xl p-4 shadow-sm animate-slideDown">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                        <span className="text-blue-600 text-lg">📋</span>
+                      </div>
+                      <h4 className="text-sm font-bold text-gray-700">
+                        Hastanın Diğer Randevuları{patientHistory.length > 0 ? ` (${patientHistory.length})` : ''}
+                      </h4>
+                    </div>
+
+                    {patientHistoryLoading ? (
+                      <div className="text-gray-400 text-sm text-center py-4">Yükleniyor...</div>
+                    ) : patientHistory.length === 0 ? (
+                      <div className="text-gray-400 text-sm text-center py-4">
+                        Bu hastaya ait başka randevu bulunmuyor.
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                        {patientHistory.map((ap) => {
+                          const todayISO = new Date().toISOString().slice(0, 10);
+                          const isUpcoming = ap.dateISO >= todayISO;
+                          const statusMap: Record<string, { label: string; cls: string }> = {
+                            confirmed: { label: 'Onaylandı', cls: 'bg-green-50 text-green-700 border-green-200' },
+                            pending: { label: 'Beklemede', cls: 'bg-yellow-50 text-yellow-700 border-yellow-200' },
+                            completed: { label: 'Tamamlandı', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+                          };
+                          const st = statusMap[ap.status] || { label: ap.status, cls: 'bg-gray-50 text-gray-600 border-gray-200' };
+                          return (
+                            <div
+                              key={ap.id}
+                              className={`flex items-center gap-3 rounded-xl p-3 border transition-colors ${
+                                isUpcoming
+                                  ? 'bg-green-50/60 border-green-200'
+                                  : 'bg-gray-50 border-gray-200 opacity-90'
+                              }`}
+                            >
+                              {/* Date badge */}
+                              <div className="flex flex-col items-center justify-center w-12 flex-shrink-0">
+                                <span className="text-base font-bold text-gray-800 leading-none">
+                                  {ap.dateISO ? new Date(ap.dateISO + 'T00:00:00').getDate() : '-'}
+                                </span>
+                                <span className="text-[10px] uppercase text-gray-500">
+                                  {ap.dateISO ? new Date(ap.dateISO + 'T00:00:00').toLocaleDateString('tr-TR', { month: 'short' }) : ''}
+                                </span>
+                              </div>
+                              {/* Details */}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-semibold text-gray-800">{ap.start || '-'}</span>
+                                  <span className="text-xs text-gray-500">• {ap.typeName || '-'}</span>
+                                  {isUpcoming && (
+                                    <span className="text-[10px] font-semibold text-green-600 bg-green-100 px-1.5 py-0.5 rounded-full">
+                                      Yaklaşan
+                                    </span>
+                                  )}
+                                </div>
+                                {ap.notes && (
+                                  <p className="text-xs text-gray-500 truncate mt-0.5">{ap.notes}</p>
+                                )}
+                              </div>
+                              {/* Status badge */}
+                              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0 ${st.cls}`}>
+                                {st.label}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

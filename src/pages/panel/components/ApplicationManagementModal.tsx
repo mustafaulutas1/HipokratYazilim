@@ -31,6 +31,10 @@ interface ApplicationManagementModalProps {
   // When false, price-related actions (add / edit / delete / bulk update) are hidden.
   // The list and prices stay visible in read-only mode.
   canManagePrices?: boolean;
+  // When true, only price changes are allowed: adding new applications and
+  // deleting are hidden, and the edit form locks name/description so the user
+  // can only adjust the price. Used by the accounting (muhasebe) screen.
+  priceOnly?: boolean;
 }
 
 const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
@@ -38,7 +42,8 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
   onClose,
   doctorProfile,
   onApplicationsUpdate,
-  canManagePrices = false
+  canManagePrices = false,
+  priceOnly = false
 }) => {
   const [savedApplications, setSavedApplications] = useState<SavedApplication[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -305,12 +310,14 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
               {/* Action Buttons - only for roles allowed to manage prices */}
               {canManagePrices && (
                 <div className="mb-6 flex items-center gap-3">
-                  <button
-                    onClick={() => setShowAddForm(true)}
-                    className="px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-xl font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center gap-2"
-                  >
-                    ➕ Yeni Uygulama Ekle
-                  </button>
+                  {!priceOnly && (
+                    <button
+                      onClick={() => setShowAddForm(true)}
+                      className="px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-xl font-medium transition-all duration-200 shadow-md hover:shadow-lg flex items-center gap-2"
+                    >
+                      ➕ Yeni Uygulama Ekle
+                    </button>
+                  )}
 
                   {savedApplications.length > 0 && (
                     <button
@@ -440,9 +447,11 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
                               onClick={() => editApplication(application)}
                               className="px-3 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-blue-300 hover:text-blue-200 transition-all duration-200 text-sm"
                             >
-                              {application.clinicId === 'STANDARD' ? '📋 Kopyala' : '✏️ Düzenle'}
+                              {priceOnly
+                                ? '💰 Fiyat Düzenle'
+                                : application.clinicId === 'STANDARD' ? '📋 Kopyala' : '✏️ Düzenle'}
                             </button>
-                            {application.clinicId !== 'STANDARD' && (
+                            {!priceOnly && application.clinicId !== 'STANDARD' && (
                               <button
                                 onClick={() => deleteApplication(application.id)}
                                 className="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg text-red-300 hover:text-red-200 transition-all duration-200 text-sm"
@@ -463,7 +472,7 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <h3 className="text-xl font-bold text-white">
-                  {editingApplication ? '✏️ Uygulama Düzenle' : '➕ Yeni Uygulama Ekle'}
+                  {priceOnly ? '💰 Fiyat Düzenle' : editingApplication ? '✏️ Uygulama Düzenle' : '➕ Yeni Uygulama Ekle'}
                 </h3>
                 <button
                   onClick={() => {
@@ -487,7 +496,8 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
                     value={formData.name}
                     onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value.toUpperCase() }))}
                     placeholder="Örn: HACAMAT, MINOR OZON, AKUPUNKTUR"
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50 uppercase"
+                    disabled={priceOnly}
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50 uppercase disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                 </div>
 
@@ -518,7 +528,8 @@ const ApplicationManagementModal: React.FC<ApplicationManagementModalProps> = ({
                   onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                   rows={3}
                   placeholder="Bu uygulamanın özelliklerini ve nasıl kullanılacağını açıklayın..."
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  disabled={priceOnly}
+                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
 

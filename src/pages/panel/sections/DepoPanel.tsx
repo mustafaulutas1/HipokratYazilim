@@ -40,6 +40,7 @@ interface DepoUrun {
   cost: number;
   purchaseDate: string;
   quantity: number;
+  minStockLevel?: number; // Kritik stok seviyesi — bu değere düşünce alarm verilir
   consumptionType?: 'islem-bazli' | 'genel-bazli';
   category?: DepoCategory;
   clinicId: string;
@@ -132,6 +133,7 @@ const emptyUrun = (): Omit<DepoUrun, 'id' | 'clinicId' | 'createdBy' | 'createdA
   cost: 0,
   purchaseDate: new Date().toISOString().split('T')[0],
   quantity: 0,
+  minStockLevel: 0,
   consumptionType: undefined,
   category: undefined,
 });
@@ -140,21 +142,21 @@ const todayDate = () => new Date().toISOString().split('T')[0];
 const nowTime = () => new Date().toTimeString().slice(0, 5);
 
 const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
-  // Depo Yönetimi ekranına erişebilen herkes tüm sekmeleri görebilir ve tüm
-  // işlemleri yapabilir. Rol bazlı kısıtlamalar kaldırıldı; erişim kontrolü
-  // artık yalnızca ekrana ulaşım izniyle (depo yetkisi) sağlanıyor.
-  const isAdmin = true;
-  const isBashemshire = false;
-  const isDepoyonetici = true;
+  // Depo Yönetimi ekranına erişebilen herkes tüm sekmeleri görebilir ve ürün
+  // ekleme/transfer/talep gibi işlemleri yapabilir. Tek rol bazlı kısıtlama:
+  // bir malzeme talebini yalnızca admin ve depo yöneticisi (depocu)
+  // onaylayabilir/reddedebilir.
+  const userRole = doctorProfile?.role || doctorProfile?.userType || '';
+  const isAdmin = userRole === 'admin';
+  const isDepoyonetici = userRole === 'depoyonetici';
+  // Malzeme talebine yanıt verme (onayla/reddet) yetkisi.
+  const canRespondTalep = isAdmin || isDepoyonetici;
   const isNurse = false;
   const canManage = true;
 
-  // Asistan rolü depoda yalnızca Temizlik ve Kırtasiye kategorilerini görür/yönetir.
-  const userRole = doctorProfile?.role || doctorProfile?.userType || '';
-  const isAsistan = userRole === 'assistant';
-  const visibleCategories = isAsistan
-    ? DEPO_CATEGORIES.filter(c => ASISTAN_CATEGORIES.includes(c.key))
-    : DEPO_CATEGORIES;
+  // Tüm roller (asistan dahil) depodaki tüm kategorileri görür.
+  const isAsistan = false;
+  const visibleCategories = DEPO_CATEGORIES;
 
   const [activeTab, setActiveTab] = useState<'ana-depo' | 'kat-deposu' | 'eslestirme' | 'malzeme-talebi'>('ana-depo');
   const [katActiveTab, setKatActiveTab] = useState<'stok' | 'kullanim'>('stok');
@@ -192,6 +194,9 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
   const [formData, setFormData] = useState(emptyUrun());
   const [saving, setSaving] = useState(false);
   const [activeDepo, setActiveDepo] = useState<'ana' | 'kat'>('ana');
+
+  // Düşük stok bildirimi (sayfaya her girişte yeniden gösterilir; kullanıcı kapatabilir).
+  const [lowStockToastDismissed, setLowStockToastDismissed] = useState(false);
 
   // Transfer
   const [showTransferModal, setShowTransferModal] = useState(false);
@@ -260,7 +265,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
   const openEdit = (urun: DepoUrun, depo: 'ana' | 'kat') => {
     setActiveDepo(depo);
     setEditingUrun(urun);
-    setFormData({ productName: urun.productName, stockCode: urun.stockCode, companyName: (urun as any).companyName || '', cost: urun.cost, purchaseDate: urun.purchaseDate, quantity: urun.quantity, consumptionType: urun.consumptionType, category: urun.category });
+    setFormData({ productName: urun.productName, stockCode: urun.stockCode, companyName: (urun as any).companyName || '', cost: urun.cost, purchaseDate: urun.purchaseDate, quantity: urun.quantity, minStockLevel: urun.minStockLevel ?? 0, consumptionType: urun.consumptionType, category: urun.category });
     setShowAddModal(true);
   };
 
@@ -272,11 +277,14 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
     if (activeDepo === 'ana' && formData.category === 'sarf' && !formData.consumptionType) { alert('Sarf Malzeme için tüketim türü zorunludur. Lütfen "İşlem Bazlı Tüketim" veya "Genel Bazlı Tüketim" seçeneklerinden birini seçin.'); return; }
     setSaving(true);
     const colName = activeDepo === 'ana' ? 'anaDepoUrunler' : 'katDepoUrunler';
+    // Firestore, undefined alan değerlerini kabul etmez; tanımsız alanları temizle.
+    const payload: Record<string, any> = { ...formData };
+    Object.keys(payload).forEach(k => { if (payload[k] === undefined) delete payload[k]; });
     try {
       if (editingUrun?.id) {
-        await updateDoc(doc(db, colName, editingUrun.id), { ...formData, updatedAt: new Date().toISOString() });
+        await updateDoc(doc(db, colName, editingUrun.id), { ...payload, updatedAt: new Date().toISOString() });
       } else {
-        await addDoc(collection(db, colName), { ...formData, clinicId: doctorProfile.clinicId, createdBy: doctorProfile.fullName, createdAt: new Date().toISOString() });
+        await addDoc(collection(db, colName), { ...payload, clinicId: doctorProfile.clinicId, createdBy: doctorProfile.fullName, createdAt: new Date().toISOString() });
       }
       setShowAddModal(false);
     } catch (e) { console.error(e); alert('Kayıt sırasında hata oluştu.'); }
@@ -320,6 +328,8 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
 
   const handleRespondTalep = async (talep: MalzemeTalebi, action: 'approve' | 'reject') => {
     if (!doctorProfile?.clinicId || !talep.id) return;
+    // Malzeme talebine yalnızca admin ve depo yöneticisi (depocu) yanıt verebilir.
+    if (!canRespondTalep) { alert('Malzeme talebini yalnızca admin veya depo yöneticisi onaylayabilir/reddedebilir.'); return; }
     setRespondSaving(true);
     try {
       if (action === 'reject') {
@@ -900,6 +910,17 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
   const plannedTransfers = transferler.filter(t => t.status === 'planned');
   const completedTransfers = transferler.filter(t => t.status === 'completed');
 
+  // Düşük stok alarmı: stok tükendiyse (0) ya da tanımlı kritik seviyenin altına/eşit
+  // düştüyse uyarılır. Kritik seviye 0 ise (eşik tanımlanmamış) yalnızca stok bitince uyarılır.
+  const isLowStock = (u: DepoUrun) =>
+    u.quantity <= 0 || ((u.minStockLevel ?? 0) > 0 && u.quantity <= (u.minStockLevel ?? 0));
+
+  // İki depodaki tüm kritik ürünler (bildirim ve banner için).
+  const lowStockItems = [
+    ...anaDepoUrunler.filter(isLowStock).map(u => ({ ...u, _depoLabel: 'Ana Depo' })),
+    ...katDepoUrunler.filter(isLowStock).map(u => ({ ...u, _depoLabel: 'Kat Deposu' })),
+  ].sort((a, b) => a.quantity - b.quantity);
+
   // ─── Alt bileşen: Ürün tablosu ────────────────────────────────────────────
   const renderUrunRows = (items: DepoUrun[], depo: 'ana' | 'kat') => (
     <div className="overflow-x-auto">
@@ -924,11 +945,21 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
               <td className="px-4 py-3 text-white/70">{formatCurrency(u.cost)}</td>
               <td className="px-4 py-3 text-white/70">{new Date(u.purchaseDate).toLocaleDateString('tr-TR')}</td>
               <td className="px-4 py-3">
-                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                  u.quantity <= 5 ? 'bg-red-500/20 text-red-300' : u.quantity <= 20 ? 'bg-yellow-500/20 text-yellow-300' : 'bg-green-500/20 text-green-300'
-                }`}>
-                  {u.quantity} adet
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                    isLowStock(u)
+                      ? u.quantity <= 0 ? 'bg-red-500/30 text-red-200' : 'bg-yellow-500/20 text-yellow-300'
+                      : 'bg-green-500/20 text-green-300'
+                  }`}>
+                    {u.quantity <= 0 ? '0 adet — TÜKENDİ' : `${u.quantity} adet`}
+                  </span>
+                  {isLowStock(u) && u.quantity > 0 && (
+                    <span className="text-yellow-300 text-xs font-semibold" title={`Kritik seviye: ${u.minStockLevel}`}>⚠️ Kritik</span>
+                  )}
+                  {(u.minStockLevel ?? 0) > 0 && (
+                    <span className="text-white/40 text-xs">(min {u.minStockLevel})</span>
+                  )}
+                </div>
               </td>
               {canManage && (
                 <td className="px-4 py-3">
@@ -1076,6 +1107,40 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
 
   return (
     <div className="space-y-6">
+      {/* ─── Düşük Stok Bildirimi (sayfaya girişte açılır) ─────────── */}
+      {lowStockItems.length > 0 && !lowStockToastDismissed && (
+        <div className="fixed top-4 right-4 z-[60] w-full max-w-sm">
+          <div className="bg-slate-900 border-2 border-red-500/70 rounded-2xl shadow-2xl shadow-red-500/20 overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-red-600/40 to-orange-500/30 border-b border-red-500/40">
+              <span className="text-2xl animate-pulse">🚨</span>
+              <div className="flex-1">
+                <p className="text-white font-bold text-sm">Düşük Stok Alarmı</p>
+                <p className="text-red-100/80 text-xs">{lowStockItems.length} ürün kritik seviyede veya tükendi</p>
+              </div>
+              <button
+                onClick={() => setLowStockToastDismissed(true)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-all"
+              >✕</button>
+            </div>
+            <div className="max-h-72 overflow-y-auto p-3 space-y-2">
+              {lowStockItems.map(u => (
+                <div key={`${u._depoLabel}-${u.id}`} className="flex items-center gap-2 p-2 rounded-lg bg-white/5 border border-white/10">
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${u.quantity <= 0 ? 'bg-red-400' : 'bg-yellow-400'}`}></span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-sm font-medium truncate">{u.productName}</p>
+                    <p className="text-white/50 text-xs">{u._depoLabel} · {u.stockCode}</p>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0 ${u.quantity <= 0 ? 'bg-red-500/30 text-red-200' : 'bg-yellow-500/20 text-yellow-300'}`}>
+                    {u.quantity <= 0 ? 'TÜKENDİ' : `${u.quantity} adet`}
+                    {(u.minStockLevel ?? 0) > 0 ? ` / min ${u.minStockLevel}` : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center gap-3">
         <span className="text-4xl">📦</span>
@@ -1109,6 +1174,35 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
         </div>
       </div>
 
+      {/* ─── Kalıcı Düşük Stok Banner'ı ────────────────────────── */}
+      {lowStockItems.length > 0 && (
+        <div className="bg-gradient-to-r from-red-500/15 to-orange-500/15 border border-red-500/40 rounded-2xl p-4">
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-2xl animate-pulse">🚨</span>
+            <div>
+              <h3 className="text-red-200 font-bold text-lg">Düşük Stok Uyarısı</h3>
+              <p className="text-red-100/70 text-sm">Aşağıdaki {lowStockItems.length} ürünün stoğu kritik seviyede veya tükendi. En kısa sürede tedarik edin.</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {lowStockItems.map(u => (
+              <span
+                key={`banner-${u._depoLabel}-${u.id}`}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium border ${
+                  u.quantity <= 0
+                    ? 'bg-red-500/25 text-red-100 border-red-400/50'
+                    : 'bg-yellow-500/15 text-yellow-200 border-yellow-400/40'
+                }`}
+                title={`${u._depoLabel} · Stok kodu: ${u.stockCode}`}
+              >
+                {u.quantity <= 0 ? '⛔' : '⚠️'} {u.productName} · {u._depoLabel}: {u.quantity <= 0 ? 'TÜKENDİ' : `${u.quantity} adet`}
+                {(u.minStockLevel ?? 0) > 0 ? ` (min ${u.minStockLevel})` : ''}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Ana Sekmeler */}
       <div className="flex gap-2 flex-wrap">
         {(['ana-depo', 'kat-deposu'] as const).map(tab => (
@@ -1124,7 +1218,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
             {tab === 'ana-depo' ? '🏭 Ana Depo' : '🏥 Kat Deposu'}
           </button>
         ))}
-        {(isAdmin || isBashemshire) && (
+        {(
           <button
             onClick={() => setActiveTab('eslestirme')}
             className={`px-5 py-2.5 rounded-xl font-semibold text-sm transition-all ${
@@ -1136,7 +1230,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
             🔗 Malzeme Eşleştirme
           </button>
         )}
-        {(isAdmin || isBashemshire) && (
+        {(
           <button
             onClick={() => setActiveTab('malzeme-talebi')}
             className={`relative px-5 py-2.5 rounded-xl font-semibold text-sm transition-all ${
@@ -1168,7 +1262,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                 {([
                   { key: 'transfer', label: '🚚 Transfer Planları' },
                   { key: 'eklemeler', label: '📦 Ürün Eklemeleri' },
-                  ...(!isBashemshire ? [{ key: 'talepler', label: '📋 Malzeme Talepleri' }] : []),
+                  { key: 'talepler', label: '📋 Malzeme Talepleri' },
                 ] as { key: 'transfer' | 'eklemeler' | 'talepler'; label: string }[]).map(tab => (
                   <button
                     key={tab.key}
@@ -1386,7 +1480,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                             </div>
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className={`px-2 py-0.5 border rounded-full text-xs font-semibold ${s.cls}`}>{s.label}</span>
-                              {talep.status === 'pending' && (isAdmin || isDepoyonetici) && respondingId !== talep.id && (
+                              {talep.status === 'pending' && canRespondTalep && respondingId !== talep.id && (
                                 <button onClick={() => openRespond(talep)}
                                   className="px-3 py-1 bg-orange-500/20 hover:bg-orange-500/30 border border-orange-400/50 rounded-lg text-orange-300 text-xs font-semibold transition-all">
                                   Yanıtla
@@ -1483,7 +1577,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
 
           {katActiveTab === 'kullanim' && (
             <div className="space-y-4">
-              {(isAdmin || isBashemshire) && (
+              {(
                 <div className="bg-white/10 border border-white/20 rounded-2xl overflow-hidden">
                   <div className="p-4 border-b border-white/20 flex items-center justify-between">
                     <h3 className="text-white font-bold">Hemşire Bazlı Kullanım Özeti</h3>
@@ -1898,6 +1992,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                 { label: 'Maliyet (₺)', key: 'cost', type: 'number', placeholder: '0' },
                 { label: 'Alım Tarihi', key: 'purchaseDate', type: 'date', placeholder: '' },
                 { label: 'Adet', key: 'quantity', type: 'number', placeholder: '0' },
+                { label: 'Kritik Stok Seviyesi (alarm eşiği)', key: 'minStockLevel', type: 'number', placeholder: 'Örn. 5 — bu adete düşünce alarm verir' },
               ].map(field => (
                 <div key={field.key}>
                   <label className="block text-white/70 text-sm mb-1">{field.label}</label>

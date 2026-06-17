@@ -86,6 +86,8 @@ interface Patient {
   pharmacyChangeNote?: string;
   // Pharmacy sale data (what the patient actually purchased)
   pharmacySoldItems?: Array<{ name: string; price?: number; quantity?: number }>;
+  // Cumulative list of everything purchased across all sales / prescription changes.
+  pharmacyPurchasedItems?: Array<{ name: string; price?: number; quantity?: number }>;
   pharmacyRemovedItems?: Array<{ name: string }>;
   pharmacySaleDate?: string;
   pharmacyStatus?: string;
@@ -294,7 +296,12 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
     const overrides = p.prescriptionReceiptOverrides ?? {};
     const ov = overrides[medName];
     if (ov) return ov === 'received';
-    const sold = p.pharmacySoldItems || [];
+    // Prefer the cumulative purchase history so meds bought before a prescription
+    // change still show as "Alındı"; fall back to the last sale for older records.
+    // (Guard against an empty [] shadowing the fallback — [] is truthy.)
+    const sold = (p.pharmacyPurchasedItems && p.pharmacyPurchasedItems.length > 0)
+      ? p.pharmacyPurchasedItems
+      : (p.pharmacySoldItems || []);
     const b = normalizeMedName(resolveMedName(medName));
     return sold.some(it => {
       const a = normalizeMedName(it.name);
@@ -339,7 +346,27 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
     // Sanitize: Firestore arrayUnion rejects objects containing `undefined`.
     const sanitizeMeds = (list: PrescriptionMed[]) =>
       list.map(m => ({ name: m.name, dosage: m.dosage || '', type: m.type || '' }));
-    const previousMeds = sanitizeMeds(getActivePrescription(livePat));
+    const prevActive = getActivePrescription(livePat);
+    const previousMeds = sanitizeMeds(prevActive);
+
+    // Carry forward the "Alındı" (received) state for meds that survive the change so
+    // the patient isn't asked to re-buy what they already picked up. Removed meds are
+    // dropped; the newly-added meds have no entry and stay "Alınmadı". Overrides are
+    // re-keyed to the resolved (commercial) names the new prescription list uses, since
+    // the editor stores resolved names while old overrides may be keyed by raw names.
+    const prevOverrides = livePat.prescriptionReceiptOverrides ?? {};
+    const keptNames = new Set(cleaned.map(m => m.name));
+    const carriedOverrides: Record<string, 'received' | 'not_received'> = {};
+    for (const o of prevActive) {
+      const resolved = resolveMedName(o.name);
+      const status = prevOverrides[o.name] ?? prevOverrides[resolved];
+      if (status && keptNames.has(resolved)) carriedOverrides[resolved] = status;
+    }
+    // Also preserve any override already keyed directly to a kept name.
+    for (const [k, v] of Object.entries(prevOverrides)) {
+      if (keptNames.has(k)) carriedOverrides[k] = v;
+    }
+
     const changeRecord: PrescriptionChange = {
       changedAt: new Date().toISOString(),
       changedBy: doctorProfile?.fullName || 'Bilinmiyor',
@@ -356,8 +383,8 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
         prescriptionChanges: arrayUnion(changeRecord),
         prescriptionChanged: true,
         prescriptionChangedAt: changeRecord.changedAt,
-        // A fresh change resets any prior manual "alındı" overrides for accuracy.
-        prescriptionReceiptOverrides: {},
+        // Keep the received state for kept meds; only removed meds lose their override.
+        prescriptionReceiptOverrides: carriedOverrides,
         pharmacyChangeNote: changeReason.trim() || 'Reçete değişikliği',
         // Re-queue the patient to the pharmacy so the new medication is dispensed.
         pharmacyStatus: 'waiting',

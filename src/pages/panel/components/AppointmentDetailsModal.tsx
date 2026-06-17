@@ -9,10 +9,11 @@ interface AppointmentDetailsModalProps {
   appointment: any | null;
   onCancelled?: () => void;
   onStatusUpdated?: () => void;
+  onMove?: () => void;
   onNavigate?: (section: 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel') => void;
 }
 
-const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpen, onClose, appointment, onCancelled, onStatusUpdated, onNavigate }) => {
+const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpen, onClose, appointment, onCancelled, onStatusUpdated, onMove, onNavigate }) => {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
@@ -586,14 +587,24 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ isOpe
           {/* Footer */}
           <div className="px-6 py-4 bg-gradient-to-r from-gray-50 to-gray-100 border-t border-gray-200">
             <div className="flex justify-between items-center gap-3">
-              <button 
-                onClick={() => setShowCancelConfirm(true)}
-                disabled={currentStatus === 'cancelled'}
-                className={`px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 active:scale-95 flex items-center gap-2 ${currentStatus === 'cancelled' ? 'opacity-50 cursor-not-allowed hover:scale-100' : ''}`}
-              >
-                <span>🚫</span>
-                Randevuyu İptal Et
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowCancelConfirm(true)}
+                  disabled={currentStatus === 'cancelled'}
+                  className={`px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 active:scale-95 flex items-center gap-2 ${currentStatus === 'cancelled' ? 'opacity-50 cursor-not-allowed hover:scale-100' : ''}`}
+                >
+                  <span>🚫</span>
+                  Randevuyu İptal Et
+                </button>
+                <button
+                  onClick={() => { onMove?.(); }}
+                  disabled={currentStatus === 'cancelled'}
+                  className={`px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 active:scale-95 flex items-center gap-2 ${currentStatus === 'cancelled' ? 'opacity-50 cursor-not-allowed hover:scale-100' : ''}`}
+                >
+                  <span>↔️</span>
+                  Taşı
+                </button>
+              </div>
               <div className="flex gap-3">
                 {/* Patient Arrived Button - Only show when appointment is confirmed */}
                 {currentStatus === 'confirmed' && (

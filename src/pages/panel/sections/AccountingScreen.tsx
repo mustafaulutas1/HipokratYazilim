@@ -5,6 +5,20 @@ import { utils, writeFile } from 'xlsx';
 import ExcelJS from 'exceljs';
 import MultiPaymentMethodSelector, { formatPaymentMethods } from '../../../components/UI/MultiPaymentMethodSelector';
 import type { PaymentMethodEntry } from '../../../components/UI/MultiPaymentMethodSelector';
+import ApplicationManagementModal from '../components/ApplicationManagementModal';
+
+// Roles allowed to change application prices from the accounting screen.
+// Mirrors PRICE_MANAGEMENT_ROLES in TreatmentProtocols.
+const PRICE_MANAGEMENT_ROLES = ['admin', 'assistant', 'accounting'];
+
+const canManageApplicationPrices = (
+  profile: { userType?: string; role?: string; isClinicOwner?: boolean } | null | undefined
+): boolean => {
+  if (!profile) return false;
+  if (profile.isClinicOwner) return true;
+  const role = profile.role || profile.userType || '';
+  return PRICE_MANAGEMENT_ROLES.includes(role);
+};
 
 interface DebtPaymentEntry {
   date: string;
@@ -44,6 +58,11 @@ interface PaymentPatient {
   // Discount applied at payment time = expected (catalog) total minus what was actually
   // charged, excluding any portion deferred as debt. 0 / undefined when no discount.
   discountAmount?: number;
+  // Patient-level "always apply discount" preference (also editable from Add/Edit patient).
+  indirim_check?: boolean;
+  indirim_tipi?: 'yuzde' | 'tutar';
+  indirim_orani?: number;
+  indirim_tutar?: number;
   updatedAt?: string;
   treatmentApplied?: boolean;
   treatmentNotAppliedReason?: string;
@@ -126,6 +145,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
   const [isDebtPaymentModalOpen, setIsDebtPaymentModalOpen] = useState(false);
+  const [showApplicationModal, setShowApplicationModal] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState<string>('');
   // `paymentAmount` is the user-editable input. `payableAmount` is the actual amount
@@ -135,6 +155,13 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodEntry[]>([{ method: 'nakit', amount: 0 }]);
   const [selectedApplications, setSelectedApplications] = useState<string[]>([]);
   const [includeMuayene, setIncludeMuayene] = useState<boolean>(true);
+  // Patient discount marking (mirrors patient doc's indirim_* fields)
+  const [discountCheck, setDiscountCheck] = useState<boolean>(false);
+  const [discountType, setDiscountType] = useState<'yuzde' | 'tutar'>('yuzde');
+  const [discountRate, setDiscountRate] = useState<number>(20);
+  const [discountValue, setDiscountValue] = useState<number>(0);
+  const [savingDiscount, setSavingDiscount] = useState<boolean>(false);
+  const [discountApplied, setDiscountApplied] = useState<boolean>(false);
   const [refundAmount, setRefundAmount] = useState<string>('');
   const [refundMethod, setRefundMethod] = useState<string>('nakit');
   const [refundMethods, setRefundMethods] = useState<PaymentMethodEntry[]>([{ method: 'nakit', amount: 0 }]);
@@ -474,6 +501,97 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
     syncAutoCalculatedPayment(true);
   }, [isPaymentModalOpen, selectedPatient, medicalApplicationPrices]);
 
+  // Initialize discount marking from the selected patient when the modal opens.
+  useEffect(() => {
+    if (!isPaymentModalOpen || !selectedPatient) return;
+    setDiscountCheck(selectedPatient.indirim_check ?? false);
+    setDiscountType((selectedPatient.indirim_tipi as 'yuzde' | 'tutar') || 'yuzde');
+    setDiscountRate(selectedPatient.indirim_orani ?? 20);
+    setDiscountValue(selectedPatient.indirim_tutar ?? 0);
+    setDiscountApplied(false);
+  }, [isPaymentModalOpen, selectedPatient]);
+
+  // If the discount marking changes, a previously applied amount is stale.
+  useEffect(() => {
+    setDiscountApplied(false);
+  }, [discountCheck, discountType, discountRate, discountValue]);
+
+  // Compute the discount (in TL) implied by the current marking against the treatment base.
+  const computeMarkedDiscount = () => {
+    if (!selectedPatient || !discountCheck) return { base: 0, discount: 0, debtToInclude: 0 };
+    const expected = calculateAutoPaymentAmount(
+      selectedPatient,
+      selectedApplications,
+      includeMuayene,
+      includeDebtInPayment
+    );
+    const debtToInclude = includeDebtInPayment ? (Number(selectedPatient.debtAmount) || 0) : 0;
+    const base = Math.max(0, expected - debtToInclude);
+    const discount = discountType === 'yuzde'
+      ? Math.round(base * (Number(discountRate) || 0)) / 100
+      : Math.min(Number(discountValue) || 0, base);
+    return { base, discount: Math.round(discount * 100) / 100, debtToInclude };
+  };
+
+  const setPayableTo = (amount: number) => {
+    const formatted = amount.toFixed(2);
+    setPaymentAmount(formatted);
+    setPayableAmount(formatted);
+    setLastAutoCalculatedAmount(''); // treat as manual so auto-sync won't overwrite it
+    if (paymentMethods.length > 0) {
+      setPaymentMethods([{ method: paymentMethods[0].method, amount }]);
+    }
+  };
+
+  // Apply the marked discount to the payable amount (operator sees the reduced total).
+  const applyDiscountToAmount = () => {
+    const { base, discount, debtToInclude } = computeMarkedDiscount();
+    setPayableTo(Math.max(0, Math.round((base - discount + debtToInclude) * 100) / 100));
+    setDiscountApplied(true);
+  };
+
+  // Restore the full (non-discounted) amount.
+  const removeDiscountFromAmount = () => {
+    if (!selectedPatient) return;
+    const expected = calculateAutoPaymentAmount(
+      selectedPatient,
+      selectedApplications,
+      includeMuayene,
+      includeDebtInPayment
+    );
+    setPayableTo(Math.max(0, Math.round(expected * 100) / 100));
+    setDiscountApplied(false);
+  };
+
+  const toggleDiscountApplied = () => {
+    if (discountApplied) removeDiscountFromAmount();
+    else applyDiscountToAmount();
+  };
+
+  // Persist the discount marking onto the patient document (independent of taking payment).
+  const saveDiscountMarking = async () => {
+    if (!selectedPatient) return;
+    setSavingDiscount(true);
+    try {
+      const data: any = {
+        indirim_check: discountCheck,
+        indirim_tipi: discountType,
+        indirim_orani: Number(discountRate) || 0,
+        indirim_tutar: Number(discountValue) || 0,
+        updatedAt: new Date().toISOString(),
+      };
+      await updateDoc(doc(db, 'patients', selectedPatient.id), data);
+      setSelectedPatient(prev => (prev ? { ...prev, ...data } : prev));
+      if (discountCheck) applyDiscountToAmount();
+      alert('✅ İndirim bilgisi kaydedildi.');
+    } catch (e) {
+      console.error('Error saving discount marking:', e);
+      alert('İndirim bilgisi kaydedilirken bir hata oluştu.');
+    } finally {
+      setSavingDiscount(false);
+    }
+  };
+
   const handleProcessPayment = async () => {
     if (!selectedPatient || !payableAmount) return;
 
@@ -530,6 +648,11 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         additionalTreatmentPrice: null,
         // Clear post-treatment payment flag
         postTreatmentPayment: false,
+        // Persist the patient's discount marking
+        indirim_check: discountCheck,
+        indirim_tipi: discountType,
+        indirim_orani: Number(discountRate) || 0,
+        indirim_tutar: Number(discountValue) || 0,
       };
       
       // Handle debt tracking - simplified with explicit checkbox
@@ -1550,6 +1673,15 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
           Muhasebe Ekranı
         </h1>
         <div className="flex items-center gap-3">
+          {canManageApplicationPrices(doctorProfile) && (
+            <button
+              onClick={() => setShowApplicationModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-blue-500/25"
+            >
+              <span>🏥</span>
+              Uygulama Fiyatları
+            </button>
+          )}
           <button
             onClick={exportToExcel}
             className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-green-500/25"
@@ -2340,6 +2472,138 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   </div>
                 </div>
               )}
+
+              {/* Discount marking */}
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <input
+                    id="acc_indirim_check"
+                    type="checkbox"
+                    checked={discountCheck}
+                    onChange={(e) => setDiscountCheck(e.target.checked)}
+                    className="mt-1 h-5 w-5 rounded border-green-300 text-green-600 focus:ring-green-500"
+                  />
+                  <label htmlFor="acc_indirim_check" className="text-sm text-green-900">
+                    <span className="font-semibold flex items-center gap-2">
+                      <span className="text-lg">🏷️</span> İndirim uygula
+                    </span>
+                    <span className="block text-green-800/80">
+                      Bu hasta için indirim işaretlenir ve ödeme tutarına uygulanabilir.
+                    </span>
+                  </label>
+                </div>
+
+                {discountCheck && (
+                  <div className="ml-8 space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-green-800 mb-2">İndirim Türü</label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setDiscountType('yuzde')}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                            discountType === 'yuzde'
+                              ? 'bg-green-500 text-white'
+                              : 'bg-white border border-green-300 text-green-700 hover:bg-green-100'
+                          }`}
+                        >
+                          % Yüzde
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDiscountType('tutar')}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                            discountType === 'tutar'
+                              ? 'bg-green-500 text-white'
+                              : 'bg-white border border-green-300 text-green-700 hover:bg-green-100'
+                          }`}
+                        >
+                          ₺ Tutar
+                        </button>
+                      </div>
+                    </div>
+
+                    {discountType === 'yuzde' ? (
+                      <div>
+                        <label className="block text-sm font-medium text-green-800 mb-2">İndirim Oranı (%)</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            value={discountRate}
+                            onChange={(e) => setDiscountRate(parseFloat(e.target.value) || 0)}
+                            min="0"
+                            max="100"
+                            className="w-32 px-3 py-2 bg-white border border-green-300 rounded-lg text-green-900 focus:outline-none focus:ring-2 focus:ring-green-500"
+                            placeholder="20"
+                          />
+                          <span className="text-sm text-green-700">%</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-sm font-medium text-green-800 mb-2">İndirim Tutarı (TL)</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            value={discountValue}
+                            onChange={(e) => setDiscountValue(parseFloat(e.target.value) || 0)}
+                            min="0"
+                            step="0.01"
+                            className="w-32 px-3 py-2 bg-white border border-green-300 rounded-lg text-green-900 focus:outline-none focus:ring-2 focus:ring-green-500"
+                            placeholder="100"
+                          />
+                          <span className="text-sm text-green-700">TL</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {(() => {
+                      const { discount } = computeMarkedDiscount();
+                      return discount > 0 ? (
+                        <div className="text-sm text-green-800 bg-white border border-green-200 rounded-lg px-3 py-2">
+                          Uygulanacak indirim: <span className="font-bold">{discount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                        </div>
+                      ) : null;
+                    })()}
+
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={toggleDiscountApplied}
+                        className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors flex items-center gap-2 ${
+                          discountApplied
+                            ? 'bg-white border border-green-400 text-green-700 hover:bg-green-50'
+                            : 'bg-green-600 hover:bg-green-700 text-white'
+                        }`}
+                      >
+                        <span>{discountApplied ? '↩️' : '🏷️'}</span>
+                        {discountApplied ? 'İndirimi geri al' : 'İndirimi tutara uygula'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={saveDiscountMarking}
+                        disabled={savingDiscount}
+                        className="px-4 py-2 bg-white border border-green-300 hover:bg-green-100 text-green-700 text-sm font-semibold rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        {savingDiscount ? 'Kaydediliyor...' : 'Hasta için kaydet'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {!discountCheck && (
+                  <div className="ml-8">
+                    <button
+                      type="button"
+                      onClick={saveDiscountMarking}
+                      disabled={savingDiscount}
+                      className="px-4 py-2 bg-white border border-green-300 hover:bg-green-100 text-green-700 text-sm font-semibold rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {savingDiscount ? 'Kaydediliyor...' : 'İndirimi kaldır ve kaydet'}
+                    </button>
+                  </div>
+                )}
+              </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -3338,6 +3602,15 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
           </div>
         </div>
       )}
+
+      {/* Application Management Modal - price-only mode for accounting */}
+      <ApplicationManagementModal
+        isOpen={showApplicationModal}
+        onClose={() => setShowApplicationModal(false)}
+        doctorProfile={doctorProfile}
+        canManagePrices={canManageApplicationPrices(doctorProfile)}
+        priceOnly={true}
+      />
     </div>
   );
 };

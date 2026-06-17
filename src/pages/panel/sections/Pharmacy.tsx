@@ -112,6 +112,19 @@ interface PharmacyPatient {
     newMeds: Array<{ name: string; dosage?: string }>;
     reason?: string;
   }>;
+  // Patient-level "always apply discount" preference (shared with Add/Edit patient).
+  indirim_check?: boolean;
+  indirim_tipi?: 'yuzde' | 'tutar';
+  indirim_orani?: number;
+  indirim_tutar?: number;
+  // Manual "Alındı / Alınmadı" marks set from the patient panel (keyed by med name).
+  prescriptionReceiptOverrides?: Record<string, 'received' | 'not_received'>;
+  // Most recent pharmacy sale (overwritten each sale, used for sale-detail display).
+  pharmacySoldItems?: Array<{ name: string; price?: number; quantity?: number; category?: string }>;
+  // Cumulative list of everything the patient has ever purchased from the pharmacy,
+  // across all sales / prescription changes. Drives "already bought" detection so a
+  // changed prescription only asks the patient to buy the newly-added medication.
+  pharmacyPurchasedItems?: Array<{ name: string; price?: number; quantity?: number; category?: string }>;
 }
 
 const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorProfile }) => {
@@ -162,6 +175,12 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const [pickerQuantities, setPickerQuantities] = useState<Record<string, number>>({});
   // Sale note state
   const [pharmacyNote, setPharmacyNote] = useState<string>('');
+  // Pharmacy payment discount marking (mirrors patient doc's indirim_* fields)
+  const [pharmacyDiscountCheck, setPharmacyDiscountCheck] = useState<boolean>(false);
+  const [pharmacyDiscountType, setPharmacyDiscountType] = useState<'yuzde' | 'tutar'>('yuzde');
+  const [pharmacyDiscountRate, setPharmacyDiscountRate] = useState<number>(20);
+  const [pharmacyDiscountValue, setPharmacyDiscountValue] = useState<number>(0);
+  const [pharmacyDiscountApplied, setPharmacyDiscountApplied] = useState<boolean>(false);
   // Direct sale tab states
   const [dsCustomerMode, setDsCustomerMode] = useState<'existing' | 'new'>('existing');
   const [dsPatientSearch, setDsPatientSearch] = useState('');
@@ -845,6 +864,58 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     return medicines;
   };
 
+  // Normalize a medication name for loose comparison (case, spacing, hyphens).
+  const normalizeMedName = (s?: string) =>
+    (s || '').toLowerCase().replace(/\s*-\s*/g, '-').replace(/\s+/g, ' ').trim();
+
+  // The cumulative set of items the patient has actually purchased. Falls back to
+  // the last sale for patients that predate cumulative tracking.
+  const getPurchasedItems = (patient: PharmacyPatient) =>
+    (patient.pharmacyPurchasedItems && patient.pharmacyPurchasedItems.length > 0)
+      ? patient.pharmacyPurchasedItems
+      : (patient.pharmacySoldItems || []);
+
+  // Whether a prescribed medication has already been picked up — so we don't ask the
+  // patient to re-buy it after a prescription change. A manual "Alındı / Alınmadı" mark
+  // from the patient panel wins; otherwise it's derived from past pharmacy sales.
+  const isMedAlreadyPurchased = (patient: PharmacyPatient, medName: string): boolean => {
+    const match = findMedicationByName(medName);
+    const resolved = match ? getMedicationDisplayName(match) : medName;
+    const b = normalizeMedName(resolved);
+    if (!b) return false;
+    const looseEq = (other?: string) => {
+      const a = normalizeMedName(other);
+      return !!a && (a === b || a.includes(b) || b.includes(a));
+    };
+
+    // 1) Manual override (mirrors the patient panel's getReceiptStatus).
+    const overrides = patient.prescriptionReceiptOverrides ?? {};
+    const ovKey = Object.keys(overrides).find(k => looseEq(k) || normalizeMedName(k) === normalizeMedName(medName));
+    if (ovKey) return overrides[ovKey] === 'received';
+
+    // 2) Otherwise, derive from what was actually sold in past visits.
+    return getPurchasedItems(patient).some(it => looseEq(it.name));
+  };
+
+  // Merge a completed sale's items into the cumulative purchased list, deduping by
+  // normalized name (keeping the most recent price/quantity for an existing entry).
+  const mergePurchasedItems = (
+    existing: Array<{ name: string; price?: number; quantity?: number; category?: string }>,
+    sold: Array<{ name: string; price?: number; quantity?: number; category?: string }>,
+  ) => {
+    const merged = [...existing];
+    for (const item of sold) {
+      const key = normalizeMedName(item.name);
+      const idx = merged.findIndex(m => normalizeMedName(m.name) === key);
+      if (idx >= 0) {
+        merged[idx] = { ...merged[idx], name: item.name, price: item.price, category: item.category };
+      } else {
+        merged.push(item);
+      }
+    }
+    return merged;
+  };
+
   const handleOpenSaleModal = (patient: PharmacyPatient) => {
     setSelectedPatientForSale(patient);
     setIsSaleModalOpen(true);
@@ -854,13 +925,27 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const handleOpenPaymentModal = (soldItems: any[]) => {
     const itemsWithQty = soldItems.map(item => ({ ...item, quantity: item.quantity || 1 }));
     setPendingSoldItems(itemsWithQty);
-    // Initialize all medicines as selected
-    setSelectedMedicines(itemsWithQty.map(item => item.name));
-    // Calculate total from sold items
-    const total = itemsWithQty.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
+    // Pre-select only meds the patient hasn't already purchased. After a prescription
+    // change, kept meds stay in the list (greyed/deselected) but only the newly-added
+    // ones are selected for sale, so the patient isn't asked to re-buy anything.
+    const p = selectedPatientForSale;
+    const initiallySelected = itemsWithQty
+      .filter(item => !(p && isMedAlreadyPurchased(p, item.name)))
+      .map(item => item.name);
+    setSelectedMedicines(initiallySelected);
+    // Calculate total from the initially selected (sellable) items only.
+    const total = itemsWithQty
+      .filter(item => initiallySelected.includes(item.name))
+      .reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
     setPharmacyPaymentAmount(total.toFixed(2));
     // Reset debt selection
     setSelectedDebts([]);
+    // Manual discount only — always start fresh (not loaded from / saved to the patient)
+    setPharmacyDiscountCheck(false);
+    setPharmacyDiscountType('yuzde');
+    setPharmacyDiscountRate(20);
+    setPharmacyDiscountValue(0);
+    setPharmacyDiscountApplied(false);
     // Fetch patient debt history when modal opens
     if (selectedPatientForSale) {
       fetchPatientDebtHistory(selectedPatientForSale);
@@ -875,7 +960,43 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       .filter(item => selected.includes(item.name))
       .reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
     setPharmacyPaymentAmount(total.toFixed(2));
+    setPharmacyDiscountApplied(false);
   };
+
+  // Selected-medicines total (discount base, excludes any added past debt).
+  const pharmacyItemsBase = () =>
+    pendingSoldItems
+      .filter(item => selectedMedicines.includes(item.name))
+      .reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
+
+  // Discount (TL) implied by the current marking against the items base.
+  const computePharmacyDiscount = () => {
+    if (!pharmacyDiscountCheck) return 0;
+    const base = pharmacyItemsBase();
+    const d = pharmacyDiscountType === 'yuzde'
+      ? base * (Number(pharmacyDiscountRate) || 0) / 100
+      : Math.min(Number(pharmacyDiscountValue) || 0, base);
+    return Math.max(0, Math.round(d * 100) / 100);
+  };
+
+  // Toggle the marked discount on/off against the payable amount.
+  const togglePharmacyDiscount = () => {
+    const delta = computePharmacyDiscount();
+    const current = parseFloat(pharmacyPaymentAmount) || 0;
+    const next = pharmacyDiscountApplied
+      ? Math.round((current + delta) * 100) / 100
+      : Math.max(0, Math.round((current - delta) * 100) / 100);
+    setPharmacyPaymentAmount(next.toFixed(2));
+    if (pharmacyPaymentMethods.length > 0) {
+      setPharmacyPaymentMethods([{ method: pharmacyPaymentMethods[0].method, amount: next }]);
+    }
+    setPharmacyDiscountApplied(!pharmacyDiscountApplied);
+  };
+
+  // A previously applied discount becomes stale when the marking or item selection changes.
+  useEffect(() => {
+    setPharmacyDiscountApplied(false);
+  }, [pharmacyDiscountCheck, pharmacyDiscountType, pharmacyDiscountRate, pharmacyDiscountValue, selectedMedicines, pendingSoldItems]);
 
   // Update quantity of a pending item
   const handleUpdateQuantity = (itemIndex: number, delta: number) => {
@@ -1045,6 +1166,12 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
         // The (possibly changed) prescription has now been dispensed.
         prescriptionChanged: false,
         pharmacySoldItems: approvedMedicines,
+        // Append this sale's items to the cumulative purchased list so a future
+        // prescription change won't ask the patient to re-buy them.
+        pharmacyPurchasedItems: mergePurchasedItems(
+          selectedPatientForSale.pharmacyPurchasedItems || selectedPatientForSale.pharmacySoldItems || [],
+          approvedMedicines,
+        ),
         pharmacyRemovedItems: removedMedicines,
         pharmacyPaymentAmount: totalPaymentReceived,
         pharmacyPaymentMethod: pharmacyPaymentMethod,
@@ -1058,7 +1185,9 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
           paidDebts: selectedDebts,
           paidAmount: selectedDebtTotal,
           paidAt: new Date().toISOString()
-        } : null
+        } : null,
+        // Manual discount applied to this pharmacy sale only (not saved to the patient)
+        pharmacyDiscountAmount: pharmacyDiscountApplied ? computePharmacyDiscount() : 0,
       };
       
       // Update patient pharmacy debt status (separate from treatment debts)
@@ -1112,7 +1241,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       setShowExtraMedicinePicker(false);
       setExtraMedicineSearch('');
       setPharmacyNote('');
-      
+      setPharmacyDiscountApplied(false);
+
       fetchPatients();
 
     } catch (error) {
@@ -1161,30 +1291,42 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     doc2.setTextColor(100);
     doc2.text(`Klinik: ${doctorProfile?.clinicId || ''}   Tarih: ${new Date().toLocaleDateString('tr-TR')}   Toplam: ${filtered.length} kayıt`, 14, 23);
 
+    const saleDiscount = (s: any) => Math.max(
+      0,
+      typeof s.discountAmount === 'number'
+        ? s.discountAmount
+        : (s.totalAmount || 0) - (s.paidAmount || 0) - (s.remainingDebt || 0)
+    );
+
     autoTable(doc2, {
       startY: 28,
-      head: [['Tarih', 'Müşteri', 'Ürünler', 'Toplam (TL)', 'Ödeme Yöntemi', 'Not']],
+      head: [['Tarih', 'Müşteri', 'Ürünler', 'Toplam (TL)', 'İndirim (TL)', 'Ödeme Yöntemi', 'Not']],
       body: filtered.map(s => {
         const tarih = s.createdAt ? new Date(s.createdAt).toLocaleString('tr-TR') : '-';
         const urunler = (s.items || []).map((i: any) => `${i.name} ×${i.quantity} (${(i.price * i.quantity).toFixed(2)} TL)`).join('\n');
         const toplam = (s.totalAmount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 });
+        const indirim = saleDiscount(s);
+        const indirimStr = indirim > 0 ? indirim.toLocaleString('tr-TR', { minimumFractionDigits: 2 }) : '-';
         const odeme = (s.paymentMethods || []).length > 0
           ? (s.paymentMethods as PaymentMethodEntry[]).map((m) => `${m.method === 'nakit' ? 'Nakit' : m.method === 'kredi_karti' ? 'Kredi Kartı' : m.method === 'banka_karti' ? 'Banka Kartı' : m.method === 'havale' ? 'Havale/EFT' : m.method === 'cari' ? 'Cari' : m.method}: ${m.amount.toFixed(2)} TL`).join('\n')
           : '-';
-        return [tarih, s.customerName || '-', urunler, toplam, odeme, s.note || '-'];
+        return [tarih, s.customerName || '-', urunler, toplam, indirimStr, odeme, s.note || '-'];
       }),
       styles: { fontSize: 8, cellPadding: 3 },
       headStyles: { fillColor: [5, 150, 105], textColor: 255 },
-      columnStyles: { 2: { cellWidth: 70 }, 4: { cellWidth: 45 } },
+      columnStyles: { 2: { cellWidth: 65 }, 5: { cellWidth: 40 } },
       alternateRowStyles: { fillColor: [240, 253, 250] },
     });
 
     // Summary row
     const totalRevenue = filtered.reduce((s, sale) => s + (sale.totalAmount || 0), 0);
+    const totalDiscount = filtered.reduce((s, sale) => s + saleDiscount(sale), 0);
     const finalY = (doc2 as any).lastAutoTable.finalY + 6;
     doc2.setFontSize(10);
     doc2.setTextColor(5, 150, 105);
     doc2.text(`Toplam Gelir: ${totalRevenue.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL`, 14, finalY);
+    doc2.setTextColor(220, 38, 38);
+    doc2.text(`Toplam İndirim: ${totalDiscount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL`, 14, finalY + 7);
 
     doc2.save(`eczane-satis-raporu-${new Date().toISOString().slice(0, 10)}.pdf`);
   };
@@ -1308,6 +1450,9 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
         totalAmount,
         paymentMethods: dsPaymentMethods.filter(m => m.amount > 0),
         paidAmount: enteredAmount,
+        // Discount = catalog total minus what was actually charged, excluding any
+        // portion deferred as debt. Surfaces as "İndirim" in the eczane report.
+        discountAmount: Math.max(0, Math.round((totalAmount - enteredAmount - (dsPartialPayment && dsRemainingDebt ? parseFloat(dsRemainingDebt) : 0)) * 100) / 100),
         note: dsNote.trim() || null,
         isPartialPayment: dsPartialPayment,
         remainingDebt: dsPartialPayment && dsRemainingDebt ? parseFloat(dsRemainingDebt) : 0,
@@ -1738,10 +1883,16 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
            new Date(med.expiryDate) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
   );
 
+  // Low-stock alarm: stock fully depleted (0), or at/below the configured min level.
+  // A min level of 0 means "no threshold set", so we only alarm on it when stock hits 0.
+  const isLowStock = (item: { stockQuantity: number; minStockLevel: number }) =>
+    item.stockQuantity <= 0 || (item.minStockLevel > 0 && item.stockQuantity <= item.minStockLevel);
+
+  // Get low stock medications
+  const lowStockMedications = savedMedications.filter(isLowStock);
+
   // Get low stock devices
-  const lowStockDevices = savedDevices.filter(
-    dev => dev.stockQuantity <= dev.minStockLevel
-  );
+  const lowStockDevices = savedDevices.filter(isLowStock);
 
   // Get devices needing maintenance
   const devicesNeedingMaintenance = savedDevices.filter(
@@ -1873,13 +2024,19 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
         <>
           {/* Stats Overview */}
           {activeTab === 'medications' ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="bg-gradient-to-r from-blue-500/20 to-blue-600/20 border border-blue-500/30 rounded-2xl p-4">
                 <div className="text-blue-300 text-2xl mb-1">💊</div>
                 <div className="text-white text-2xl font-bold">{savedMedications.length}</div>
                 <div className="text-white/70 text-sm">Toplam İlaç</div>
               </div>
-              
+
+              <div className="bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 border border-yellow-500/30 rounded-2xl p-4">
+                <div className="text-yellow-300 text-2xl mb-1">⚠️</div>
+                <div className="text-white text-2xl font-bold">{lowStockMedications.length}</div>
+                <div className="text-white/70 text-sm">Düşük Stok</div>
+              </div>
+
               <div className="bg-gradient-to-r from-red-500/20 to-red-600/20 border border-red-500/30 rounded-2xl p-4">
                 <div className="text-red-300 text-2xl mb-1">📅</div>
                 <div className="text-white text-2xl font-bold">{expiredMedications.length}</div>
@@ -2132,8 +2289,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       <div 
                         key={medication.id} 
                         className={`bg-white/5 border rounded-xl p-4 transition-all duration-200 hover:bg-white/10 ${
-                          medication.stockQuantity <= medication.minStockLevel 
-                            ? 'border-yellow-500/50 bg-yellow-500/10' 
+                          isLowStock(medication)
+                            ? 'border-yellow-500/50 bg-yellow-500/10'
                             : medication.expiryDate && new Date(medication.expiryDate) < new Date()
                               ? 'border-red-500/50 bg-red-500/10'
                               : 'border-white/20'
@@ -2164,6 +2321,18 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                                   📝 Reçete Gerekli
                                 </span>
                               )}
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                isLowStock(medication)
+                                  ? medication.stockQuantity <= 0
+                                    ? 'bg-red-500/30 text-red-200'
+                                    : 'bg-yellow-500/20 text-yellow-300'
+                                  : 'bg-green-500/20 text-green-300'
+                              }`}>
+                                {isLowStock(medication) && medication.stockQuantity > 0 ? '⚠️ ' : ''}
+                                {medication.stockQuantity <= 0
+                                  ? '📦 Stok Tükendi'
+                                  : `📦 Stok: ${medication.stockQuantity}${medication.minStockLevel > 0 ? ` (min ${medication.minStockLevel})` : ''}`}
+                              </span>
                             </div>
                             
                             {medication.barcode && (
@@ -2240,8 +2409,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                         <div 
                           key={device.id} 
                           className={`bg-white/5 border rounded-xl p-4 transition-all duration-200 hover:bg-white/10 ${
-                            device.stockQuantity <= device.minStockLevel 
-                              ? 'border-yellow-500/50 bg-yellow-500/10' 
+                            isLowStock(device)
+                              ? 'border-yellow-500/50 bg-yellow-500/10'
                               : device.maintenanceRequired && device.nextMaintenanceDate && new Date(device.nextMaintenanceDate) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
                                 ? 'border-orange-500/50 bg-orange-500/10'
                                 : 'border-white/20'
@@ -2272,6 +2441,18 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                                     🔧 Bakım Takipli
                                   </span>
                                 )}
+                                <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                  isLowStock(device)
+                                    ? device.stockQuantity <= 0
+                                      ? 'bg-red-500/30 text-red-200'
+                                      : 'bg-yellow-500/20 text-yellow-300'
+                                    : 'bg-green-500/20 text-green-300'
+                                }`}>
+                                  {isLowStock(device) && device.stockQuantity > 0 ? '⚠️ ' : ''}
+                                  {device.stockQuantity <= 0
+                                    ? '📦 Stok Tükendi'
+                                    : `📦 Stok: ${device.stockQuantity}${device.minStockLevel > 0 ? ` (min ${device.minStockLevel})` : ''}`}
+                                </span>
                               </div>
                               
                               {device.serialNumber && (
@@ -2805,7 +2986,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                   ) : (
                     <div className="space-y-3">
                       {/* Summary stats */}
-                      <div className="grid grid-cols-3 gap-4">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="bg-gradient-to-r from-emerald-500/20 to-teal-600/20 border border-emerald-500/30 rounded-2xl p-4">
                           <div className="text-emerald-300 text-xl mb-1">🧾</div>
                           <div className="text-white text-2xl font-bold">{filtered.length}</div>
@@ -2817,6 +2998,13 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                             {filtered.reduce((s, x) => s + (x.totalAmount || 0), 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
                           </div>
                           <div className="text-white/60 text-sm">Toplam Gelir</div>
+                        </div>
+                        <div className="bg-gradient-to-r from-orange-500/20 to-red-600/20 border border-orange-500/30 rounded-2xl p-4">
+                          <div className="text-orange-300 text-xl mb-1">🏷️</div>
+                          <div className="text-white text-2xl font-bold">
+                            {filtered.reduce((s, x) => s + Math.max(0, typeof x.discountAmount === 'number' ? x.discountAmount : (x.totalAmount || 0) - (x.paidAmount || 0) - (x.remainingDebt || 0)), 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                          </div>
+                          <div className="text-white/60 text-sm">Toplam İndirim</div>
                         </div>
                         <div className="bg-gradient-to-r from-purple-500/20 to-pink-600/20 border border-purple-500/30 rounded-2xl p-4">
                           <div className="text-purple-300 text-xl mb-1">💊</div>
@@ -2870,6 +3058,12 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                                   <span className="text-emerald-400 font-bold text-sm">
                                     {(sale.totalAmount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
                                   </span>
+                                  {(() => {
+                                    const d = Math.max(0, typeof sale.discountAmount === 'number' ? sale.discountAmount : (sale.totalAmount || 0) - (sale.paidAmount || 0) - (sale.remainingDebt || 0));
+                                    return d > 0 ? (
+                                      <div className="text-orange-300 text-xs mt-0.5">🏷️ İndirim: {d.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</div>
+                                    ) : null;
+                                  })()}
                                   {sale.isPartialPayment && (
                                     <div className="text-orange-400 text-xs mt-0.5">⚠️ Eksik ödeme</div>
                                   )}
@@ -3845,14 +4039,20 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                         getPrescribedMedicines(selectedPatientForSale).map((med, index) => {
                           // Find matching medication for price (optional)
                           const match = findMedicationByName(med.name);
-                          
+                          const alreadyBought = isMedAlreadyPurchased(selectedPatientForSale, med.name);
+
                           return (
-                            <tr key={index} className="text-white/80 hover:bg-white/5">
+                            <tr key={index} className={`hover:bg-white/5 ${alreadyBought ? 'text-white/40' : 'text-white/80'}`}>
                               <td className="p-4 text-sm text-white/50">{med.type}</td>
-                              <td className="p-4 font-medium">{match ? getMedicationDisplayName(match) : med.name}</td>
+                              <td className="p-4 font-medium">
+                                <span className={alreadyBought ? 'line-through' : ''}>{match ? getMedicationDisplayName(match) : med.name}</span>
+                                {alreadyBought && (
+                                  <span className="ml-2 px-2 py-0.5 bg-green-500/20 text-green-300 rounded-full text-xs font-medium align-middle">✓ Alındı</span>
+                                )}
+                              </td>
                               <td className="p-4 text-sm">{med.dosage}</td>
                               <td className="p-4">
-                                {match ? `${match.price.toFixed(2)} TL` : '-'}
+                                {alreadyBought ? '—' : (match ? `${match.price.toFixed(2)} TL` : '-')}
                               </td>
                             </tr>
                           );
@@ -3869,6 +4069,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                    <p className="text-white/60 text-sm">Toplam Tutar</p>
                    <p className="text-2xl font-bold text-white">
                      {getPrescribedMedicines(selectedPatientForSale).reduce((total, med) => {
+                       // Already-purchased meds aren't re-sold, so exclude them from the total.
+                       if (isMedAlreadyPurchased(selectedPatientForSale, med.name)) return total;
                        const match = findMedicationByName(med.name);
                        return total + (match ? match.price : 0);
                      }, 0).toFixed(2)} TL
@@ -4198,6 +4400,117 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                     />
                   </div>
 
+                  {/* Discount marking */}
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <input
+                        id="pharmacy_indirim_check"
+                        type="checkbox"
+                        checked={pharmacyDiscountCheck}
+                        onChange={(e) => setPharmacyDiscountCheck(e.target.checked)}
+                        className="mt-1 h-5 w-5 rounded border-green-300 text-green-600 focus:ring-green-500"
+                      />
+                      <label htmlFor="pharmacy_indirim_check" className="text-sm text-green-900">
+                        <span className="font-semibold flex items-center gap-2">
+                          <span className="text-lg">🏷️</span> İndirim uygula
+                        </span>
+                        <span className="block text-green-800/80">
+                          Bu hasta için indirim işaretlenir ve ödeme tutarına uygulanabilir.
+                        </span>
+                      </label>
+                    </div>
+
+                    {pharmacyDiscountCheck && (
+                      <div className="ml-8 space-y-3">
+                        <div>
+                          <label className="block text-sm font-medium text-green-800 mb-2">İndirim Türü</label>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setPharmacyDiscountType('yuzde')}
+                              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                                pharmacyDiscountType === 'yuzde'
+                                  ? 'bg-green-500 text-white'
+                                  : 'bg-white border border-green-300 text-green-700 hover:bg-green-100'
+                              }`}
+                            >
+                              % Yüzde
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPharmacyDiscountType('tutar')}
+                              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                                pharmacyDiscountType === 'tutar'
+                                  ? 'bg-green-500 text-white'
+                                  : 'bg-white border border-green-300 text-green-700 hover:bg-green-100'
+                              }`}
+                            >
+                              ₺ Tutar
+                            </button>
+                          </div>
+                        </div>
+
+                        {pharmacyDiscountType === 'yuzde' ? (
+                          <div>
+                            <label className="block text-sm font-medium text-green-800 mb-2">İndirim Oranı (%)</label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                value={pharmacyDiscountRate}
+                                onChange={(e) => setPharmacyDiscountRate(parseFloat(e.target.value) || 0)}
+                                min="0"
+                                max="100"
+                                className="w-32 px-3 py-2 bg-white border border-green-300 rounded-lg text-green-900 focus:outline-none focus:ring-2 focus:ring-green-500"
+                                placeholder="20"
+                              />
+                              <span className="text-sm text-green-700">%</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <label className="block text-sm font-medium text-green-800 mb-2">İndirim Tutarı (TL)</label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                value={pharmacyDiscountValue}
+                                onChange={(e) => setPharmacyDiscountValue(parseFloat(e.target.value) || 0)}
+                                min="0"
+                                step="0.01"
+                                className="w-32 px-3 py-2 bg-white border border-green-300 rounded-lg text-green-900 focus:outline-none focus:ring-2 focus:ring-green-500"
+                                placeholder="100"
+                              />
+                              <span className="text-sm text-green-700">TL</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {computePharmacyDiscount() > 0 && (
+                          <div className="text-sm text-green-800 bg-white border border-green-200 rounded-lg px-3 py-2">
+                            Uygulanacak indirim: <span className="font-bold">{computePharmacyDiscount().toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={togglePharmacyDiscount}
+                            className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors flex items-center gap-2 ${
+                              pharmacyDiscountApplied
+                                ? 'bg-white border border-green-400 text-green-700 hover:bg-green-50'
+                                : 'bg-green-600 hover:bg-green-700 text-white'
+                            }`}
+                          >
+                            <span>{pharmacyDiscountApplied ? '↩️' : '🏷️'}</span>
+                            {pharmacyDiscountApplied ? 'İndirimi geri al' : 'İndirimi tutara uygula'}
+                          </button>
+                        </div>
+                        <p className="text-xs text-green-700/70">
+                          Bu indirim yalnızca bu satışa uygulanır, hastaya kalıcı olarak kaydedilmez.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Multi Payment Method Selector */}
                   <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
                     <MultiPaymentMethodSelector
@@ -4413,34 +4726,38 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
             <div className="border-t-2 border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 p-4">
               <div className="flex items-center justify-between">
                 {/* Grand Total Summary */}
+                {(() => {
+                  const appliedDiscount = pharmacyDiscountApplied ? computePharmacyDiscount() : 0;
+                  const gunluk = Math.max(0, pharmacyItemsBase() - appliedDiscount);
+                  const gecmis = calculateSelectedDebtTotal();
+                  return (
                 <div className="flex items-center gap-6">
                   <div className="text-center">
                     <p className="text-gray-500 text-xs uppercase tracking-wide">Günlük</p>
                     <p className="font-bold text-blue-600 text-lg">
-                      {pendingSoldItems
-                        .filter(item => selectedMedicines.includes(item.name))
-                        .reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0)
-                        .toFixed(2)} TL
+                      {gunluk.toFixed(2)} TL
                     </p>
+                    {appliedDiscount > 0 && (
+                      <p className="text-[11px] text-green-600 font-medium">🏷️ -{appliedDiscount.toFixed(2)} TL</p>
+                    )}
                   </div>
                   <div className="text-2xl text-gray-300">+</div>
                   <div className="text-center">
                     <p className="text-gray-500 text-xs uppercase tracking-wide">Geçmiş Borç</p>
                     <p className="font-bold text-red-600 text-lg">
-                      {calculateSelectedDebtTotal().toFixed(2)} TL
+                      {gecmis.toFixed(2)} TL
                     </p>
                   </div>
                   <div className="text-2xl text-gray-300">=</div>
                   <div className="text-center bg-white px-4 py-2 rounded-xl border-2 border-green-400">
                     <p className="text-gray-500 text-xs uppercase tracking-wide">Toplam</p>
                     <p className="font-bold text-green-600 text-2xl">
-                      {(pendingSoldItems
-                        .filter(item => selectedMedicines.includes(item.name))
-                        .reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0) + calculateSelectedDebtTotal()
-                      ).toFixed(2)} TL
+                      {(gunluk + gecmis).toFixed(2)} TL
                     </p>
                   </div>
                 </div>
+                  );
+                })()}
 
                 {/* Action Buttons */}
                 <div className="flex items-center gap-3">

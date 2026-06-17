@@ -5,6 +5,7 @@ import 'react-day-picker/dist/style.css';
 import AppointmentModal from '../components/AppointmentModal';
 import AppointmentTypeManager from '../components/AppointmentTypeManager';
 import AppointmentDetailsModal from '../components/AppointmentDetailsModal';
+import MoveAppointmentModal from '../components/MoveAppointmentModal';
 import ExcelJS from 'exceljs';
 
 type PanelSection = 'patients' | 'appointments' | 'anamnez' | 'settings' | 'treatment-protocols' | 'users' | 'accounting' | 'pharmacy' | 'prescriptions' | 'assistant-panel' | 'doctor-panel' | 'treatment-panel';
@@ -24,6 +25,8 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
   const [excelStartDate, setExcelStartDate] = useState('');
   const [excelEndDate, setExcelEndDate] = useState('');
   const [openDetailsModal, setOpenDetailsModal] = useState(false);
+  const [openMoveModal, setOpenMoveModal] = useState(false);
+  const [movingAppointment, setMovingAppointment] = useState<any | null>(null);
   const [editedAppointment, setEditedAppointment] = useState<any | null>(null);
   const [viewedAppointment, setViewedAppointment] = useState<any | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -1326,7 +1329,33 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
             setAppointments(list);
           })();
         }}
+        onMove={() => {
+          setMovingAppointment(viewedAppointment);
+          setOpenDetailsModal(false);
+          setOpenMoveModal(true);
+        }}
         onNavigate={onSectionChange}
+      />
+
+      <MoveAppointmentModal
+        isOpen={openMoveModal}
+        appointment={movingAppointment}
+        doctorProfile={doctorProfile}
+        onClose={() => { setOpenMoveModal(false); setMovingAppointment(null); }}
+        onMoved={() => {
+          (async () => {
+            if (!doctorProfile?.clinicId) return;
+            const qDay = query(
+              collection(db, 'appointments'),
+              where('clinicId', '==', doctorProfile.clinicId)
+            );
+            const snap = await getDocs(qDay);
+            const allAppointments = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+            const list = allAppointments.filter(apt => apt.dateISO === dateISO);
+            list.sort((a,b) => String(a.start||'').localeCompare(String(b.start||'')));
+            setAppointments(list);
+          })();
+        }}
       />
 
       {openExcelModal && (
