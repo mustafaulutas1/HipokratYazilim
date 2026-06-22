@@ -227,6 +227,8 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
   const [anaDepoSearch, setAnaDepoSearch] = useState('');
   const [katDepoSearch, setKatDepoSearch] = useState('');
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+  // Kalıcı düşük stok banner'ı varsayılan kapalı (liste çok uzayabiliyor).
+  const [lowStockBannerOpen, setLowStockBannerOpen] = useState(false);
 
   // Kullanım filtresi
   const [filterNurse, setFilterNurse] = useState('');
@@ -1297,32 +1299,43 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
         </div>
       </div>
 
-      {/* ─── Kalıcı Düşük Stok Banner'ı ────────────────────────── */}
+      {/* ─── Kalıcı Düşük Stok Banner'ı (aç/kapanabilir) ──────────── */}
       {lowStockItems.length > 0 && (
         <div className="bg-gradient-to-r from-red-500/15 to-orange-500/15 border border-red-500/40 rounded-2xl p-4">
-          <div className="flex items-center gap-3 mb-3">
+          <button
+            type="button"
+            onClick={() => setLowStockBannerOpen(o => !o)}
+            className="w-full flex items-center gap-3 text-left"
+            aria-expanded={lowStockBannerOpen}
+          >
             <span className="text-2xl animate-pulse">🚨</span>
-            <div>
+            <div className="flex-1 min-w-0">
               <h3 className="text-red-200 font-bold text-lg">Düşük Stok Uyarısı</h3>
               <p className="text-red-100/70 text-sm">Aşağıdaki {lowStockItems.length} ürünün stoğu kritik seviyede veya tükendi. En kısa sürede tedarik edin.</p>
             </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {lowStockItems.map(u => (
-              <span
-                key={`banner-${u._depoLabel}-${u.id}`}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium border ${
-                  u.quantity <= 0
-                    ? 'bg-red-500/25 text-red-100 border-red-400/50'
-                    : 'bg-yellow-500/15 text-yellow-200 border-yellow-400/40'
-                }`}
-                title={u._depoLabel}
-              >
-                {u.quantity <= 0 ? '⛔' : '⚠️'} {u.productName} · {u._depoLabel}: {u.quantity <= 0 ? 'TÜKENDİ' : `${u.quantity} adet`}
-                {(u.minStockLevel ?? 0) > 0 ? ` (min ${u.minStockLevel})` : ''}
-              </span>
-            ))}
-          </div>
+            <span className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 bg-red-500/20 border border-red-400/40 rounded-lg text-red-100 text-sm font-medium">
+              {lowStockBannerOpen ? 'Gizle' : 'Göster'}
+              <span className={`text-xs transition-transform duration-200 ${lowStockBannerOpen ? 'rotate-90' : ''}`}>▶</span>
+            </span>
+          </button>
+          {lowStockBannerOpen && (
+            <div className="flex flex-wrap gap-2 mt-3">
+              {lowStockItems.map(u => (
+                <span
+                  key={`banner-${u._depoLabel}-${u.id}`}
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium border ${
+                    u.quantity <= 0
+                      ? 'bg-red-500/25 text-red-100 border-red-400/50'
+                      : 'bg-yellow-500/15 text-yellow-200 border-yellow-400/40'
+                  }`}
+                  title={u._depoLabel}
+                >
+                  {u.quantity <= 0 ? '⛔' : '⚠️'} {u.productName} · {u._depoLabel}: {u.quantity <= 0 ? 'TÜKENDİ' : `${u.quantity} adet`}
+                  {(u.minStockLevel ?? 0) > 0 ? ` (min ${u.minStockLevel})` : ''}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

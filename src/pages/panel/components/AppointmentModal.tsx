@@ -3,7 +3,7 @@ import { collection, addDoc, getDocs, query, where, updateDoc, doc } from 'fireb
 import { toast } from 'react-toastify';
 import { db } from '../../../firebase/config';
 import { DayPicker } from 'react-day-picker';
-import { tr } from 'date-fns/locale';
+import { tr } from 'react-day-picker/locale';
 import 'react-day-picker/dist/style.css';
 
 interface AppointmentModalProps {
