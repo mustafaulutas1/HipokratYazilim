@@ -35,7 +35,7 @@ const ASISTAN_CATEGORIES: DepoCategory[] = ['temizlik', 'kirtasiye'];
 interface DepoUrun {
   id?: string;
   productName: string;
-  stockCode: string;
+  stockCode?: string; // Eski kayıtlarla uyumluluk için tutulur; arayüzde gösterilmez
   companyName?: string;
   cost: number;
   purchaseDate: string;
@@ -49,10 +49,18 @@ interface DepoUrun {
   updatedAt?: string;
 }
 
+interface Firma {
+  id?: string;
+  name: string;
+  clinicId: string;
+  createdBy: string;
+  createdAt: string;
+}
+
 interface TransferItem {
   productId: string;
   productName: string;
-  stockCode: string;
+  stockCode?: string;
   quantity: number;
 }
 
@@ -93,7 +101,7 @@ interface MedicalApp {
 interface EslestirmeMaterial {
   productId: string;
   productName: string;
-  stockCode: string;
+  stockCode?: string;
   defaultQuantity: number;
 }
 
@@ -108,7 +116,7 @@ interface EslestirmeDoc {
 interface MalzemeTalebiItem {
   productId: string;
   productName: string;
-  stockCode: string;
+  stockCode?: string;
   requestedQty: number;
   approvedQty?: number;
 }
@@ -129,7 +137,6 @@ interface MalzemeTalebi {
 const emptyUrun = (): Omit<DepoUrun, 'id' | 'clinicId' | 'createdBy' | 'createdAt'> => ({
   productName: '',
   companyName: '',
-  stockCode: '',
   cost: 0,
   purchaseDate: new Date().toISOString().split('T')[0],
   quantity: 0,
@@ -182,6 +189,12 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
   const [respondNotes, setRespondNotes] = useState('');
   const [respondSaving, setRespondSaving] = useState(false);
 
+  // Firma Yönetimi state
+  const [firmalar, setFirmalar] = useState<Firma[]>([]);
+  const [newFirmaName, setNewFirmaName] = useState('');
+  const [firmaSaving, setFirmaSaving] = useState(false);
+  const [showFirmaModal, setShowFirmaModal] = useState(false);
+
   const [anaDepoUrunler, setAnaDepoUrunler] = useState<DepoUrun[]>([]);
   const [katDepoUrunler, setKatDepoUrunler] = useState<DepoUrun[]>([]);
   const [transferler, setTransferler] = useState<DepoTransfer[]>([]);
@@ -206,9 +219,14 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
   const [transferTime, setTransferTime] = useState(nowTime());
   const [transferNotes, setTransferNotes] = useState('');
   const [completingTransferId, setCompletingTransferId] = useState<string | null>(null);
-  const [transferProductTab, setTransferProductTab] = useState<'islem-bazli' | 'genel-bazli' | null>(null);
+  const [transferProductTab, setTransferProductTab] = useState<string | null>(null);
   const [transferSearch, setTransferSearch] = useState('');
   const processingIds = useRef<Set<string>>(new Set());
+
+  // Stok listesi ürün arama (Ana Depo / Kat Deposu ayrı) ve kategori aç/kapa durumu
+  const [anaDepoSearch, setAnaDepoSearch] = useState('');
+  const [katDepoSearch, setKatDepoSearch] = useState('');
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
   // Kullanım filtresi
   const [filterNurse, setFilterNurse] = useState('');
@@ -250,8 +268,14 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
       list.sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
       setMalzemeTalepleri(list);
     });
+    const firmaQ = query(collection(db, 'depoFirmalar'), where('clinicId', '==', doctorProfile.clinicId));
+    const unsubFirma = onSnapshot(firmaQ, snap => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Firma));
+      list.sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+      setFirmalar(list);
+    });
 
-    return () => { unsubAna(); unsubKat(); unsubTrf(); unsubKull(); unsubApps(); unsubEsl(); unsubTalep(); };
+    return () => { unsubAna(); unsubKat(); unsubTrf(); unsubKull(); unsubApps(); unsubEsl(); unsubTalep(); unsubFirma(); };
   }, [doctorProfile?.clinicId]);
 
   // Ürün CRUD
@@ -265,13 +289,13 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
   const openEdit = (urun: DepoUrun, depo: 'ana' | 'kat') => {
     setActiveDepo(depo);
     setEditingUrun(urun);
-    setFormData({ productName: urun.productName, stockCode: urun.stockCode, companyName: (urun as any).companyName || '', cost: urun.cost, purchaseDate: urun.purchaseDate, quantity: urun.quantity, minStockLevel: urun.minStockLevel ?? 0, consumptionType: urun.consumptionType, category: urun.category });
+    setFormData({ productName: urun.productName, companyName: (urun as any).companyName || '', cost: urun.cost, purchaseDate: urun.purchaseDate, quantity: urun.quantity, minStockLevel: urun.minStockLevel ?? 0, consumptionType: urun.consumptionType, category: urun.category });
     setShowAddModal(true);
   };
 
   const handleSave = async () => {
     if (!doctorProfile?.clinicId) return;
-    if (!formData.productName.trim() || !formData.stockCode.trim()) { alert('Ürün adı ve stok kodu zorunludur.'); return; }
+    if (!formData.productName.trim()) { alert('Ürün adı zorunludur.'); return; }
     if (activeDepo === 'ana' && !formData.category) { alert('Kategori zorunludur. Lütfen bir depo kategorisi seçin.'); return; }
     // Tüketim türü yalnızca Sarf Malzeme kategorisi için zorunlu (mevcut işlem/genel akışı korunur).
     if (activeDepo === 'ana' && formData.category === 'sarf' && !formData.consumptionType) { alert('Sarf Malzeme için tüketim türü zorunludur. Lütfen "İşlem Bazlı Tüketim" veya "Genel Bazlı Tüketim" seçeneklerinden birini seçin.'); return; }
@@ -282,13 +306,41 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
     Object.keys(payload).forEach(k => { if (payload[k] === undefined) delete payload[k]; });
     try {
       if (editingUrun?.id) {
+        // Eski kayıtlarda stok kodu yoksa düzenlerken otomatik atanır.
+        if (!editingUrun.stockCode) payload.stockCode = generateStockCode();
         await updateDoc(doc(db, colName, editingUrun.id), { ...payload, updatedAt: new Date().toISOString() });
       } else {
-        await addDoc(collection(db, colName), { ...payload, clinicId: doctorProfile.clinicId, createdBy: doctorProfile.fullName, createdAt: new Date().toISOString() });
+        // Yeni üründe otomatik artan stok kodu (STK-0001, STK-0002, ...).
+        await addDoc(collection(db, colName), { ...payload, stockCode: generateStockCode(), clinicId: doctorProfile.clinicId, createdBy: doctorProfile.fullName, createdAt: new Date().toISOString() });
       }
       setShowAddModal(false);
     } catch (e) { console.error(e); alert('Kayıt sırasında hata oluştu.'); }
     finally { setSaving(false); }
+  };
+
+  // Firma Yönetimi — firma ekle / sil
+  const handleAddFirma = async () => {
+    if (!doctorProfile?.clinicId) return;
+    const name = newFirmaName.trim();
+    if (!name) { alert('Firma adı zorunludur.'); return; }
+    if (firmalar.some(f => f.name.toLowerCase() === name.toLowerCase())) { alert('Bu firma zaten kayıtlı.'); return; }
+    setFirmaSaving(true);
+    try {
+      await addDoc(collection(db, 'depoFirmalar'), {
+        name,
+        clinicId: doctorProfile.clinicId,
+        createdBy: doctorProfile.fullName,
+        createdAt: new Date().toISOString(),
+      });
+      setNewFirmaName('');
+    } catch (e) { console.error(e); alert('Firma eklenirken hata oluştu.'); }
+    finally { setFirmaSaving(false); }
+  };
+
+  const handleDeleteFirma = async (firma: Firma) => {
+    if (!firma.id) return;
+    if (!confirm(`"${firma.name}" firması silinecek. Emin misiniz?`)) return;
+    await deleteDoc(doc(db, 'depoFirmalar', firma.id));
   };
 
   // Malzeme Talebi — talep gönder
@@ -298,7 +350,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
       .filter(([, qty]) => qty > 0)
       .map(([productId, requestedQty]) => {
         const urun = anaDepoUrunler.find(u => u.id === productId);
-        return { productId, productName: urun?.productName || '', stockCode: urun?.stockCode || '', requestedQty };
+        return { productId, productName: urun?.productName || '', requestedQty };
       });
     if (items.length === 0) { alert('En az bir malzeme ve miktar seçin.'); return; }
     setTalepSaving(true);
@@ -357,7 +409,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
 
           await updateDoc(doc(db, 'anaDepoUrunler', anaUrun.id), { quantity: anaUrun.quantity - actual, updatedAt: new Date().toISOString() });
 
-          const existing = katMevcut.find(k => k.stockCode === it.stockCode);
+          const existing = katMevcut.find(k => k.productName === it.productName && (k.category || '') === (anaUrun.category || ''));
           if (existing?.id) {
             await updateDoc(doc(db, 'katDepoUrunler', existing.id), {
               quantity: existing.quantity + actual,
@@ -367,7 +419,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
             });
           } else {
             await addDoc(collection(db, 'katDepoUrunler'), {
-              productName: it.productName, stockCode: it.stockCode,
+              productName: it.productName,
               cost: anaUrun.cost ?? 0, purchaseDate: anaUrun.purchaseDate ?? todayDate(),
               quantity: actual,
               ...(anaUrun.consumptionType ? { consumptionType: anaUrun.consumptionType } : {}),
@@ -429,7 +481,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
         .filter(([, qty]) => qty > 0)
         .map(([productId, defaultQuantity]) => {
           const urun = katDepoUrunler.find(u => u.id === productId);
-          return { productId, productName: urun?.productName || '', stockCode: urun?.stockCode || '', defaultQuantity };
+          return { productId, productName: urun?.productName || '', defaultQuantity };
         });
       const existing = eslestirmeler.find(e => e.applicationName === eslestirmeSelectedApp.name);
       if (existing?.id) {
@@ -524,7 +576,6 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
         'Tarih': t.scheduledDate,
         'Saat': t.scheduledTime,
         'Ürün': item.productName,
-        'Stok Kodu': item.stockCode,
         'Miktar': item.quantity,
         'Durum': t.status === 'completed' ? 'Tamamlandı' : t.status === 'cancelled' ? 'İptal' : 'Planlandı',
         'Oluşturan': t.createdBy || '',
@@ -533,7 +584,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
       }))
     );
     const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [10,10,25,14,8,14,18,18,25].map(w => ({ wch: w }));
+    ws['!cols'] = [10,10,25,8,14,18,18,25].map(w => ({ wch: w }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Transferler');
     downloadExcel(wb, `Transfer_Planlari_${today.replace(/\./g, '-')}.xlsx`);
@@ -544,10 +595,9 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
     const sorted = [...anaDepoUrunler].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     autoTable(pdf, {
       startY: 34,
-      head: [['Ürün Adı', 'Stok Kodu', 'Firma', 'Adet', 'Maliyet (₺)', 'Alım Tarihi', 'Ekleyen']],
+      head: [['Ürün Adı', 'Firma', 'Adet', 'Maliyet (₺)', 'Alım Tarihi', 'Ekleyen']],
       body: sorted.map(u => [
         u.productName,
-        u.stockCode,
         u.companyName || '—',
         u.quantity,
         u.cost > 0 ? u.cost.toLocaleString('tr-TR') : '—',
@@ -567,7 +617,6 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
     const sorted = [...anaDepoUrunler].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     const rows = sorted.map(u => ({
       'Ürün Adı': u.productName,
-      'Stok Kodu': u.stockCode,
       'Firma': u.companyName || '',
       'Adet': u.quantity,
       'Maliyet (₺)': u.cost > 0 ? u.cost : '',
@@ -575,7 +624,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
       'Ekleyen': u.createdBy || '',
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [28, 14, 20, 8, 14, 14, 18].map(w => ({ wch: w }));
+    ws['!cols'] = [28, 20, 8, 14, 14, 18].map(w => ({ wch: w }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Urunler');
     downloadExcel(wb, `Urun_Eklemeleri_${today.replace(/\./g, '-')}.xlsx`);
@@ -612,7 +661,6 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
         'Talep Tarihi': new Date(t.requestedAt).toLocaleString('tr-TR'),
         'Talep Eden': t.requestedBy,
         'Ürün': item.productName,
-        'Stok Kodu': item.stockCode || '',
         'Talep Miktarı': item.requestedQty,
         'Onaylanan Miktar': item.approvedQty ?? '',
         'Durum': statusLabel[t.status] || t.status,
@@ -622,7 +670,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
       }))
     );
     const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [20, 18, 25, 14, 14, 16, 18, 18, 20, 25].map(w => ({ wch: w }));
+    ws['!cols'] = [20, 18, 25, 14, 16, 18, 18, 20, 25].map(w => ({ wch: w }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Talepler');
     downloadExcel(wb, `Malzeme_Talepleri_${today.replace(/\./g, '-')}.xlsx`);
@@ -663,7 +711,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
       .filter(([, qty]) => qty > 0)
       .map(([id, qty]) => {
         const urun = anaDepoUrunler.find(u => u.id === id)!;
-        return { productId: id, productName: urun.productName, stockCode: urun.stockCode, quantity: qty };
+        return { productId: id, productName: urun.productName, quantity: qty };
       });
     if (transferItems.length === 0) { alert('En az bir ürün ve miktar seçmelisiniz.'); return; }
     if (!transferDate) { alert('Transfer tarihi zorunludur.'); return; }
@@ -715,7 +763,9 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
       const katMevcut = katSnap.docs.map(d => ({ id: d.id, ...d.data() } as DepoUrun));
       for (const ti of transfer.items) {
         const anaUrun = anaMevcut.find(u => u.id === ti.productId);
-        const existing = katMevcut.find(k => k.stockCode === ti.stockCode);
+        // Kat deposunda eşleşme aynı ad VE aynı kategoride aranır; böylece farklı
+        // kategorilerdeki (sarf/temizlik/kırtasiye) aynı adlı ürünler karışmaz.
+        const existing = katMevcut.find(k => k.productName === ti.productName && (k.category || '') === (anaUrun?.category || ''));
         if (existing?.id) {
           await updateDoc(doc(db, 'katDepoUrunler', existing.id), {
             quantity: existing.quantity + ti.quantity,
@@ -726,7 +776,6 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
         } else {
           await addDoc(collection(db, 'katDepoUrunler'), {
             productName: ti.productName,
-            stockCode: ti.stockCode,
             cost: anaUrun?.cost ?? 0,
             purchaseDate: anaUrun?.purchaseDate ?? todayDate(),
             quantity: ti.quantity,
@@ -915,6 +964,29 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
   const isLowStock = (u: DepoUrun) =>
     u.quantity <= 0 || ((u.minStockLevel ?? 0) > 0 && u.quantity <= (u.minStockLevel ?? 0));
 
+  // Otomatik stok kodu — mevcut "STK-####" kodlarının en yükseğinden bir fazlası.
+  // Hem ana hem kat depodaki kodlara bakılarak klinik içinde benzersizlik sağlanır.
+  const generateStockCode = (): string => {
+    let max = 0;
+    [...anaDepoUrunler, ...katDepoUrunler].forEach(u => {
+      const m = /^STK-(\d+)$/.exec(u.stockCode || '');
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    });
+    return `STK-${String(max + 1).padStart(4, '0')}`;
+  };
+
+  // Kat deposuna transfer edilebilen ürün grupları. "Teknik Depo" kat deposuna
+  // gönderilmez. Sarf malzeme tüketim türüne göre ikiye ayrılır; kırtasiye ve
+  // temizlik kendi kategorileriyle gelir. Böylece kat deposu da kategori bazında
+  // ayrı kalır (haftalık sayımda karışmaz).
+  const TRANSFER_GROUPS: { key: string; label: string; activeClass: string; match: (u: DepoUrun) => boolean }[] = [
+    { key: 'sarf-islem', label: '⚙️ Sarf · İşlem Bazlı', activeClass: 'bg-indigo-500/20 border-indigo-400/60 text-indigo-300', match: u => u.category !== 'teknik' && u.consumptionType === 'islem-bazli' },
+    { key: 'sarf-genel', label: '📦 Sarf · Genel Bazlı', activeClass: 'bg-green-500/20 border-green-400/60 text-green-300', match: u => u.category !== 'teknik' && u.consumptionType === 'genel-bazli' },
+    { key: 'kirtasiye', label: '✏️ Kırtasiye', activeClass: 'bg-sky-500/20 border-sky-400/60 text-sky-300', match: u => u.category === 'kirtasiye' },
+    { key: 'temizlik', label: '🧹 Temizlik', activeClass: 'bg-teal-500/20 border-teal-400/60 text-teal-300', match: u => u.category === 'temizlik' },
+  ];
+  const activeTransferGroup = TRANSFER_GROUPS.find(g => g.key === transferProductTab) || null;
+
   // İki depodaki tüm kritik ürünler (bildirim ve banner için).
   const lowStockItems = [
     ...anaDepoUrunler.filter(isLowStock).map(u => ({ ...u, _depoLabel: 'Ana Depo' })),
@@ -927,8 +999,8 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-white/20 bg-white/5">
-            <th className="px-4 py-3 text-left text-white/70">Ürün Adı</th>
             <th className="px-4 py-3 text-left text-white/70">Stok Kodu</th>
+            <th className="px-4 py-3 text-left text-white/70">Ürün Adı</th>
             <th className="px-4 py-3 text-left text-white/70">Firma Adı</th>
             <th className="px-4 py-3 text-left text-white/70">Maliyet</th>
             <th className="px-4 py-3 text-left text-white/70">Alım Tarihi</th>
@@ -937,10 +1009,10 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
           </tr>
         </thead>
         <tbody>
-          {items.map(u => (
+          {[...items].sort((a, b) => a.productName.localeCompare(b.productName, 'tr')).map(u => (
             <tr key={u.id} className="border-b border-white/10 hover:bg-white/5 transition-all">
+              <td className="px-4 py-3 text-white/50 font-mono text-xs">{u.stockCode || '—'}</td>
               <td className="px-4 py-3 text-white font-medium">{u.productName}</td>
-              <td className="px-4 py-3 text-white/70">{u.stockCode}</td>
               <td className="px-4 py-3 text-white/70">{u.companyName || '—'}</td>
               <td className="px-4 py-3 text-white/70">{formatCurrency(u.cost)}</td>
               <td className="px-4 py-3 text-white/70">{new Date(u.purchaseDate).toLocaleDateString('tr-TR')}</td>
@@ -1018,18 +1090,51 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
     );
   };
 
-  const UrunTable: React.FC<{ urunler: DepoUrun[]; depo: 'ana' | 'kat' }> = ({ urunler, depo }) => {
-    // Eski (kategorisiz) ürünler "Diğer" başlığı altında, mevcut tüketim-türü
-    // görünümüyle aynen gösterilir; böylece mevcut işlevsellik bozulmaz.
-    const uncategorized = urunler.filter(u => !u.category);
+  // Not: React bileşeni yerine düz render fonksiyonu olarak tanımlandı. Böylece
+  // her ebeveyn render'ında yeniden mount edilmez ve arama kutusu odağı kaybolmaz.
+  const renderUrunTable = (urunler: DepoUrun[], depo: 'ana' | 'kat') => {
+    const search = depo === 'ana' ? anaDepoSearch : katDepoSearch;
+    const setSearch = depo === 'ana' ? setAnaDepoSearch : setKatDepoSearch;
+    const q = search.trim().toLocaleLowerCase('tr');
+    const matches = (u: DepoUrun) =>
+      !q ||
+      (u.productName || '').toLocaleLowerCase('tr').includes(q) ||
+      (u.stockCode || '').toLocaleLowerCase('tr').includes(q) ||
+      (u.companyName || '').toLocaleLowerCase('tr').includes(q);
+
+    const filtered = urunler.filter(matches);
+    // Eski (kategorisiz) ürünler "Diğer" başlığı altında gösterilir.
+    const uncategorized = filtered.filter(u => !u.category);
+    // Arama aktifken tüm kategoriler otomatik açılır; eşleşen ürün görünür kalır.
+    const isExpanded = (catKey: string) => !!q || !!expandedCategories[`${depo}-${catKey}`];
+    const toggleCat = (catKey: string) =>
+      setExpandedCategories(prev => ({ ...prev, [`${depo}-${catKey}`]: !prev[`${depo}-${catKey}`] }));
 
     return (
       <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl overflow-hidden">
-        <div className="p-4 border-b border-white/20 flex items-center justify-between">
+        <div className="p-4 border-b border-white/20 flex items-center justify-between flex-wrap gap-3">
           <h3 className="text-white font-bold text-lg">
             {depo === 'ana' ? '🏭 Ana Depo Stok Listesi' : '🏥 Kat Deposu Stok Listesi'}
           </h3>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center flex-wrap">
+            {/* Ürün arama */}
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-sm pointer-events-none">🔍</span>
+              <input
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Ürün ara (ad, kod, firma)..."
+                className="w-56 pl-9 pr-8 py-2 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400"
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full text-white/50 hover:text-white hover:bg-white/10 text-xs transition-all"
+                  aria-label="Aramayı temizle"
+                >✕</button>
+              )}
+            </div>
             {depo === 'ana' && canManage && !isAsistan && (
               <button
                 onClick={openTransferModal}
@@ -1054,24 +1159,37 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
             <div className="text-4xl mb-3">📦</div>
             <p>Henüz ürün eklenmemiş.</p>
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="p-10 text-center text-white/50">
+            <div className="text-4xl mb-3">🔍</div>
+            <p>"{search}" ile eşleşen ürün bulunamadı.</p>
+          </div>
         ) : (
           <>
-            {/* 4 ana kategori (asistan rolünde yalnızca Temizlik + Kırtasiye) */}
+            {/* 4 ana kategori — her biri aç/kapanabilir akordeon */}
             {visibleCategories.map(cat => {
-              const items = urunler.filter(u => u.category === cat.key);
+              const items = filtered.filter(u => u.category === cat.key);
+              const open = isExpanded(cat.key);
               return (
                 <div key={cat.key} className="border-b border-white/10">
-                  <div className="px-4 py-3 bg-white/5 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleCat(cat.key)}
+                    className="w-full px-4 py-3 bg-white/5 hover:bg-white/10 flex items-center gap-2 transition-all"
+                  >
+                    <span className={`text-white/50 text-sm transition-transform duration-200 ${open ? 'rotate-90' : ''}`}>▶</span>
                     <span className="text-lg">{cat.icon}</span>
                     <p className="text-white font-bold text-sm">{cat.label}</p>
                     <span className="ml-auto px-2 py-0.5 bg-white/10 border border-white/20 rounded-full text-white/70 text-xs">{items.length} ürün</span>
-                  </div>
-                  {items.length === 0 ? (
-                    <div className="p-6 text-center text-white/40 text-sm">Bu kategoride henüz ürün yok.</div>
-                  ) : cat.key === 'sarf' ? (
-                    renderConsumptionGroups(items, depo)
-                  ) : (
-                    renderUrunRows(items, depo)
+                  </button>
+                  {open && (
+                    items.length === 0 ? (
+                      <div className="p-6 text-center text-white/40 text-sm">Bu kategoride ürün yok.</div>
+                    ) : cat.key === 'sarf' ? (
+                      renderConsumptionGroups(items, depo)
+                    ) : (
+                      renderUrunRows(items, depo)
+                    )
                   )}
                 </div>
               );
@@ -1080,12 +1198,17 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
             {/* Diğer — kategorisi olmayan eski ürünler (asistan görmez) */}
             {!isAsistan && uncategorized.length > 0 && (
               <div>
-                <div className="px-4 py-3 bg-white/5 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => toggleCat('uncategorized')}
+                  className="w-full px-4 py-3 bg-white/5 hover:bg-white/10 flex items-center gap-2 transition-all"
+                >
+                  <span className={`text-white/50 text-sm transition-transform duration-200 ${isExpanded('uncategorized') ? 'rotate-90' : ''}`}>▶</span>
                   <span className="text-lg">📋</span>
                   <p className="text-white/60 font-bold text-sm">Diğer (Kategorisiz)</p>
                   <span className="ml-auto px-2 py-0.5 bg-white/10 border border-white/20 rounded-full text-white/50 text-xs">{uncategorized.length} ürün</span>
-                </div>
-                {renderConsumptionGroups(uncategorized, depo)}
+                </button>
+                {isExpanded('uncategorized') && renderConsumptionGroups(uncategorized, depo)}
               </div>
             )}
           </>
@@ -1128,7 +1251,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${u.quantity <= 0 ? 'bg-red-400' : 'bg-yellow-400'}`}></span>
                   <div className="flex-1 min-w-0">
                     <p className="text-white text-sm font-medium truncate">{u.productName}</p>
-                    <p className="text-white/50 text-xs">{u._depoLabel} · {u.stockCode}</p>
+                    <p className="text-white/50 text-xs">{u._depoLabel}</p>
                   </div>
                   <span className={`px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0 ${u.quantity <= 0 ? 'bg-red-500/30 text-red-200' : 'bg-yellow-500/20 text-yellow-300'}`}>
                     {u.quantity <= 0 ? 'TÜKENDİ' : `${u.quantity} adet`}
@@ -1193,7 +1316,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                     ? 'bg-red-500/25 text-red-100 border-red-400/50'
                     : 'bg-yellow-500/15 text-yellow-200 border-yellow-400/40'
                 }`}
-                title={`${u._depoLabel} · Stok kodu: ${u.stockCode}`}
+                title={u._depoLabel}
               >
                 {u.quantity <= 0 ? '⛔' : '⚠️'} {u.productName} · {u._depoLabel}: {u.quantity <= 0 ? 'TÜKENDİ' : `${u.quantity} adet`}
                 {(u.minStockLevel ?? 0) > 0 ? ` (min ${u.minStockLevel})` : ''}
@@ -1247,12 +1370,21 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
             )}
           </button>
         )}
+        {canManage && (
+          <button
+            onClick={() => setShowFirmaModal(true)}
+            className="ml-auto px-5 py-2.5 rounded-xl font-semibold text-sm transition-all bg-white/10 text-white/70 hover:bg-white/20 hover:text-white border border-white/20 flex items-center gap-2"
+          >
+            🏢 Firma Yönetimi
+            <span className="px-1.5 py-0.5 bg-white/10 rounded-full text-white/60 text-xs">{firmalar.length}</span>
+          </button>
+        )}
       </div>
 
       {/* ─── ANA DEPO ──────────────────────────────────────────── */}
       {activeTab === 'ana-depo' && (
         <div className="space-y-6">
-          <UrunTable urunler={anaDepoUrunler} depo="ana" />
+          {renderUrunTable(anaDepoUrunler, 'ana')}
 
           {/* ── Sekmeli bilgi kartı ── */}
           <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl overflow-hidden">
@@ -1422,7 +1554,6 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                       <thead>
                         <tr className="border-b border-white/20 bg-white/5">
                           <th className="px-4 py-3 text-left text-white/70 font-semibold">Ürün Adı</th>
-                          <th className="px-4 py-3 text-left text-white/70 font-semibold">Stok Kodu</th>
                           <th className="px-4 py-3 text-left text-white/70 font-semibold">Firma Adı</th>
                           <th className="px-4 py-3 text-left text-white/70 font-semibold">Adet</th>
                           <th className="px-4 py-3 text-left text-white/70 font-semibold">Maliyet</th>
@@ -1436,7 +1567,6 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                           .map(u => (
                             <tr key={u.id} className="hover:bg-white/5 transition-all">
                               <td className="px-4 py-3 text-white font-medium">{u.productName}</td>
-                              <td className="px-4 py-3 text-white/60">{u.stockCode}</td>
                               <td className="px-4 py-3 text-white/60">{u.companyName || '—'}</td>
                               <td className="px-4 py-3 text-white">{u.quantity}</td>
                               <td className="px-4 py-3 text-white/60">{u.cost > 0 ? `₺${u.cost.toLocaleString('tr-TR')}` : '—'}</td>
@@ -1573,7 +1703,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
             ))}
           </div>
 
-          {katActiveTab === 'stok' && <UrunTable urunler={katDepoUrunler} depo="kat" />}
+          {katActiveTab === 'stok' && renderUrunTable(katDepoUrunler, 'kat')}
 
           {katActiveTab === 'kullanim' && (
             <div className="space-y-4">
@@ -1738,7 +1868,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                     <div key={urun.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${qty > 0 ? 'bg-orange-500/15 border-orange-400/50' : 'bg-white/5 border-white/10'}`}>
                       <div className="flex-1 min-w-0">
                         <p className="text-white text-sm font-medium truncate">{urun.productName}</p>
-                        <p className="text-white/40 text-xs">Kod: {urun.stockCode} &nbsp;|&nbsp; Stok: {urun.quantity}</p>
+                        <p className="text-white/40 text-xs">Stok: {urun.quantity}</p>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         <button type="button" onClick={() => setTalepQtys(p => ({ ...p, [urun.id!]: Math.max(0, (p[urun.id!] || 0) - 1) }))}
@@ -1921,7 +2051,6 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                           >
                             <div className="flex-1 min-w-0">
                               <p className="text-white text-sm font-medium truncate">{urun.productName}</p>
-                              <p className="text-white/40 text-xs">Kod: {urun.stockCode}</p>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
                               <button
@@ -1974,6 +2103,86 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
         </div>
       )}
 
+      {/* ─── Firma Yönetimi Modal ─────────────────────────────── */}
+      {showFirmaModal && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4"
+          onClick={() => setShowFirmaModal(false)}
+        >
+          <div
+            className="bg-slate-900 border border-white/20 rounded-2xl w-full max-w-lg shadow-2xl flex flex-col max-h-[85vh] overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Başlık */}
+            <div className="p-5 border-b border-white/20 flex items-center gap-3 bg-gradient-to-r from-blue-500/15 to-indigo-500/10">
+              <span className="w-10 h-10 flex items-center justify-center rounded-xl bg-blue-500/20 text-xl">🏢</span>
+              <div className="flex-1">
+                <h3 className="text-white font-bold text-lg leading-tight">Firma Yönetimi</h3>
+                <p className="text-white/50 text-xs">Ürün eklerken seçilecek firmaları buradan yönetin</p>
+              </div>
+              <button onClick={() => setShowFirmaModal(false)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white/60 hover:text-white transition-all text-lg">✕</button>
+            </div>
+
+            {/* Yeni firma ekleme */}
+            <div className="p-5 border-b border-white/10">
+              <label className="block text-white/70 text-sm mb-2">Yeni Firma Ekle</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  autoFocus
+                  value={newFirmaName}
+                  onChange={e => setNewFirmaName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleAddFirma(); }}
+                  placeholder="Firma veya tedarikçi adı..."
+                  className="flex-1 px-3 py-2.5 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+                <button
+                  onClick={handleAddFirma}
+                  disabled={firmaSaving}
+                  className="px-4 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 rounded-xl text-white font-semibold text-sm transition-all disabled:opacity-50 whitespace-nowrap"
+                >
+                  {firmaSaving ? 'Ekleniyor...' : '+ Ekle'}
+                </button>
+              </div>
+            </div>
+
+            {/* Firma listesi */}
+            <div className="p-5 overflow-y-auto flex-1">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-white/70 text-sm font-semibold">Kayıtlı Firmalar</p>
+                <span className="px-2 py-0.5 bg-white/10 border border-white/20 rounded-full text-white/60 text-xs">{firmalar.length} firma</span>
+              </div>
+              {firmalar.length === 0 ? (
+                <div className="py-10 text-center text-white/40">
+                  <div className="text-4xl mb-2">🏢</div>
+                  <p className="text-sm">Henüz firma eklenmemiş.</p>
+                  <p className="text-xs text-white/30 mt-1">Yukarıdan ilk firmanızı ekleyin.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {firmalar.map(f => (
+                    <div key={f.id} className="flex items-center gap-3 px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all">
+                      <span className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/10 text-sm flex-shrink-0">🏢</span>
+                      <span className="flex-1 text-white text-sm font-medium truncate">{f.name}</span>
+                      <button
+                        onClick={() => handleDeleteFirma(f)}
+                        className="px-3 py-1 bg-red-500/20 border border-red-400/40 rounded-lg text-red-300 hover:bg-red-500/30 text-xs font-semibold transition-all flex-shrink-0"
+                      >
+                        Sil
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-white/20 flex justify-end flex-shrink-0">
+              <button onClick={() => setShowFirmaModal(false)} className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-white transition-all text-sm">Kapat</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ─── Ürün Ekle/Düzenle Modal ──────────────────────────── */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
@@ -1987,8 +2196,6 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
             <div className="p-5 space-y-4 overflow-y-auto flex-1">
               {[
                 { label: 'Ürün Adı *', key: 'productName', type: 'text', placeholder: 'Kelebek valfi, Ozon filtresi...' },
-                { label: 'Stok Kodu *', key: 'stockCode', type: 'text', placeholder: 'STK-001' },
-                { label: 'Firma Adı', key: 'companyName', type: 'text', placeholder: 'Firma veya tedarikçi adı' },
                 { label: 'Maliyet (₺)', key: 'cost', type: 'number', placeholder: '0' },
                 { label: 'Alım Tarihi', key: 'purchaseDate', type: 'date', placeholder: '' },
                 { label: 'Adet', key: 'quantity', type: 'number', placeholder: '0' },
@@ -1998,13 +2205,48 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                   <label className="block text-white/70 text-sm mb-1">{field.label}</label>
                   <input
                     type={field.type}
-                    value={(formData as any)[field.key]}
-                    onChange={e => setFormData(prev => ({ ...prev, [field.key]: field.type === 'number' ? Number(e.target.value) : e.target.value }))}
+                    inputMode={field.type === 'number' ? 'numeric' : undefined}
+                    min={field.type === 'number' ? 0 : undefined}
+                    // Sayısal alanlarda 0 değeri boş gösterilir (placeholder ile),
+                    // böylece baştaki 0 klavyeden silinebilir; mouse tekerleği ile
+                    // değerin yanlışlıkla değişmesini engellemek için onWheel ile blur.
+                    value={field.type === 'number' ? ((formData as any)[field.key] === 0 ? '' : (formData as any)[field.key]) : (formData as any)[field.key]}
+                    onChange={e => setFormData(prev => ({ ...prev, [field.key]: field.type === 'number' ? (e.target.value === '' ? 0 : Number(e.target.value)) : e.target.value }))}
+                    onWheel={field.type === 'number' ? (e => (e.target as HTMLInputElement).blur()) : undefined}
+                    onFocus={field.type === 'number' ? (e => e.target.select()) : undefined}
                     placeholder={field.placeholder}
                     className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400"
                   />
                 </div>
               ))}
+              <div>
+                <label className="block text-white/70 text-sm mb-1">Stok Kodu</label>
+                <div className="w-full px-3 py-2 bg-white/5 border border-white/15 rounded-xl text-white/60 font-mono text-sm flex items-center gap-2">
+                  <span>🏷️</span>
+                  <span>{editingUrun?.stockCode || generateStockCode()}</span>
+                  <span className="ml-auto text-white/30 text-xs font-sans">Otomatik</span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-white/70 text-sm mb-1">Firma Adı</label>
+                <select
+                  value={formData.companyName || ''}
+                  onChange={e => setFormData(prev => ({ ...prev, companyName: e.target.value }))}
+                  className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                >
+                  <option value="" className="bg-slate-800">Firma seçin...</option>
+                  {firmalar.map(f => (
+                    <option key={f.id} value={f.name} className="bg-slate-800">{f.name}</option>
+                  ))}
+                  {/* Daha önce serbest metin olarak girilmiş, listede olmayan firma adını koru */}
+                  {formData.companyName && !firmalar.some(f => f.name === formData.companyName) && (
+                    <option value={formData.companyName} className="bg-slate-800">{formData.companyName} (listede yok)</option>
+                  )}
+                </select>
+                {firmalar.length === 0 && (
+                  <p className="text-white/40 text-xs mt-1">Henüz firma yok. Ana Depo sekmesindeki "Firma Yönetimi" bölümünden firma ekleyebilirsiniz.</p>
+                )}
+              </div>
               {activeDepo === 'ana' && (
                 <div>
                   <label className="block text-white/70 text-sm mb-2">Kategori *</label>
@@ -2120,32 +2362,32 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                   <span className="text-white/40 ml-2 font-normal">(Seçmek için satıra tıklayın)</span>
                 </label>
 
-                {/* Tüketim türü sekme butonları */}
-                <div className="flex gap-2 mb-3">
-                  {([
-                    { key: 'islem-bazli', label: '⚙️ İşlem Bazlı Tüketim', activeClass: 'bg-indigo-500/20 border-indigo-400/60 text-indigo-300', count: anaDepoUrunler.filter(u => u.category !== 'teknik' && u.consumptionType === 'islem-bazli').length },
-                    { key: 'genel-bazli', label: '📦 Genel Bazlı Tüketim', activeClass: 'bg-green-500/20 border-green-400/60 text-green-300', count: anaDepoUrunler.filter(u => u.category !== 'teknik' && u.consumptionType === 'genel-bazli').length },
-                  ] as const).map(tab => (
+                {/* Kategori / tüketim türü sekme butonları (Teknik Depo hariç) */}
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  {TRANSFER_GROUPS.map(tab => {
+                    const count = anaDepoUrunler.filter(tab.match).length;
+                    return (
                     <button
                       key={tab.key}
                       type="button"
                       onClick={() => { setTransferProductTab(prev => prev === tab.key ? null : tab.key); setTransferSearch(''); }}
-                      className={`flex-1 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
+                      className={`px-3 py-2.5 rounded-xl border text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
                         transferProductTab === tab.key
                           ? tab.activeClass
                           : 'bg-white/5 border-white/15 text-white/50 hover:bg-white/10 hover:text-white/80'
                       }`}
                     >
                       {tab.label}
-                      <span className={`px-1.5 py-0.5 rounded-full text-xs ${transferProductTab === tab.key ? 'bg-white/20' : 'bg-white/10'}`}>{tab.count}</span>
+                      <span className={`px-1.5 py-0.5 rounded-full text-xs ${transferProductTab === tab.key ? 'bg-white/20' : 'bg-white/10'}`}>{count}</span>
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* Ürün listesi */}
-                {transferProductTab === null ? (
+                {!activeTransferGroup ? (
                   <div className="p-6 text-center text-white/40 bg-white/5 rounded-xl border border-white/10">
-                    <p className="text-sm">Yukarıdan bir tüketim türü seçin</p>
+                    <p className="text-sm">Yukarıdan bir ürün grubu seçin</p>
                   </div>
                 ) : (
                   <>
@@ -2163,8 +2405,8 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
 
                     <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                       {anaDepoUrunler
-                        .filter(u => u.category !== 'teknik' && u.consumptionType === transferProductTab)
-                        .filter(u => u.productName.toLowerCase().includes(transferSearch.toLowerCase()) || u.stockCode.toLowerCase().includes(transferSearch.toLowerCase()))
+                        .filter(activeTransferGroup.match)
+                        .filter(u => u.productName.toLowerCase().includes(transferSearch.toLowerCase()))
                         .sort((a, b) => a.productName.localeCompare(b.productName, 'tr'))
                         .map(urun => {
                           const isSelected = selectedItems[urun.id!] !== undefined;
@@ -2185,7 +2427,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                               </div>
                               <div className="flex-1 min-w-0">
                                 <p className="text-white font-medium text-sm truncate">{urun.productName}</p>
-                                <p className="text-white/50 text-xs">{urun.stockCode} • Mevcut: {urun.quantity} adet</p>
+                                <p className="text-white/50 text-xs">Mevcut: {urun.quantity} adet</p>
                               </div>
                               {isSelected && (
                                 <div className="flex items-center gap-1.5 flex-shrink-0" onClick={e => e.stopPropagation()}>
@@ -2205,8 +2447,8 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                             </div>
                           );
                         })}
-                      {anaDepoUrunler.filter(u => u.category !== 'teknik' && u.consumptionType === transferProductTab).filter(u =>
-                        u.productName.toLowerCase().includes(transferSearch.toLowerCase()) || u.stockCode.toLowerCase().includes(transferSearch.toLowerCase())
+                      {anaDepoUrunler.filter(activeTransferGroup.match).filter(u =>
+                        u.productName.toLowerCase().includes(transferSearch.toLowerCase())
                       ).length === 0 && (
                         <div className="p-6 text-center text-white/40 text-sm">
                           {transferSearch ? 'Arama sonucu bulunamadı.' : 'Bu kategoride ürün yok.'}

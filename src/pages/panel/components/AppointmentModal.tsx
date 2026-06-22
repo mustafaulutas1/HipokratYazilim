@@ -3,6 +3,7 @@ import { collection, addDoc, getDocs, query, where, updateDoc, doc } from 'fireb
 import { toast } from 'react-toastify';
 import { db } from '../../../firebase/config';
 import { DayPicker } from 'react-day-picker';
+import { tr } from 'date-fns/locale';
 import 'react-day-picker/dist/style.css';
 
 interface AppointmentModalProps {
@@ -737,6 +738,8 @@ const AppointmentModal: React.FC<AppointmentModalProps> = ({ isOpen, onClose, on
                   `}</style>
                   <DayPicker
                     mode="single"
+                    locale={tr}
+                    weekStartsOn={1}
                     selected={selectedDate}
                     onSelect={(d)=>d && setSelectedDate(d)}
                     disabled={{ before: new Date(new Date().setHours(0,0,0,0)) }}

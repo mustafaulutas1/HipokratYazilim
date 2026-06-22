@@ -111,6 +111,7 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
   const [completedTreatmentPatients, setCompletedTreatmentPatients] = useState<TreatmentPatient[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeListType, setActiveListType] = useState<'pending_treatment' | 'completed_treatment'>('pending_treatment');
+  const [patientSearch, setPatientSearch] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<TreatmentPatient | null>(null);
   const [isTreatmentModalOpen, setIsTreatmentModalOpen] = useState(false);
   const [treatmentApplied, setTreatmentApplied] = useState<boolean>(true);
@@ -649,6 +650,16 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
     }).format(amount);
   };
 
+  const activeList = activeListType === 'pending_treatment' ? pendingTreatmentPatients : completedTreatmentPatients;
+  const normalizedSearch = patientSearch.trim().toLocaleLowerCase('tr');
+  const filteredPatients = normalizedSearch
+    ? activeList.filter(p =>
+        (p.fullName || '').toLocaleLowerCase('tr').includes(normalizedSearch) ||
+        (p.tcNo || '').toLocaleLowerCase('tr').includes(normalizedSearch) ||
+        (p.phone || '').toLocaleLowerCase('tr').includes(normalizedSearch)
+      )
+    : activeList;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -761,7 +772,7 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
 
       {/* Patient List */}
       <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-white/20">
+        <div className="px-6 py-4 border-b border-white/20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <h3 className="text-xl font-bold text-white flex items-center gap-2">
             {activeListType === 'pending_treatment' ? (
               <>
@@ -775,10 +786,31 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
               </>
             )}
           </h3>
+
+          {/* Patient Search Filter */}
+          <div className="relative w-full sm:w-80">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-base pointer-events-none">🔍</span>
+            <input
+              type="text"
+              value={patientSearch}
+              onChange={(e) => setPatientSearch(e.target.value)}
+              placeholder="Hasta ara (ad, TC, telefon)..."
+              className="w-full pl-10 pr-9 py-2.5 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/40 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all duration-200"
+            />
+            {patientSearch && (
+              <button
+                onClick={() => setPatientSearch('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-all duration-200"
+                aria-label="Aramayı temizle"
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="divide-y divide-white/10">
-          {(activeListType === 'pending_treatment' ? pendingTreatmentPatients : completedTreatmentPatients).map((patient) => (
+          {filteredPatients.map((patient) => (
             <div key={patient.id + '_' + ((patient as TreatmentSession)._sessionId || 'default')} className="p-6 hover:bg-white/5 transition-all duration-200">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
@@ -943,18 +975,22 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
             </div>
           ))}
 
-          {(activeListType === 'pending_treatment' ? pendingTreatmentPatients : completedTreatmentPatients).length === 0 && (
+          {filteredPatients.length === 0 && (
             <div className="p-12 text-center">
               <div className="text-6xl mb-4">
-                {activeListType === 'pending_treatment' ? '⏳' : '✅'}
+                {normalizedSearch ? '🔍' : activeListType === 'pending_treatment' ? '⏳' : '✅'}
               </div>
               <h3 className="text-xl font-bold text-white mb-2">
-                {activeListType === 'pending_treatment' ? 'Bekleyen Tedavi Yok' : 'Henüz Tamamlanan Tedavi Yok'}
+                {normalizedSearch
+                  ? 'Hasta Bulunamadı'
+                  : activeListType === 'pending_treatment' ? 'Bekleyen Tedavi Yok' : 'Henüz Tamamlanan Tedavi Yok'}
               </h3>
               <p className="text-white/60">
-                {activeListType === 'pending_treatment' 
-                  ? 'Şu anda tedavi bekleyen hasta bulunmuyor.'
-                  : 'Henüz tamamlanan tedavi kaydı bulunmuyor.'
+                {normalizedSearch
+                  ? `"${patientSearch}" ile eşleşen hasta bulunamadı.`
+                  : activeListType === 'pending_treatment'
+                    ? 'Şu anda tedavi bekleyen hasta bulunmuyor.'
+                    : 'Henüz tamamlanan tedavi kaydı bulunmuyor.'
                 }
               </p>
             </div>
