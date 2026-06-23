@@ -298,9 +298,11 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
   const handleSave = async () => {
     if (!doctorProfile?.clinicId) return;
     if (!formData.productName.trim()) { alert('Ürün adı zorunludur.'); return; }
-    if (activeDepo === 'ana' && !formData.category) { alert('Kategori zorunludur. Lütfen bir depo kategorisi seçin.'); return; }
+    // Kategori hem ana hem kat deposu için zorunlu; böylece kat deposunda elle
+    // eklenen ürünler "Diğer (Kategorisiz)" altına düşmez.
+    if (!formData.category) { alert('Kategori zorunludur. Lütfen bir depo kategorisi seçin.'); return; }
     // Tüketim türü yalnızca Sarf Malzeme kategorisi için zorunlu (mevcut işlem/genel akışı korunur).
-    if (activeDepo === 'ana' && formData.category === 'sarf' && !formData.consumptionType) { alert('Sarf Malzeme için tüketim türü zorunludur. Lütfen "İşlem Bazlı Tüketim" veya "Genel Bazlı Tüketim" seçeneklerinden birini seçin.'); return; }
+    if (formData.category === 'sarf' && !formData.consumptionType) { alert('Sarf Malzeme için tüketim türü zorunludur. Lütfen "İşlem Bazlı Tüketim" veya "Genel Bazlı Tüketim" seçeneklerinden birini seçin.'); return; }
     setSaving(true);
     const colName = activeDepo === 'ana' ? 'anaDepoUrunler' : 'katDepoUrunler';
     // Firestore, undefined alan değerlerini kabul etmez; tanımsız alanları temizle.
@@ -2260,8 +2262,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                   <p className="text-white/40 text-xs mt-1">Henüz firma yok. Ana Depo sekmesindeki "Firma Yönetimi" bölümünden firma ekleyebilirsiniz.</p>
                 )}
               </div>
-              {activeDepo === 'ana' && (
-                <div>
+              <div>
                   <label className="block text-white/70 text-sm mb-2">Kategori *</label>
                   <div className="grid grid-cols-2 gap-2">
                     {(isAsistan ? DEPO_CATEGORIES.filter(c => ASISTAN_CATEGORIES.includes(c.key)) : DEPO_CATEGORIES).map(cat => {
@@ -2286,8 +2287,7 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                     })}
                   </div>
                 </div>
-              )}
-              {activeDepo === 'ana' && (formData.category === 'sarf' || (!formData.category && editingUrun)) && (
+              {(formData.category === 'sarf' || (!formData.category && editingUrun)) && (
                 <div>
                   <label className="block text-white/70 text-sm mb-2">Tüketim Türü *</label>
                   <div className="flex flex-col gap-2">
