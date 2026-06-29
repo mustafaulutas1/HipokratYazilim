@@ -99,7 +99,7 @@ interface SelectedMaterial {
 
 const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
   const userRole = doctorProfile?.role || doctorProfile?.userType || '';
-  const canApplyTreatment = userRole === 'admin' || userRole === 'bashemshire';
+  const canApplyTreatment = userRole === 'admin' || userRole === 'bashemshire' || userRole === 'treatment';
 
   const [stats, setStats] = useState<TreatmentStats>({
     totalPendingTreatments: 0,

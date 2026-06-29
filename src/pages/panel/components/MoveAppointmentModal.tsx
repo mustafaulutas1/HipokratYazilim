@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { collection, addDoc, getDocs, query, where, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { toast } from 'react-toastify';
 import { db } from '../../../firebase/config';
+import { tr } from 'react-day-picker/locale';
 import { DayPicker } from 'react-day-picker';
 import 'react-day-picker/dist/style.css';
 
@@ -307,6 +308,7 @@ const MoveAppointmentModal: React.FC<MoveAppointmentModalProps> = ({ isOpen, onC
                     selected={selectedDate}
                     onSelect={(d) => d && setSelectedDate(d)}
                     disabled={{ before: new Date(new Date().setHours(0, 0, 0, 0)) }}
+                    locale={tr}
                     className="w-full"
                     styles={{
                       root: { width: '100%', maxWidth: '100%' },

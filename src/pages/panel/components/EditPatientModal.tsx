@@ -168,9 +168,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
       newErrors.phone = 'Telefon numarası + ile başlamalı ve 6-15 haneli olmalıdır (E.164)';
     }
 
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email adresi gereklidir';
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+    if (formData.email.trim() && !/\S+@\S+\.\S+/.test(formData.email)) {
       newErrors.email = 'Geçerli bir email adresi giriniz';
     }
 
@@ -361,7 +359,7 @@ const EditPatientModal: React.FC<EditPatientModalProps> = ({ isOpen, onClose, on
 
             <div>
               <label className="block text-gray-700 text-sm font-medium mb-2">
-                Email *
+                Email
               </label>
               <input
                 type="email"
