@@ -178,6 +178,9 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   // Pharmacy payment discount marking (mirrors patient doc's indirim_* fields)
   const [pharmacyDiscountCheck, setPharmacyDiscountCheck] = useState<boolean>(false);
   const [pharmacyDiscountType, setPharmacyDiscountType] = useState<'yuzde' | 'tutar'>('yuzde');
+  // Independent enable flags: both can be active at the same time
+  const [pharmacyDiscountYuzdeEnabled, setPharmacyDiscountYuzdeEnabled] = useState<boolean>(false);
+  const [pharmacyDiscountTutarEnabled, setPharmacyDiscountTutarEnabled] = useState<boolean>(false);
   const [pharmacyDiscountRate, setPharmacyDiscountRate] = useState<number>(20);
   const [pharmacyDiscountValue, setPharmacyDiscountValue] = useState<number>(0);
   const [pharmacyDiscountApplied, setPharmacyDiscountApplied] = useState<boolean>(false);
@@ -938,11 +941,14 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       .filter(item => initiallySelected.includes(item.name))
       .reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
     setPharmacyPaymentAmount(total.toFixed(2));
+    setPharmacyPaymentMethods([{ method: 'nakit', amount: total }]);
     // Reset debt selection
     setSelectedDebts([]);
     // Manual discount only — always start fresh (not loaded from / saved to the patient)
     setPharmacyDiscountCheck(false);
     setPharmacyDiscountType('yuzde');
+    setPharmacyDiscountYuzdeEnabled(false);
+    setPharmacyDiscountTutarEnabled(false);
     setPharmacyDiscountRate(20);
     setPharmacyDiscountValue(0);
     setPharmacyDiscountApplied(false);
@@ -953,13 +959,20 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     setIsPaymentModalOpen(true);
   };
 
-  // Recalculate total when selection changes
+  // Only debts explicitly added via "Ödemeye Ekle" belong in the payment amount.
+  const getPharmacyDebtInPayment = () =>
+    debtsAddedToPayment ? calculateSelectedDebtTotal() : 0;
+
+  // Recalculate total when selection changes.
   const recalculatePharmacyTotal = (selected: string[], items?: any[]) => {
     const sourceItems = items || pendingSoldItems;
-    const total = sourceItems
+    const base = sourceItems
       .filter(item => selected.includes(item.name))
       .reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
+    const debtInPayment = getPharmacyDebtInPayment();
+    const total = base + debtInPayment;
     setPharmacyPaymentAmount(total.toFixed(2));
+    setPharmacyPaymentMethods([{ method: (pharmacyPaymentMethods[0]?.method) || 'nakit', amount: total }]);
     setPharmacyDiscountApplied(false);
   };
 
@@ -969,34 +982,78 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       .filter(item => selectedMedicines.includes(item.name))
       .reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
 
-  // Discount (TL) implied by the current marking against the items base.
-  const computePharmacyDiscount = () => {
-    if (!pharmacyDiscountCheck) return 0;
+  // Compute the combined discount in TL.
+  // When both types active: first apply percentage, then fixed amount from remainder.
+  // Result is capped at the base (never negative).
+  const computePharmacyDiscount = (): { total: number; yuzde: number; tutar: number } => {
+    if (!pharmacyDiscountCheck) return { total: 0, yuzde: 0, tutar: 0 };
     const base = pharmacyItemsBase();
-    const d = pharmacyDiscountType === 'yuzde'
-      ? base * (Number(pharmacyDiscountRate) || 0) / 100
-      : Math.min(Number(pharmacyDiscountValue) || 0, base);
-    return Math.max(0, Math.round(d * 100) / 100);
+
+    const discountYuzde = pharmacyDiscountYuzdeEnabled
+      ? Math.round(base * (Number(pharmacyDiscountRate) || 0)) / 100
+      : 0;
+
+    const afterYuzde = Math.max(0, base - discountYuzde);
+    const discountTutar = pharmacyDiscountTutarEnabled
+      ? Math.min(Number(pharmacyDiscountValue) || 0, afterYuzde)
+      : 0;
+
+    const total = Math.min(Math.round((discountYuzde + discountTutar) * 100) / 100, base);
+    return {
+      total: Math.max(0, total),
+      yuzde: Math.round(discountYuzde * 100) / 100,
+      tutar: Math.round(discountTutar * 100) / 100,
+    };
   };
 
-  // Toggle the marked discount on/off against the payable amount.
+  // Mirrors AccountingScreen.setPayableTo exactly.
+  const setPharmacyPayableTo = (amount: number) => {
+    const formatted = amount.toFixed(2);
+    setPharmacyPaymentAmount(formatted);
+    setPharmacyPaymentMethods(prev => [{ method: prev[0]?.method || 'nakit', amount }]);
+  };
+
+  // Apply — derives fresh from base every time (never delta arithmetic).
+  const applyPharmacyDiscountToAmount = () => {
+    if (!pharmacyDiscountCheck) return;
+    if (!pharmacyDiscountYuzdeEnabled && !pharmacyDiscountTutarEnabled) return;
+    const { total: discount } = computePharmacyDiscount();
+    if (discount <= 0) return;
+    const base = pharmacyItemsBase();
+    const debtInPayment = getPharmacyDebtInPayment();
+    setPharmacyPayableTo(Math.max(0, Math.round((base - discount + debtInPayment) * 100) / 100));
+    setPharmacyDiscountApplied(true);
+  };
+
+  // Restore the full (non-discounted) amount.
+  const removePharmacyDiscountFromAmount = () => {
+    const base = pharmacyItemsBase();
+    const debtInPayment = getPharmacyDebtInPayment();
+    setPharmacyPayableTo(Math.max(0, Math.round((base + debtInPayment) * 100) / 100));
+    setPharmacyDiscountApplied(false);
+  };
+
   const togglePharmacyDiscount = () => {
-    const delta = computePharmacyDiscount();
-    const current = parseFloat(pharmacyPaymentAmount) || 0;
-    const next = pharmacyDiscountApplied
-      ? Math.round((current + delta) * 100) / 100
-      : Math.max(0, Math.round((current - delta) * 100) / 100);
-    setPharmacyPaymentAmount(next.toFixed(2));
-    if (pharmacyPaymentMethods.length > 0) {
-      setPharmacyPaymentMethods([{ method: pharmacyPaymentMethods[0].method, amount: next }]);
-    }
-    setPharmacyDiscountApplied(!pharmacyDiscountApplied);
+    if (pharmacyDiscountApplied) removePharmacyDiscountFromAmount();
+    else applyPharmacyDiscountToAmount();
   };
 
-  // A previously applied discount becomes stale when the marking or item selection changes.
+  // When discount marking changes, invalidate any previously applied amount.
   useEffect(() => {
     setPharmacyDiscountApplied(false);
-  }, [pharmacyDiscountCheck, pharmacyDiscountType, pharmacyDiscountRate, pharmacyDiscountValue, selectedMedicines, pendingSoldItems]);
+  }, [pharmacyDiscountCheck, pharmacyDiscountYuzdeEnabled, pharmacyDiscountTutarEnabled, pharmacyDiscountRate, pharmacyDiscountValue]);
+
+  // Keep primary payment method amount synced with pharmacyPaymentAmount (mirrors AccountingScreen).
+  useEffect(() => {
+    if (pharmacyPaymentMethods.length === 1) {
+      const parsed = parseFloat(pharmacyPaymentAmount) || 0;
+      if (Math.abs(pharmacyPaymentMethods[0].amount - parsed) > 0.001) {
+        setPharmacyPaymentMethods(prev =>
+          prev.map((m, i) => (i === 0 ? { ...m, amount: parsed } : m))
+        );
+      }
+    }
+  }, [pharmacyPaymentAmount]);
 
   // Update quantity of a pending item
   const handleUpdateQuantity = (itemIndex: number, delta: number) => {
@@ -1010,10 +1067,13 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
       });
       // Recalculate total with updated quantities
       const selected = selectedMedicines;
-      const total = updated
+      const base = updated
         .filter(item => selected.includes(item.name))
         .reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
+      const total = base + getPharmacyDebtInPayment();
       setPharmacyPaymentAmount(total.toFixed(2));
+      setPharmacyPaymentMethods([{ method: (pharmacyPaymentMethods[0]?.method) || 'nakit', amount: total }]);
+      setPharmacyDiscountApplied(false);
       return updated;
     });
   };
@@ -1043,10 +1103,13 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
           }
           return item;
         });
-        const total = updated
+        const base = updated
           .filter(item => selectedMedicines.includes(item.name))
           .reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
+        const total = base + getPharmacyDebtInPayment();
         setPharmacyPaymentAmount(total.toFixed(2));
+        setPharmacyPaymentMethods([{ method: (pharmacyPaymentMethods[0]?.method) || 'nakit', amount: total }]);
+        setPharmacyDiscountApplied(false);
         return updated;
       });
       setPickerQuantities(prev => { const n = { ...prev }; delete n[medication.id!]; return n; });
@@ -1067,10 +1130,13 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     setPendingSoldItems(prev => {
       const updated = [...prev, newItem];
       const newSelection = [...selectedMedicines, getMedicationDisplayName(medication)];
-      const total = updated
+      const base = updated
         .filter(item => newSelection.includes(item.name))
         .reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
+      const total = base + getPharmacyDebtInPayment();
       setPharmacyPaymentAmount(total.toFixed(2));
+      setPharmacyPaymentMethods([{ method: (pharmacyPaymentMethods[0]?.method) || 'nakit', amount: total }]);
+      setPharmacyDiscountApplied(false);
       return updated;
     });
     setSelectedMedicines(prev => [...prev, getMedicationDisplayName(medication)]);
@@ -1187,7 +1253,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
           paidAt: new Date().toISOString()
         } : null,
         // Manual discount applied to this pharmacy sale only (not saved to the patient)
-        pharmacyDiscountAmount: pharmacyDiscountApplied ? computePharmacyDiscount() : 0,
+        pharmacyDiscountAmount: pharmacyDiscountApplied ? computePharmacyDiscount().total : 0,
       };
       
       // Update patient pharmacy debt status (separate from treatment debts)
@@ -4383,7 +4449,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       onChange={(e) => {
                         const newAmount = e.target.value;
                         setPharmacyPaymentAmount(newAmount);
-                        
+                        // Manuel giriş indirim durumunu geçersiz kılar
+                        setPharmacyDiscountApplied(false);
                         // Otomatik olarak ödeme yöntemi tutarını güncelle
                         if (pharmacyPaymentMethods.length > 0) {
                           const numAmount = parseFloat(newAmount) || 0;
@@ -4407,7 +4474,13 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                         id="pharmacy_indirim_check"
                         type="checkbox"
                         checked={pharmacyDiscountCheck}
-                        onChange={(e) => setPharmacyDiscountCheck(e.target.checked)}
+                        onChange={(e) => {
+                          setPharmacyDiscountCheck(e.target.checked);
+                          if (!e.target.checked) {
+                            setPharmacyDiscountYuzdeEnabled(false);
+                            setPharmacyDiscountTutarEnabled(false);
+                          }
+                        }}
                         className="mt-1 h-5 w-5 rounded border-green-300 text-green-600 focus:ring-green-500"
                       />
                       <label htmlFor="pharmacy_indirim_check" className="text-sm text-green-900">
@@ -4422,14 +4495,15 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
 
                     {pharmacyDiscountCheck && (
                       <div className="ml-8 space-y-3">
+                        {/* İndirim türü — çoklu seçim: ikisi aynı anda aktif olabilir */}
                         <div>
                           <label className="block text-sm font-medium text-green-800 mb-2">İndirim Türü</label>
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
-                              onClick={() => setPharmacyDiscountType('yuzde')}
+                              onClick={() => setPharmacyDiscountYuzdeEnabled(v => !v)}
                               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                                pharmacyDiscountType === 'yuzde'
+                                pharmacyDiscountYuzdeEnabled
                                   ? 'bg-green-500 text-white'
                                   : 'bg-white border border-green-300 text-green-700 hover:bg-green-100'
                               }`}
@@ -4438,9 +4512,9 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                             </button>
                             <button
                               type="button"
-                              onClick={() => setPharmacyDiscountType('tutar')}
+                              onClick={() => setPharmacyDiscountTutarEnabled(v => !v)}
                               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                                pharmacyDiscountType === 'tutar'
+                                pharmacyDiscountTutarEnabled
                                   ? 'bg-green-500 text-white'
                                   : 'bg-white border border-green-300 text-green-700 hover:bg-green-100'
                               }`}
@@ -4450,7 +4524,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                           </div>
                         </div>
 
-                        {pharmacyDiscountType === 'yuzde' ? (
+                        {/* Yüzde input — sadece seçiliyken göster */}
+                        {pharmacyDiscountYuzdeEnabled && (
                           <div>
                             <label className="block text-sm font-medium text-green-800 mb-2">İndirim Oranı (%)</label>
                             <div className="flex items-center gap-2">
@@ -4466,7 +4541,10 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                               <span className="text-sm text-green-700">%</span>
                             </div>
                           </div>
-                        ) : (
+                        )}
+
+                        {/* Tutar input — sadece seçiliyken göster */}
+                        {pharmacyDiscountTutarEnabled && (
                           <div>
                             <label className="block text-sm font-medium text-green-800 mb-2">İndirim Tutarı (TL)</label>
                             <div className="flex items-center gap-2">
@@ -4484,11 +4562,25 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                           </div>
                         )}
 
-                        {computePharmacyDiscount() > 0 && (
-                          <div className="text-sm text-green-800 bg-white border border-green-200 rounded-lg px-3 py-2">
-                            Uygulanacak indirim: <span className="font-bold">{computePharmacyDiscount().toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
-                          </div>
-                        )}
+                        {/* İndirim özeti */}
+                        {(() => {
+                          const { total, yuzde, tutar } = computePharmacyDiscount();
+                          if (total <= 0) return null;
+                          const bothActive = pharmacyDiscountYuzdeEnabled && pharmacyDiscountTutarEnabled;
+                          return (
+                            <div className="text-sm text-green-800 bg-white border border-green-200 rounded-lg px-3 py-2 space-y-0.5">
+                              {bothActive && yuzde > 0 && (
+                                <div>% Yüzde indirimi: <span className="font-semibold">{yuzde.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span></div>
+                              )}
+                              {bothActive && tutar > 0 && (
+                                <div>₺ Tutar indirimi: <span className="font-semibold">{tutar.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span></div>
+                              )}
+                              <div className={bothActive ? 'font-bold border-t border-green-200 pt-0.5 mt-0.5' : ''}>
+                                Uygulanacak indirim: <span className="font-bold">{total.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                              </div>
+                            </div>
+                          );
+                        })()}
 
                         <div className="flex flex-wrap gap-2">
                           <button
@@ -4688,13 +4780,24 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                               const debtTotal = calculateSelectedDebtTotal();
                               if (debtsAddedToPayment) {
                                 // Remove from payment
-                                setPharmacyPaymentAmount(Math.max(0, currentAmount - debtTotal).toFixed(2));
+                                const nextAmount = Math.max(0, currentAmount - debtTotal);
+                                setPharmacyPaymentAmount(nextAmount.toFixed(2));
+                                setPharmacyPaymentMethods([{
+                                  method: pharmacyPaymentMethods[0]?.method || 'nakit',
+                                  amount: nextAmount,
+                                }]);
                                 setDebtsAddedToPayment(false);
                               } else {
                                 // Add to payment
-                                setPharmacyPaymentAmount((currentAmount + debtTotal).toFixed(2));
+                                const nextAmount = currentAmount + debtTotal;
+                                setPharmacyPaymentAmount(nextAmount.toFixed(2));
+                                setPharmacyPaymentMethods([{
+                                  method: pharmacyPaymentMethods[0]?.method || 'nakit',
+                                  amount: nextAmount,
+                                }]);
                                 setDebtsAddedToPayment(true);
                               }
+                              setPharmacyDiscountApplied(false);
                             }}
                             className={`w-full mt-3 px-4 py-2 ${
                               debtsAddedToPayment
@@ -4727,7 +4830,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
               <div className="flex items-center justify-between">
                 {/* Grand Total Summary */}
                 {(() => {
-                  const appliedDiscount = pharmacyDiscountApplied ? computePharmacyDiscount() : 0;
+                  const appliedDiscount = pharmacyDiscountApplied ? computePharmacyDiscount().total : 0;
                   const gunluk = Math.max(0, pharmacyItemsBase() - appliedDiscount);
                   const gecmis = calculateSelectedDebtTotal();
                   return (

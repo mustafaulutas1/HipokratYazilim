@@ -63,6 +63,9 @@ interface PaymentPatient {
   indirim_tipi?: 'yuzde' | 'tutar';
   indirim_orani?: number;
   indirim_tutar?: number;
+  // Combined discount flags (both can be active simultaneously)
+  indirim_yuzde_enabled?: boolean;
+  indirim_tutar_enabled?: boolean;
   updatedAt?: string;
   treatmentApplied?: boolean;
   treatmentNotAppliedReason?: string;
@@ -158,6 +161,9 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
   // Patient discount marking (mirrors patient doc's indirim_* fields)
   const [discountCheck, setDiscountCheck] = useState<boolean>(false);
   const [discountType, setDiscountType] = useState<'yuzde' | 'tutar'>('yuzde');
+  // Independent enable flags: both can be active at the same time
+  const [discountYuzdeEnabled, setDiscountYuzdeEnabled] = useState<boolean>(false);
+  const [discountTutarEnabled, setDiscountTutarEnabled] = useState<boolean>(false);
   const [discountRate, setDiscountRate] = useState<number>(20);
   const [discountValue, setDiscountValue] = useState<number>(0);
   const [savingDiscount, setSavingDiscount] = useState<boolean>(false);
@@ -504,21 +510,39 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
   // Initialize discount marking from the selected patient when the modal opens.
   useEffect(() => {
     if (!isPaymentModalOpen || !selectedPatient) return;
-    setDiscountCheck(selectedPatient.indirim_check ?? false);
-    setDiscountType((selectedPatient.indirim_tipi as 'yuzde' | 'tutar') || 'yuzde');
+    const hasDiscount = selectedPatient.indirim_check ?? false;
+    setDiscountCheck(hasDiscount);
     setDiscountRate(selectedPatient.indirim_orani ?? 20);
     setDiscountValue(selectedPatient.indirim_tutar ?? 0);
+
+    // Migrate legacy single-type flag to dual flags.
+    if (typeof selectedPatient.indirim_yuzde_enabled === 'boolean' || typeof selectedPatient.indirim_tutar_enabled === 'boolean') {
+      setDiscountYuzdeEnabled(selectedPatient.indirim_yuzde_enabled ?? false);
+      setDiscountTutarEnabled(selectedPatient.indirim_tutar_enabled ?? false);
+    } else if (hasDiscount) {
+      // Legacy: indirim_tipi was a single choice; map to corresponding flag.
+      const legacyType = (selectedPatient.indirim_tipi as 'yuzde' | 'tutar') || 'yuzde';
+      setDiscountYuzdeEnabled(legacyType === 'yuzde');
+      setDiscountTutarEnabled(legacyType === 'tutar');
+    } else {
+      setDiscountYuzdeEnabled(false);
+      setDiscountTutarEnabled(false);
+    }
+    // Keep discountType in sync for any legacy writes.
+    setDiscountType((selectedPatient.indirim_tipi as 'yuzde' | 'tutar') || 'yuzde');
     setDiscountApplied(false);
   }, [isPaymentModalOpen, selectedPatient]);
 
   // If the discount marking changes, a previously applied amount is stale.
   useEffect(() => {
     setDiscountApplied(false);
-  }, [discountCheck, discountType, discountRate, discountValue]);
+  }, [discountCheck, discountYuzdeEnabled, discountTutarEnabled, discountRate, discountValue]);
 
-  // Compute the discount (in TL) implied by the current marking against the treatment base.
+  // Compute the combined discount (in TL) against the treatment base.
+  // When both types are active: first apply percentage, then deduct fixed amount from the remainder.
+  // Total discount is capped at the treatment base (never negative payable).
   const computeMarkedDiscount = () => {
-    if (!selectedPatient || !discountCheck) return { base: 0, discount: 0, debtToInclude: 0 };
+    if (!selectedPatient || !discountCheck) return { base: 0, discount: 0, discountYuzde: 0, discountTutar: 0, debtToInclude: 0 };
     const expected = calculateAutoPaymentAmount(
       selectedPatient,
       selectedApplications,
@@ -527,10 +551,20 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
     );
     const debtToInclude = includeDebtInPayment ? (Number(selectedPatient.debtAmount) || 0) : 0;
     const base = Math.max(0, expected - debtToInclude);
-    const discount = discountType === 'yuzde'
+
+    // Step 1: percentage discount on base
+    const discountYuzde = discountYuzdeEnabled
       ? Math.round(base * (Number(discountRate) || 0)) / 100
-      : Math.min(Number(discountValue) || 0, base);
-    return { base, discount: Math.round(discount * 100) / 100, debtToInclude };
+      : 0;
+
+    // Step 2: fixed amount discount on what remains after percentage
+    const afterYuzde = Math.max(0, base - discountYuzde);
+    const discountTutar = discountTutarEnabled
+      ? Math.min(Number(discountValue) || 0, afterYuzde)
+      : 0;
+
+    const discount = Math.min(Math.round((discountYuzde + discountTutar) * 100) / 100, base);
+    return { base, discount, discountYuzde: Math.round(discountYuzde * 100) / 100, discountTutar: Math.round(discountTutar * 100) / 100, debtToInclude };
   };
 
   const setPayableTo = (amount: number) => {
@@ -578,6 +612,8 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         indirim_tipi: discountType,
         indirim_orani: Number(discountRate) || 0,
         indirim_tutar: Number(discountValue) || 0,
+        indirim_yuzde_enabled: discountYuzdeEnabled,
+        indirim_tutar_enabled: discountTutarEnabled,
         updatedAt: new Date().toISOString(),
       };
       await updateDoc(doc(db, 'patients', selectedPatient.id), data);
@@ -653,6 +689,8 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         indirim_tipi: discountType,
         indirim_orani: Number(discountRate) || 0,
         indirim_tutar: Number(discountValue) || 0,
+        indirim_yuzde_enabled: discountYuzdeEnabled,
+        indirim_tutar_enabled: discountTutarEnabled,
       };
       
       // Handle debt tracking - simplified with explicit checkbox
@@ -2480,7 +2518,13 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                     id="acc_indirim_check"
                     type="checkbox"
                     checked={discountCheck}
-                    onChange={(e) => setDiscountCheck(e.target.checked)}
+                    onChange={(e) => {
+                      setDiscountCheck(e.target.checked);
+                      if (!e.target.checked) {
+                        setDiscountYuzdeEnabled(false);
+                        setDiscountTutarEnabled(false);
+                      }
+                    }}
                     className="mt-1 h-5 w-5 rounded border-green-300 text-green-600 focus:ring-green-500"
                   />
                   <label htmlFor="acc_indirim_check" className="text-sm text-green-900">
@@ -2495,14 +2539,15 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
 
                 {discountCheck && (
                   <div className="ml-8 space-y-3">
+                    {/* İndirim türü — çoklu seçim: ikisi aynı anda aktif olabilir */}
                     <div>
                       <label className="block text-sm font-medium text-green-800 mb-2">İndirim Türü</label>
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => setDiscountType('yuzde')}
+                          onClick={() => setDiscountYuzdeEnabled(v => !v)}
                           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                            discountType === 'yuzde'
+                            discountYuzdeEnabled
                               ? 'bg-green-500 text-white'
                               : 'bg-white border border-green-300 text-green-700 hover:bg-green-100'
                           }`}
@@ -2511,9 +2556,9 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                         </button>
                         <button
                           type="button"
-                          onClick={() => setDiscountType('tutar')}
+                          onClick={() => setDiscountTutarEnabled(v => !v)}
                           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                            discountType === 'tutar'
+                            discountTutarEnabled
                               ? 'bg-green-500 text-white'
                               : 'bg-white border border-green-300 text-green-700 hover:bg-green-100'
                           }`}
@@ -2523,7 +2568,8 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                       </div>
                     </div>
 
-                    {discountType === 'yuzde' ? (
+                    {/* Yüzde input — sadece seçiliyken göster */}
+                    {discountYuzdeEnabled && (
                       <div>
                         <label className="block text-sm font-medium text-green-800 mb-2">İndirim Oranı (%)</label>
                         <div className="flex items-center gap-2">
@@ -2539,7 +2585,10 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                           <span className="text-sm text-green-700">%</span>
                         </div>
                       </div>
-                    ) : (
+                    )}
+
+                    {/* Tutar input — sadece seçiliyken göster */}
+                    {discountTutarEnabled && (
                       <div>
                         <label className="block text-sm font-medium text-green-800 mb-2">İndirim Tutarı (TL)</label>
                         <div className="flex items-center gap-2">
@@ -2557,13 +2606,24 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                       </div>
                     )}
 
+                    {/* İndirim özeti */}
                     {(() => {
-                      const { discount } = computeMarkedDiscount();
-                      return discount > 0 ? (
-                        <div className="text-sm text-green-800 bg-white border border-green-200 rounded-lg px-3 py-2">
-                          Uygulanacak indirim: <span className="font-bold">{discount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                      const { discount, discountYuzde, discountTutar } = computeMarkedDiscount();
+                      if (discount <= 0) return null;
+                      const bothActive = discountYuzdeEnabled && discountTutarEnabled;
+                      return (
+                        <div className="text-sm text-green-800 bg-white border border-green-200 rounded-lg px-3 py-2 space-y-0.5">
+                          {bothActive && discountYuzde > 0 && (
+                            <div>% Yüzde indirimi: <span className="font-semibold">{discountYuzde.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span></div>
+                          )}
+                          {bothActive && discountTutar > 0 && (
+                            <div>₺ Tutar indirimi: <span className="font-semibold">{discountTutar.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span></div>
+                          )}
+                          <div className={bothActive ? 'font-bold border-t border-green-200 pt-0.5 mt-0.5' : ''}>
+                            Uygulanacak indirim: <span className="font-bold">{discount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                          </div>
                         </div>
-                      ) : null;
+                      );
                     })()}
 
                     <div className="flex flex-wrap gap-2">
