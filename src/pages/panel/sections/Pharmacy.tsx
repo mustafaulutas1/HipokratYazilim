@@ -214,6 +214,13 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const [selectedDebtorForPayment, setSelectedDebtorForPayment] = useState<any | null>(null);
   const [debtorPaymentMethods, setDebtorPaymentMethods] = useState<PaymentMethodEntry[]>([{ method: 'nakit', amount: 0 }]);
   const [debtorPaymentLoading, setDebtorPaymentLoading] = useState(false);
+  // Borç ödeme indirim state'leri
+  const [debtorDiscountCheck, setDebtorDiscountCheck] = useState<boolean>(false);
+  const [debtorDiscountYuzdeEnabled, setDebtorDiscountYuzdeEnabled] = useState<boolean>(false);
+  const [debtorDiscountTutarEnabled, setDebtorDiscountTutarEnabled] = useState<boolean>(false);
+  const [debtorDiscountRate, setDebtorDiscountRate] = useState<number>(20);
+  const [debtorDiscountValue, setDebtorDiscountValue] = useState<number>(0);
+  const [debtorDiscountApplied, setDebtorDiscountApplied] = useState<boolean>(false);
   const [formData, setFormData] = useState<Medication>({
     name: '',
     protocolName: '',
@@ -602,11 +609,54 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     }
   };
 
+  // ── Borç ödeme indirim fonksiyonları ─────────────────────────────────────
+
+  // indirim tipi/oranı değişince applied'ı sıfırla
+  // (useEffect tanımı bileşen içinde olmalı ama burada helper fonksiyonlar olarak tutuyoruz)
+
+  const computeDebtorDiscount = (totalDebt: number): { total: number; yuzde: number; tutar: number } => {
+    if (!debtorDiscountCheck) return { total: 0, yuzde: 0, tutar: 0 };
+    const base = totalDebt;
+    const discountYuzde = debtorDiscountYuzdeEnabled
+      ? Math.round(base * (Number(debtorDiscountRate) || 0)) / 100
+      : 0;
+    const afterYuzde = Math.max(0, base - discountYuzde);
+    const discountTutar = debtorDiscountTutarEnabled
+      ? Math.min(Number(debtorDiscountValue) || 0, afterYuzde)
+      : 0;
+    const total = Math.min(Math.round((discountYuzde + discountTutar) * 100) / 100, base);
+    return {
+      total: Math.max(0, total),
+      yuzde: Math.round(discountYuzde * 100) / 100,
+      tutar: Math.round(discountTutar * 100) / 100,
+    };
+  };
+
+  const applyDebtorDiscountToAmount = (totalDebt: number) => {
+    if (!debtorDiscountCheck) return;
+    if (!debtorDiscountYuzdeEnabled && !debtorDiscountTutarEnabled) return;
+    const { total: discount } = computeDebtorDiscount(totalDebt);
+    if (discount <= 0) return;
+    const next = Math.max(0, Math.round((totalDebt - discount) * 100) / 100);
+    setDebtorPaymentMethods([{ method: debtorPaymentMethods[0]?.method || 'nakit', amount: next }]);
+    setDebtorDiscountApplied(true);
+  };
+
+  const removeDebtorDiscountFromAmount = (totalDebt: number) => {
+    setDebtorPaymentMethods([{ method: debtorPaymentMethods[0]?.method || 'nakit', amount: totalDebt }]);
+    setDebtorDiscountApplied(false);
+  };
+
   const handleDebtorPayment = async () => {
     if (!selectedDebtorForPayment || !doctorProfile?.clinicId) return;
 
     const totalPaid = debtorPaymentMethods.reduce((s, m) => s + (m.amount || 0), 0);
     const totalDebt = selectedDebtorForPayment.totalDebt;
+    // İndirim uygulandıysa gerçek borç miktarını indirimli olarak hesapla
+    const appliedDiscount = debtorDiscountApplied
+      ? computeDebtorDiscount(totalDebt).total
+      : 0;
+    const effectiveDebt = Math.max(0, Math.round((totalDebt - appliedDiscount) * 100) / 100);
 
     if (totalPaid <= 0) {
       alert('Lütfen ödeme tutarı girin.');
@@ -625,10 +675,12 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
           paidAt: new Date().toISOString(),
           paidAmount: debt.amount,
           paymentMethods: debtorPaymentMethods.filter(m => m.amount > 0),
+          ...(appliedDiscount > 0 ? { discountApplied: appliedDiscount } : {}),
         });
       }
 
-      const remainingDebt = Math.max(0, Math.round((totalDebt - totalPaid) * 100) / 100);
+      // Kalan borç: indirimli tutar üzerinden hesapla
+      const remainingDebt = Math.max(0, Math.round((effectiveDebt - totalPaid) * 100) / 100);
 
       // If partial payment, record remainder as a new debt entry (inherit source from existing debts)
       if (remainingDebt > 0) {
@@ -676,13 +728,18 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
 
       await batch.commit();
 
+      const discountNote = appliedDiscount > 0 ? ` (${appliedDiscount.toFixed(2)} TL indirim uygulandı)` : '';
       const msg = remainingDebt > 0
-        ? `Ödeme kaydedildi: ${totalPaid.toFixed(2)} TL. Kalan borç: ${remainingDebt.toFixed(2)} TL`
-        : `Borç tamamen ödendi: ${totalPaid.toFixed(2)} TL`;
+        ? `Ödeme kaydedildi: ${totalPaid.toFixed(2)} TL${discountNote}. Kalan borç: ${remainingDebt.toFixed(2)} TL`
+        : `Borç tamamen ödendi: ${totalPaid.toFixed(2)} TL${discountNote}`;
       alert(msg);
 
       setSelectedDebtorForPayment(null);
       setDebtorPaymentMethods([{ method: 'nakit', amount: 0 }]);
+      setDebtorDiscountCheck(false);
+      setDebtorDiscountYuzdeEnabled(false);
+      setDebtorDiscountTutarEnabled(false);
+      setDebtorDiscountApplied(false);
       await fetchPatientsWithPharmacyDebts();
     } catch (error) {
       console.error('Borç ödeme hatası:', error);
@@ -5145,6 +5202,13 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                               } else {
                                 setSelectedDebtorForPayment(patient);
                                 setDebtorPaymentMethods([{ method: 'nakit', amount: patient.totalDebt }]);
+                                // İndirim state'lerini sıfırla
+                                setDebtorDiscountCheck(false);
+                                setDebtorDiscountYuzdeEnabled(false);
+                                setDebtorDiscountTutarEnabled(false);
+                                setDebtorDiscountRate(20);
+                                setDebtorDiscountValue(0);
+                                setDebtorDiscountApplied(false);
                               }
                             }}
                             className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-medium transition-all text-sm shadow-md"
@@ -5184,16 +5248,161 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                         <div className="border-t border-white/10 bg-white/5 p-5 space-y-4">
                           <h5 className="text-white font-medium text-sm">Ödeme Bilgileri</h5>
 
+                          {/* İndirim bölümü */}
+                          <div className="bg-green-900/30 border border-green-500/40 rounded-xl p-4 space-y-3">
+                            <div className="flex items-start gap-3">
+                              <input
+                                id={`debtor_indirim_check_${patient.tcNo}`}
+                                type="checkbox"
+                                checked={debtorDiscountCheck}
+                                onChange={(e) => {
+                                  setDebtorDiscountCheck(e.target.checked);
+                                  if (!e.target.checked) {
+                                    setDebtorDiscountYuzdeEnabled(false);
+                                    setDebtorDiscountTutarEnabled(false);
+                                    setDebtorDiscountApplied(false);
+                                    setDebtorPaymentMethods([{ method: debtorPaymentMethods[0]?.method || 'nakit', amount: patient.totalDebt }]);
+                                  }
+                                }}
+                                className="mt-1 h-5 w-5 rounded border-green-400 text-green-500 focus:ring-green-500"
+                              />
+                              <label htmlFor={`debtor_indirim_check_${patient.tcNo}`} className="text-sm text-green-200">
+                                <span className="font-semibold flex items-center gap-2">
+                                  <span>🏷️</span> İndirim uygula
+                                </span>
+                              </label>
+                            </div>
+
+                            {debtorDiscountCheck && (
+                              <div className="ml-8 space-y-3">
+                                {/* Tür seçimi */}
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setDebtorDiscountYuzdeEnabled(v => !v);
+                                      setDebtorDiscountApplied(false);
+                                    }}
+                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                                      debtorDiscountYuzdeEnabled
+                                        ? 'bg-green-500 text-white'
+                                        : 'bg-white/10 border border-green-500/40 text-green-300 hover:bg-green-500/20'
+                                    }`}
+                                  >
+                                    % Yüzde
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setDebtorDiscountTutarEnabled(v => !v);
+                                      setDebtorDiscountApplied(false);
+                                    }}
+                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                                      debtorDiscountTutarEnabled
+                                        ? 'bg-green-500 text-white'
+                                        : 'bg-white/10 border border-green-500/40 text-green-300 hover:bg-green-500/20'
+                                    }`}
+                                  >
+                                    ₺ Tutar
+                                  </button>
+                                </div>
+
+                                {/* Yüzde input */}
+                                {debtorDiscountYuzdeEnabled && (
+                                  <div className="flex items-center gap-2">
+                                    <label className="text-xs text-green-300 w-28">İndirim Oranı</label>
+                                    <input
+                                      type="number"
+                                      value={debtorDiscountRate}
+                                      onChange={(e) => {
+                                        setDebtorDiscountRate(parseFloat(e.target.value) || 0);
+                                        setDebtorDiscountApplied(false);
+                                      }}
+                                      min="0" max="100"
+                                      className="w-24 px-3 py-1.5 bg-white/10 border border-green-500/40 rounded-lg text-green-100 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                                      placeholder="20"
+                                    />
+                                    <span className="text-green-300 text-sm">%</span>
+                                  </div>
+                                )}
+
+                                {/* Tutar input */}
+                                {debtorDiscountTutarEnabled && (
+                                  <div className="flex items-center gap-2">
+                                    <label className="text-xs text-green-300 w-28">İndirim Tutarı</label>
+                                    <input
+                                      type="number"
+                                      value={debtorDiscountValue}
+                                      onChange={(e) => {
+                                        setDebtorDiscountValue(parseFloat(e.target.value) || 0);
+                                        setDebtorDiscountApplied(false);
+                                      }}
+                                      min="0" step="0.01"
+                                      className="w-24 px-3 py-1.5 bg-white/10 border border-green-500/40 rounded-lg text-green-100 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                                      placeholder="100"
+                                    />
+                                    <span className="text-green-300 text-sm">TL</span>
+                                  </div>
+                                )}
+
+                                {/* Özet */}
+                                {(() => {
+                                  const { total, yuzde, tutar } = computeDebtorDiscount(patient.totalDebt);
+                                  if (total <= 0) return null;
+                                  const both = debtorDiscountYuzdeEnabled && debtorDiscountTutarEnabled;
+                                  return (
+                                    <div className="text-sm text-green-200 bg-white/5 border border-green-500/30 rounded-lg px-3 py-2 space-y-0.5">
+                                      {both && yuzde > 0 && <div>% Yüzde indirimi: <span className="font-semibold">{yuzde.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span></div>}
+                                      {both && tutar > 0 && <div>₺ Tutar indirimi: <span className="font-semibold">{tutar.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span></div>}
+                                      <div className={both ? 'font-bold border-t border-green-500/30 pt-0.5' : ''}>
+                                        Uygulanacak indirim: <span className="font-bold">{total.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                                      </div>
+                                      {debtorDiscountApplied && (
+                                        <div className="text-green-400 text-xs">
+                                          ✅ Ödenecek tutar: <span className="font-bold">{Math.max(0, patient.totalDebt - total).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+
+                                {/* Uygula butonu */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (debtorDiscountApplied) {
+                                      removeDebtorDiscountFromAmount(patient.totalDebt);
+                                    } else {
+                                      applyDebtorDiscountToAmount(patient.totalDebt);
+                                    }
+                                  }}
+                                  className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors flex items-center gap-2 ${
+                                    debtorDiscountApplied
+                                      ? 'bg-white/10 border border-green-400/50 text-green-300 hover:bg-white/20'
+                                      : 'bg-green-600 hover:bg-green-700 text-white'
+                                  }`}
+                                >
+                                  <span>{debtorDiscountApplied ? '↩️' : '🏷️'}</span>
+                                  {debtorDiscountApplied ? 'İndirimi geri al' : 'İndirimi tutara uygula'}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
                           <MultiPaymentMethodSelector
                             value={debtorPaymentMethods}
                             onChange={setDebtorPaymentMethods}
-                            totalAmount={patient.totalDebt}
+                            totalAmount={debtorDiscountApplied
+                              ? Math.max(0, patient.totalDebt - computeDebtorDiscount(patient.totalDebt).total)
+                              : patient.totalDebt}
                           />
 
                           {/* Remaining info */}
                           {(() => {
                             const paid = debtorPaymentMethods.reduce((s, m) => s + (m.amount || 0), 0);
-                            const remaining = Math.max(0, patient.totalDebt - paid);
+                            const appliedDiscount = debtorDiscountApplied ? computeDebtorDiscount(patient.totalDebt).total : 0;
+                            const effectiveDebt = Math.max(0, patient.totalDebt - appliedDiscount);
+                            const remaining = Math.max(0, effectiveDebt - paid);
                             return (
                               <div className="flex items-center justify-between text-sm">
                                 <span className="text-white/60">
