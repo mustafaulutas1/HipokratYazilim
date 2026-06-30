@@ -196,6 +196,10 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
   const [reportFiltersOpen, setReportFiltersOpen] = useState(false);
   const [medicalApplicationPrices, setMedicalApplicationPrices] = useState<MedicalApplicationPrice[]>([]);
   const [lastAutoCalculatedAmount, setLastAutoCalculatedAmount] = useState<string>('');
+  // Tamamlanan ödemeler — ödeme yöntemi düzenleme state'leri
+  const [editingPaymentMethodPatientId, setEditingPaymentMethodPatientId] = useState<string | null>(null);
+  const [editPaymentMethods, setEditPaymentMethods] = useState<PaymentMethodEntry[]>([{ method: 'nakit', amount: 0 }]);
+  const [editPaymentMethodLoading, setEditPaymentMethodLoading] = useState(false);
   const [reportData, setReportData] = useState<{
     payments: PaymentPatient[];
     refunds: PaymentPatient[];
@@ -1099,6 +1103,38 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       if (d > e) return false;
     }
     return true;
+  };
+
+  // Tamamlanan ödemede sadece ödeme yöntemini güncelle
+  const handleUpdatePaymentMethod = async (patient: PaymentPatient) => {
+    if (!doctorProfile?.clinicId || !patient.id) return;
+    const validMethods = editPaymentMethods.filter(m => m.amount > 0);
+    if (validMethods.length === 0) {
+      alert('Lütfen geçerli bir ödeme yöntemi seçin.');
+      return;
+    }
+    setEditPaymentMethodLoading(true);
+    try {
+      const { doc, updateDoc } = await import('firebase/firestore');
+      const { db } = await import('../../../firebase/config');
+      await updateDoc(doc(db, 'patients', patient.id), {
+        paymentMethod: validMethods[0].method,
+        paymentMethods: validMethods,
+        updatedAt: new Date().toISOString(),
+      });
+      // Yerel state'i güncelle
+      setPaidPatients(prev => prev.map(p =>
+        p.id === patient.id
+          ? { ...p, paymentMethod: validMethods[0].method, paymentMethods: validMethods }
+          : p
+      ));
+      setEditingPaymentMethodPatientId(null);
+    } catch (e) {
+      console.error('Ödeme yöntemi güncellenirken hata:', e);
+      alert('Güncellenirken bir hata oluştu.');
+    } finally {
+      setEditPaymentMethodLoading(false);
+    }
   };
 
   const matchesReportMethod = (p: PaymentPatient, kind: 'payment' | 'refund'): boolean => {
@@ -2072,11 +2108,65 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                       <p className="text-white/60 text-sm">
                         {formatCurrency(patient.paymentAmount || 0)}
                       </p>
-                      <p className="text-white/60 text-sm">
-                        {formatDate(patient.paymentDate)} • {patient.paymentMethods && patient.paymentMethods.length > 0
-                          ? formatPaymentMethods(patient.paymentMethods)
-                          : getPaymentMethodLabel(patient.paymentMethod || 'nakit')}
-                      </p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-white/60 text-sm">
+                          {formatDate(patient.paymentDate)} • {patient.paymentMethods && patient.paymentMethods.length > 0
+                            ? formatPaymentMethods(patient.paymentMethods)
+                            : getPaymentMethodLabel(patient.paymentMethod || 'nakit')}
+                        </p>
+                        <button
+                          onClick={() => {
+                            if (editingPaymentMethodPatientId === patient.id) {
+                              setEditingPaymentMethodPatientId(null);
+                            } else {
+                              setEditingPaymentMethodPatientId(patient.id!);
+                              const existing = patient.paymentMethods && patient.paymentMethods.length > 0
+                                ? patient.paymentMethods
+                                : [{ method: patient.paymentMethod || 'nakit', amount: patient.paymentAmount || 0 }];
+                              setEditPaymentMethods(existing);
+                            }
+                          }}
+                          className="px-2 py-0.5 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg text-white/60 hover:text-white text-xs transition-all flex items-center gap-1"
+                          title="Ödeme yöntemini düzenle"
+                        >
+                          ✏️ <span>Düzenle</span>
+                        </button>
+                      </div>
+
+                      {/* Inline ödeme yöntemi düzenleme formu */}
+                      {editingPaymentMethodPatientId === patient.id && (
+                        <div className="mt-3 p-3 bg-white/5 border border-white/20 rounded-xl space-y-3">
+                          <p className="text-white/80 text-xs font-medium">Ödeme Yöntemini Güncelle</p>
+                          <div className="bg-white/5 rounded-lg p-2">
+                            <MultiPaymentMethodSelector
+                              totalAmount={patient.paymentAmount || 0}
+                              value={editPaymentMethods}
+                              onChange={setEditPaymentMethods}
+                              disabled={editPaymentMethodLoading}
+                              showValidation={false}
+                            />
+                          </div>
+                          <div className="flex items-center gap-2 justify-end">
+                            <button
+                              onClick={() => setEditingPaymentMethodPatientId(null)}
+                              disabled={editPaymentMethodLoading}
+                              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg text-white/70 text-xs font-medium transition-all"
+                            >
+                              İptal
+                            </button>
+                            <button
+                              onClick={() => handleUpdatePaymentMethod(patient)}
+                              disabled={editPaymentMethodLoading}
+                              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-white text-xs font-medium transition-all flex items-center gap-1"
+                            >
+                              {editPaymentMethodLoading
+                                ? <><div className="animate-spin rounded-full h-3 w-3 border-b border-white"></div> Kaydediliyor...</>
+                                : <>✅ Kaydet</>
+                              }
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="space-y-2">
