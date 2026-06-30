@@ -203,7 +203,6 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
   const [lastAutoCalculatedAmount, setLastAutoCalculatedAmount] = useState<string>('');
   // Tamamlanan ödemeler — ödeme yöntemi düzenleme state'leri
   const [editingPaymentMethodPatientId, setEditingPaymentMethodPatientId] = useState<string | null>(null);
-  const [editPaymentMethods, setEditPaymentMethods] = useState<PaymentMethodEntry[]>([{ method: 'nakit', amount: 0 }]);
   const [editPaymentMethodLoading, setEditPaymentMethodLoading] = useState(false);
   const [reportData, setReportData] = useState<{
     payments: PaymentPatient[];
