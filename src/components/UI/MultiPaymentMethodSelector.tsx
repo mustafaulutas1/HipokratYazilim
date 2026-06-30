@@ -189,53 +189,56 @@ const MultiPaymentMethodSelector: React.FC<MultiPaymentMethodSelectorProps> = ({
             const methodInfo = paymentMethods.find(m => m.value === entry.method) ||
                              { value: entry.method, label: entry.method, icon: '💰' };
             return (
-              <div key={entry.method} className="flex items-center gap-3 bg-gray-50 p-3 rounded-lg border border-gray-200">
-                <div className="flex items-center gap-2 min-w-[140px]">
-                  <span className="text-lg">{methodInfo.icon}</span>
-                  <span className="font-medium text-gray-800">{methodInfo.label}</span>
-                      {/* Show original vs payable for primary method when provided */}
-                      {idx === 0 && typeof originalAmount !== 'undefined' && originalAmount > 0 && originalAmount !== totalAmount && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          <span className="line-through mr-2">{originalAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
-                          <span className="font-medium text-gray-800">{entry.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
-                        </div>
-                      )}
+              <div key={entry.method} className="bg-gray-50 p-3 rounded-lg border border-gray-200 space-y-2">
+                {/* Üst satır: yöntem adı + kaldır butonu */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{methodInfo.icon}</span>
+                    <span className="font-medium text-gray-800 text-sm">{methodInfo.label}</span>
+                    {idx === 0 && typeof originalAmount !== 'undefined' && originalAmount > 0 && originalAmount !== totalAmount && (
+                      <div className="text-xs text-gray-500">
+                        <span className="line-through mr-1">{originalAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                        <span className="font-medium text-gray-800">{entry.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                      </div>
+                    )}
+                  </div>
+                  {value.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleToggleMethod(entry.method)}
+                      disabled={disabled}
+                      className="p-1.5 text-red-500 hover:bg-red-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Bu yöntemi kaldır"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
-                <div className="flex-1 flex items-center gap-2">
+                {/* Alt satır: tutar input + Kalanı Doldur */}
+                <div className="flex items-center gap-2">
                   <input
                     type="number"
                     value={entry.amount || ''}
                     onChange={(e) => handleAmountChange(entry.method, parseFloat(e.target.value) || 0)}
                     disabled={disabled}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
                     placeholder="0.00"
                     min="0"
                     step="0.01"
                   />
-                  <span className="text-gray-500 font-medium">TL</span>
+                  <span className="text-gray-500 font-medium shrink-0">TL</span>
+                  {value.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleFillRemaining(entry.method)}
+                      disabled={disabled}
+                      className="shrink-0 px-2 py-1.5 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                      title="Kalan tutarı bu yönteme ata"
+                    >
+                      Kalanı Doldur
+                    </button>
+                  )}
                 </div>
-                {value.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => handleFillRemaining(entry.method)}
-                    disabled={disabled}
-                    className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Kalan tutarı bu yönteme ata"
-                  >
-                    Kalanı Doldur
-                  </button>
-                )}
-                {value.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => handleToggleMethod(entry.method)}
-                    disabled={disabled}
-                    className="p-1.5 text-red-500 hover:bg-red-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Bu yöntemi kaldır"
-                  >
-                    ✕
-                  </button>
-                )}
               </div>
             );
           })}

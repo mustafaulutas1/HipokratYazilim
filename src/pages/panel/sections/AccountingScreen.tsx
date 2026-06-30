@@ -150,6 +150,11 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
   const [isDebtPaymentModalOpen, setIsDebtPaymentModalOpen] = useState(false);
   const [showApplicationModal, setShowApplicationModal] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isEditPaymentModalOpen, setIsEditPaymentModalOpen] = useState(false);
+  const [editingPaidPatient, setEditingPaidPatient] = useState<PaymentPatient | null>(null);
+  const [editPaymentAmount, setEditPaymentAmount] = useState<string>('');
+  const [editPaymentMethods, setEditPaymentMethods] = useState<PaymentMethodEntry[]>([{ method: 'nakit', amount: 0 }]);
+  const [editPaymentSaving, setEditPaymentSaving] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState<string>('');
   // `paymentAmount` is the user-editable input. `payableAmount` is the actual amount
   // used for payment processing and is affected by discounts.
@@ -770,6 +775,35 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       alert('Ödeme işlenirken bir hata oluştu. Lütfen tekrar deneyin.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleEditPayment = async () => {
+    if (!editingPaidPatient || !editPaymentAmount) return;
+    const amount = parseFloat(editPaymentAmount);
+    if (isNaN(amount) || amount <= 0) { alert('Geçerli bir tutar girin.'); return; }
+    const validMethods = editPaymentMethods.filter(m => m.amount > 0);
+    if (validMethods.length === 0) { alert('Lütfen ödeme yöntemi seçin.'); return; }
+    const methodsTotal = Math.round(validMethods.reduce((s, m) => s + (m.amount || 0), 0) * 100) / 100;
+    if (Math.abs(methodsTotal - amount) > 0.01) {
+      alert(`Ödeme yöntemlerinin toplamı (${methodsTotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL) ödeme tutarıyla (${amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL) eşit olmalıdır.`);
+      return;
+    }
+    setEditPaymentSaving(true);
+    try {
+      await updateDoc(doc(db, 'patients', editingPaidPatient.id), {
+        paymentAmount: amount,
+        paymentMethods: validMethods,
+        paymentMethod: validMethods[0].method,
+        updatedAt: new Date().toISOString(),
+      });
+      setIsEditPaymentModalOpen(false);
+      setEditingPaidPatient(null);
+    } catch (e) {
+      console.error(e);
+      alert('Güncelleme sırasında hata oluştu.');
+    } finally {
+      setEditPaymentSaving(false);
     }
   };
 
@@ -1997,7 +2031,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   </div>
                 </div>
 
-                <div className="text-right">
+                <div className="text-right min-w-0 max-w-[280px] flex-shrink-0">
                   {activeListType === 'debt_patients' ? (
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
@@ -2059,12 +2093,27 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                     </div>
                   ) : activeListType === 'completed_payment' ? (
                     <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="px-3 py-1 bg-green-500/20 border border-green-400 rounded-full text-green-200 text-xs font-medium">
+                      <div className="flex items-center gap-2 flex-shrink-0 flex-nowrap justify-end">
+                        <span className="px-3 py-1 bg-green-500/20 border border-green-400 rounded-full text-green-200 text-xs font-medium whitespace-nowrap">
                           Ödendi
                         </span>
+                        <button
+                          onClick={() => {
+                            setEditingPaidPatient(patient);
+                            const amount = (patient.paymentAmount || 0).toFixed(2);
+                            setEditPaymentAmount(amount);
+                            const methods = patient.paymentMethods && patient.paymentMethods.length > 0
+                              ? patient.paymentMethods
+                              : [{ method: patient.paymentMethod || 'nakit', amount: patient.paymentAmount || 0 }];
+                            setEditPaymentMethods(methods);
+                            setIsEditPaymentModalOpen(true);
+                          }}
+                          className="px-2 py-1 bg-blue-500/20 border border-blue-400/60 rounded-lg text-blue-300 hover:bg-blue-500/30 text-xs font-semibold transition-all whitespace-nowrap flex-shrink-0"
+                        >
+                          ✏️ Düzenle
+                        </button>
                         {patient.hasDebt && patient.debtAmount && patient.debtAmount > 0 && (
-                          <span className="px-3 py-1 bg-orange-500/30 border border-orange-400 rounded-full text-orange-200 text-xs font-bold">
+                          <span className="px-3 py-1 bg-orange-500/30 border border-orange-400 rounded-full text-orange-200 text-xs font-bold whitespace-nowrap">
                             ⚠️ Borç: {patient.debtAmount.toLocaleString('tr-TR')} TL
                           </span>
                         )}
@@ -2072,7 +2121,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                       <p className="text-white/60 text-sm">
                         {formatCurrency(patient.paymentAmount || 0)}
                       </p>
-                      <p className="text-white/60 text-sm">
+                      <p className="text-white/60 text-sm break-words">
                         {formatDate(patient.paymentDate)} • {patient.paymentMethods && patient.paymentMethods.length > 0
                           ? formatPaymentMethods(patient.paymentMethods)
                           : getPaymentMethodLabel(patient.paymentMethod || 'nakit')}
@@ -3658,6 +3707,119 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
               >
                 📥 Excel İndir
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Payment Modal */}
+      {isEditPaymentModalOpen && editingPaidPatient && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl border border-gray-200 flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                    <span className="text-2xl">✏️</span> Ödeme Düzenle
+                  </h3>
+                  <p className="text-gray-600 text-sm mt-1">{editingPaidPatient.fullName}</p>
+                </div>
+                <button onClick={() => setIsEditPaymentModalOpen(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold">✕</button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-4 overflow-y-auto flex-1 min-h-0">
+              {/* Salt okunur bilgiler */}
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2 text-sm text-gray-700">
+                <p className="font-semibold text-gray-800 mb-1">📋 Hasta Bilgileri (Değiştirilemez)</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                  <span className="text-gray-500">Ad Soyad:</span><span className="font-medium">{editingPaidPatient.fullName}</span>
+                  <span className="text-gray-500">TC No:</span><span className="font-medium">{editingPaidPatient.tcNo}</span>
+                  <span className="text-gray-500">Telefon:</span><span className="font-medium">{editingPaidPatient.phone}</span>
+                  <span className="text-gray-500">Ödeme Tarihi:</span><span className="font-medium">{editingPaidPatient.paymentDate ? new Date(editingPaidPatient.paymentDate).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}</span>
+                  <span className="text-gray-500">Doktor:</span><span className="font-medium">{editingPaidPatient.assignedDoctorName || 'Belirtilmemiş'}</span>
+                  {editingPaidPatient.treatmentOptions?.protocolName && (
+                    <><span className="text-gray-500">Protokol:</span><span className="font-medium">{editingPaidPatient.treatmentOptions.protocolName}</span></>
+                  )}
+                </div>
+              </div>
+
+              {/* Düzenlenebilir: Tutar */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Ödeme Tutarı (TL)</label>
+                <input
+                  type="number"
+                  value={editPaymentAmount}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setEditPaymentAmount(v);
+                    const num = parseFloat(v) || 0;
+                    setEditPaymentMethods(prev => prev.length > 0 ? [{ ...prev[0], amount: num }, ...prev.slice(1)] : [{ method: 'nakit', amount: num }]);
+                  }}
+                  min="0"
+                  step="0.01"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="0.00"
+                />
+              </div>
+
+              {/* Düzenlenebilir: Ödeme Yöntemi */}
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
+                <MultiPaymentMethodSelector
+                  totalAmount={parseFloat(editPaymentAmount) || 0}
+                  value={editPaymentMethods}
+                  onChange={methods => {
+                    setEditPaymentMethods(methods);
+                  }}
+                  disabled={editPaymentSaving}
+                  showValidation={true}
+                />
+              </div>
+
+              {/* Yöntem toplamı uyarısı */}
+              {(() => {
+                const targetAmt = parseFloat(editPaymentAmount) || 0;
+                const methodsTotal = Math.round(editPaymentMethods.filter(m => m.amount > 0).reduce((s, m) => s + m.amount, 0) * 100) / 100;
+                const diff = Math.round((methodsTotal - targetAmt) * 100) / 100;
+                if (Math.abs(diff) <= 0.01) return null;
+                return (
+                  <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-300 rounded-xl text-sm text-red-700">
+                    <span className="text-base">⚠️</span>
+                    <span>
+                      Yöntem toplamı <strong>{methodsTotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</strong>,
+                      ödeme tutarı <strong>{targetAmt.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</strong>.
+                      {diff > 0 ? ` ${diff.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL fazla girdiniz.` : ` ${Math.abs(diff).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL eksik girdiniz.`}
+                    </span>
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+              <button
+                onClick={() => { setIsEditPaymentModalOpen(false); setEditingPaidPatient(null); }}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-xl text-gray-700 font-medium transition-all"
+              >
+                İptal
+              </button>
+              {(() => {
+                const targetAmt = parseFloat(editPaymentAmount) || 0;
+                const methodsTotal = Math.round(editPaymentMethods.filter(m => m.amount > 0).reduce((s, m) => s + m.amount, 0) * 100) / 100;
+                const isMatch = Math.abs(methodsTotal - targetAmt) <= 0.01 && targetAmt > 0;
+                return (
+                  <button
+                    onClick={handleEditPayment}
+                    disabled={editPaymentSaving || !isMatch}
+                    className="px-5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                {editPaymentSaving ? (
+                  <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />İşleniyor...</>
+                ) : (
+                  <>✅ Kaydet</>
+                )}
+                </button>
+                );
+              })()}
             </div>
           </div>
         </div>

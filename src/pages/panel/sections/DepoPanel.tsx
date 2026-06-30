@@ -330,12 +330,31 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
     Object.keys(payload).forEach(k => { if (payload[k] === undefined) delete payload[k]; });
     try {
       if (editingUrun?.id) {
-        // Eski kayıtlarda stok kodu yoksa düzenlerken otomatik atanır.
+        // Eski kayıtlarda stok kodu yoksa düzenlerken otomatik atınır.
         if (!editingUrun.stockCode) payload.stockCode = generateStockCode();
         await updateDoc(doc(db, colName, editingUrun.id), { ...payload, updatedAt: new Date().toISOString() });
       } else {
-        // Yeni üründe otomatik artan stok kodu (STK-0001, STK-0002, ...).
-        await addDoc(collection(db, colName), { ...payload, stockCode: generateStockCode(), clinicId: doctorProfile.clinicId, createdBy: doctorProfile.fullName, createdAt: new Date().toISOString() });
+        // Aynı ürün adı + firma adı + kategori kombinasyonu zaten varsa
+        // yeni kart açmak yerine mevcut kartın üzerine ekle.
+        const mevcut = (activeDepo === 'ana' ? anaDepoUrunler : katDepoUrunler).find(u =>
+          u.productName.trim().toLocaleLowerCase('tr') === formData.productName.trim().toLocaleLowerCase('tr') &&
+          (u.companyName || '').trim().toLocaleLowerCase('tr') === (formData.companyName || '').trim().toLocaleLowerCase('tr') &&
+          (u.category || '') === (formData.category || '')
+        );
+        if (mevcut?.id) {
+          // Mevcut kartı güncelle: adet üzerine ekle, maliyet ve kritik stok seviyesini güncelle
+          await updateDoc(doc(db, colName, mevcut.id), {
+            quantity: mevcut.quantity + (formData.quantity || 0),
+            cost: formData.cost,
+            minStockLevel: formData.minStockLevel,
+            purchaseDate: formData.purchaseDate,
+            ...(formData.consumptionType ? { consumptionType: formData.consumptionType } : {}),
+            updatedAt: new Date().toISOString(),
+          });
+        } else {
+          // Gerçekten yeni ürün — otomatik artan stok kodu ata.
+          await addDoc(collection(db, colName), { ...payload, stockCode: generateStockCode(), clinicId: doctorProfile.clinicId, createdBy: doctorProfile.fullName, createdAt: new Date().toISOString() });
+        }
       }
       setShowAddModal(false);
     } catch (e) { console.error(e); alert('Kayıt sırasında hata oluştu.'); }
