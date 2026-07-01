@@ -177,7 +177,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const [pharmacyNote, setPharmacyNote] = useState<string>('');
   // Pharmacy payment discount marking (mirrors patient doc's indirim_* fields)
   const [pharmacyDiscountCheck, setPharmacyDiscountCheck] = useState<boolean>(false);
-  const [pharmacyDiscountType, setPharmacyDiscountType] = useState<'yuzde' | 'tutar'>('yuzde');
+  const [, setPharmacyDiscountType] = useState<'yuzde' | 'tutar'>('yuzde');
   // Independent enable flags: both can be active at the same time
   const [pharmacyDiscountYuzdeEnabled, setPharmacyDiscountYuzdeEnabled] = useState<boolean>(false);
   const [pharmacyDiscountTutarEnabled, setPharmacyDiscountTutarEnabled] = useState<boolean>(false);
