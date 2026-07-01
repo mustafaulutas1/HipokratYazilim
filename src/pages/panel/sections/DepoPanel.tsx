@@ -2418,42 +2418,82 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
             <div className="p-5 space-y-4 overflow-y-auto flex-1">
               <div>
                 <label className="block text-white/70 text-sm mb-1">Ürün Adı *</label>
-                {kayitliUrunler.length > 0 ? (
-                  <select
-                    value={formData.productName}
-                    onChange={e => {
-                      const selected = kayitliUrunler.find(u => u.name === e.target.value);
-                      setFormData(prev => ({
-                        ...prev,
-                        productName: e.target.value,
-                        // Kayıtlı üründe kategori varsa otomatik doldur (mevcut değeri ezmemek için yalnızca yeni seçimde güncelle)
-                        ...(selected?.category ? { category: selected.category, consumptionType: selected.category === 'sarf' ? prev.consumptionType : undefined } : {}),
-                        // Kayıtlı üründe kritik stok varsa otomatik doldur
-                        ...(selected?.minStockLevel ? { minStockLevel: selected.minStockLevel } : {}),
-                      }));
-                    }}
-                    className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  >
-                    <option value="" className="bg-slate-800">Ürün seçin...</option>
-                    {kayitliUrunler.map(u => (
-                      <option key={u.id} value={u.name} className="bg-slate-800">
-                        {u.name}{u.category ? ` · ${DEPO_CATEGORIES.find(c => c.key === u.category)?.label || u.category}` : ''}{u.minStockLevel ? ` (min: ${u.minStockLevel})` : ''}
-                      </option>
-                    ))}
-                    {formData.productName && !kayitliUrunler.some(u => u.name === formData.productName) && (
-                      <option value={formData.productName} className="bg-slate-800">{formData.productName} (listede yok)</option>
-                    )}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    value={formData.productName}
-                    onChange={e => setFormData(prev => ({ ...prev, productName: e.target.value }))}
-                    placeholder="Kelebek valfi, Ozon filtresi..."
-                    className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  />
-                )}
-                {kayitliUrunler.length === 0 && (
+                {(() => {
+                  // depoKayitliUrunler + anaDepoUrunler + katDepoUrunler'den birleşik unique liste
+                  const existingNames = new Set(kayitliUrunler.map(u => u.name.trim().toLocaleLowerCase('tr')));
+                  // Stok kayıtlarından gelen adları KayitliUrun formatına çevir (kategori/minStockLevel bilgisiyle)
+                  const fromStockAna: KayitliUrun[] = anaDepoUrunler
+                    .filter(u => !existingNames.has(u.productName.trim().toLocaleLowerCase('tr')))
+                    .reduce<KayitliUrun[]>((acc, u) => {
+                      if (!acc.some(a => a.name.trim().toLocaleLowerCase('tr') === u.productName.trim().toLocaleLowerCase('tr'))) {
+                        existingNames.add(u.productName.trim().toLocaleLowerCase('tr'));
+                        acc.push({ name: u.productName, category: u.category, minStockLevel: u.minStockLevel, clinicId: u.clinicId, createdBy: u.createdBy, createdAt: u.createdAt });
+                      }
+                      return acc;
+                    }, []);
+                  const fromStockKat: KayitliUrun[] = katDepoUrunler
+                    .filter(u => !existingNames.has(u.productName.trim().toLocaleLowerCase('tr')))
+                    .reduce<KayitliUrun[]>((acc, u) => {
+                      if (!acc.some(a => a.name.trim().toLocaleLowerCase('tr') === u.productName.trim().toLocaleLowerCase('tr'))) {
+                        existingNames.add(u.productName.trim().toLocaleLowerCase('tr'));
+                        acc.push({ name: u.productName, category: u.category, minStockLevel: u.minStockLevel, clinicId: u.clinicId, createdBy: u.createdBy, createdAt: u.createdAt });
+                      }
+                      return acc;
+                    }, []);
+                  const allUrunler = [
+                    ...kayitliUrunler,
+                    ...fromStockAna,
+                    ...fromStockKat,
+                  ].sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+
+                  return allUrunler.length > 0 ? (
+                    <select
+                      value={formData.productName}
+                      onChange={e => {
+                        const selected = allUrunler.find(u => u.name === e.target.value);
+                        setFormData(prev => ({
+                          ...prev,
+                          productName: e.target.value,
+                          ...(selected?.category ? { category: selected.category, consumptionType: selected.category === 'sarf' ? prev.consumptionType : undefined } : {}),
+                          ...(selected?.minStockLevel ? { minStockLevel: selected.minStockLevel } : {}),
+                        }));
+                      }}
+                      className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    >
+                      <option value="" className="bg-slate-800">Ürün seçin...</option>
+                      {kayitliUrunler.length > 0 && (
+                        <optgroup label="── Ürün Yönetimi ──" className="bg-slate-800 text-white/50">
+                          {kayitliUrunler.map(u => (
+                            <option key={u.id} value={u.name} className="bg-slate-800">
+                              {u.name}{u.category ? ` · ${DEPO_CATEGORIES.find(c => c.key === u.category)?.label || u.category}` : ''}{u.minStockLevel ? ` (min: ${u.minStockLevel})` : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {(fromStockAna.length > 0 || fromStockKat.length > 0) && (
+                        <optgroup label="── Mevcut Stoktan ──" className="bg-slate-800 text-white/50">
+                          {[...fromStockAna, ...fromStockKat].sort((a, b) => a.name.localeCompare(b.name, 'tr')).map((u, i) => (
+                            <option key={`stock-${i}`} value={u.name} className="bg-slate-800">
+                              {u.name}{u.category ? ` · ${DEPO_CATEGORIES.find(c => c.key === u.category)?.label || u.category}` : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {formData.productName && !allUrunler.some(u => u.name === formData.productName) && (
+                        <option value={formData.productName} className="bg-slate-800">{formData.productName} (listede yok)</option>
+                      )}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={formData.productName}
+                      onChange={e => setFormData(prev => ({ ...prev, productName: e.target.value }))}
+                      placeholder="Kelebek valfi, Ozon filtresi..."
+                      className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                  );
+                })()}
+                {kayitliUrunler.length === 0 && anaDepoUrunler.length === 0 && katDepoUrunler.length === 0 && (
                   <p className="text-white/40 text-xs mt-1">Henüz kayıtlı ürün yok. "Ürün Yönetimi" bölümünden ürün ekleyebilirsiniz.</p>
                 )}
               </div>
