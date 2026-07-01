@@ -673,11 +673,11 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       const updateData: any = {
         paymentCompleted: true,
         paymentAmount: currentPayment,
-        discountAmount: discountAmount,
+        discountAmount: isNaN(discountAmount) ? 0 : discountAmount,
         paymentDate: new Date().toISOString(),
         paymentMethod: paymentMethod,
         // Multi-payment method support
-        paymentMethods: paymentMethods.filter(m => m.amount > 0),
+        paymentMethods: paymentMethods.filter(m => m.amount > 0).map(m => ({ method: m.method, amount: Number(m.amount) || 0 })),
         // Save which applications the patient will actually receive
         approvedApplications: selectedApplications,
         removedApplications: removedApplications,
@@ -727,10 +727,24 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       
       // When sending patient to TreatmentPanel (treatment_continue), track as an active session
       if (!selectedPatient.postTreatmentPayment && updateData.status === 'treatment_continue') {
+        // Strip undefined values from treatmentOptions to prevent Firestore errors
+        const sanitize = (obj: any): any => {
+          if (obj === null || obj === undefined) return null;
+          if (Array.isArray(obj)) return obj.map(sanitize).filter(v => v !== undefined);
+          if (typeof obj === 'object') {
+            return Object.fromEntries(
+              Object.entries(obj)
+                .filter(([, v]) => v !== undefined)
+                .map(([k, v]) => [k, sanitize(v)])
+            );
+          }
+          return obj;
+        };
+
         const newSession = {
           sessionId: String(Date.now()),
           sessionType: selectedPatient.appointmentType || 'tedavi',
-          treatmentOptions: selectedPatient.treatmentOptions,
+          treatmentOptions: sanitize(selectedPatient.treatmentOptions) ?? null,
           paymentAmount: currentPayment,
           paymentDate: new Date().toISOString(),
           paymentMethod: paymentMethod,
@@ -775,7 +789,13 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
 
     } catch (error) {
       console.error('❌ Error processing payment:', error);
-      alert('Ödeme işlenirken bir hata oluştu. Lütfen tekrar deneyin.');
+      if (error instanceof Error) {
+        console.error('❌ Error message:', error.message);
+        console.error('❌ Error stack:', error.stack);
+        alert(`Ödeme işlenirken bir hata oluştu: ${error.message}`);
+      } else {
+        alert('Ödeme işlenirken bir hata oluştu. Lütfen tekrar deneyin.');
+      }
     } finally {
       setLoading(false);
     }
@@ -794,11 +814,27 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
     }
     setEditPaymentSaving(true);
     try {
+      const editHistoryEntry = {
+        editedAt: new Date().toISOString(),
+        editedBy: doctorProfile?.fullName || doctorProfile?.name || 'Bilinmiyor',
+        editedByRole: doctorProfile?.role || doctorProfile?.userType || '',
+        editedById: doctorProfile?.uid || doctorProfile?.id || '',
+        previousAmount: editingPaidPatient.paymentAmount ?? null,
+        previousMethods: editingPaidPatient.paymentMethods?.length
+          ? editingPaidPatient.paymentMethods
+          : editingPaidPatient.paymentMethod
+            ? [{ method: editingPaidPatient.paymentMethod, amount: editingPaidPatient.paymentAmount ?? 0 }]
+            : [],
+        newAmount: amount,
+        newMethods: validMethods,
+      };
+
       await updateDoc(doc(db, 'patients', editingPaidPatient.id), {
         paymentAmount: amount,
         paymentMethods: validMethods,
         paymentMethod: validMethods[0].method,
         updatedAt: new Date().toISOString(),
+        paymentEditHistory: arrayUnion(editHistoryEntry),
       });
       setIsEditPaymentModalOpen(false);
       setEditingPaidPatient(null);
