@@ -60,6 +60,8 @@ interface Firma {
 interface KayitliUrun {
   id?: string;
   name: string;
+  category?: DepoCategory;
+  minStockLevel?: number;
   clinicId: string;
   createdBy: string;
   createdAt: string;
@@ -206,6 +208,8 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
   // Ürün Yönetimi state
   const [kayitliUrunler, setKayitliUrunler] = useState<KayitliUrun[]>([]);
   const [newUrunName, setNewUrunName] = useState('');
+  const [newUrunCategory, setNewUrunCategory] = useState<DepoCategory | undefined>(undefined);
+  const [newUrunMinStock, setNewUrunMinStock] = useState<number>(0);
   const [urunSaving, setUrunSaving] = useState(false);
   const [showUrunModal, setShowUrunModal] = useState(false);
 
@@ -396,11 +400,15 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
     try {
       await addDoc(collection(db, 'depoKayitliUrunler'), {
         name,
+        ...(newUrunCategory ? { category: newUrunCategory } : {}),
+        ...(newUrunMinStock > 0 ? { minStockLevel: newUrunMinStock } : {}),
         clinicId: doctorProfile.clinicId,
         createdBy: doctorProfile.fullName,
         createdAt: new Date().toISOString(),
       });
       setNewUrunName('');
+      setNewUrunCategory(undefined);
+      setNewUrunMinStock(0);
     } catch (e) { console.error(e); alert('Ürün eklenirken hata oluştu.'); }
     finally { setUrunSaving(false); }
   };
@@ -2212,23 +2220,60 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
 
             <div className="p-5 border-b border-white/10">
               <label className="block text-white/70 text-sm mb-2">Yeni Ürün Ekle</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  autoFocus
-                  value={newUrunName}
-                  onChange={e => setNewUrunName(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') handleAddUrun(); }}
-                  placeholder="Ürün adı..."
-                  className="flex-1 px-3 py-2.5 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-green-400"
-                />
-                <button
-                  onClick={handleAddUrun}
-                  disabled={urunSaving}
-                  className="px-4 py-2.5 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 rounded-xl text-white font-semibold text-sm transition-all disabled:opacity-50 whitespace-nowrap"
-                >
-                  {urunSaving ? 'Ekleniyor...' : '+ Ekle'}
-                </button>
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={newUrunName}
+                    onChange={e => setNewUrunName(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleAddUrun(); }}
+                    placeholder="Ürün adı..."
+                    className="flex-1 px-3 py-2.5 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-green-400"
+                  />
+                </div>
+                {/* Kategori seçimi */}
+                <div>
+                  <label className="block text-white/50 text-xs mb-1.5">Kategori (opsiyonel)</label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {DEPO_CATEGORIES.map(cat => (
+                      <button
+                        key={cat.key}
+                        type="button"
+                        onClick={() => setNewUrunCategory(prev => prev === cat.key ? undefined : cat.key)}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                          newUrunCategory === cat.key
+                            ? 'bg-green-500/20 border-green-400/60 text-white'
+                            : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10 hover:text-white/80'
+                        }`}
+                      >
+                        <span>{cat.icon}</span>{cat.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* Kritik stok seviyesi */}
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <label className="block text-white/50 text-xs mb-1">Kritik Stok Seviyesi (opsiyonel)</label>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      value={newUrunMinStock === 0 ? '' : newUrunMinStock}
+                      onChange={e => setNewUrunMinStock(e.target.value === '' ? 0 : Number(e.target.value))}
+                      placeholder="Örn. 5"
+                      className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-green-400 text-sm"
+                    />
+                  </div>
+                  <button
+                    onClick={handleAddUrun}
+                    disabled={urunSaving || !newUrunName.trim()}
+                    className="mt-5 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 rounded-xl text-white font-semibold text-sm transition-all disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {urunSaving ? 'Ekleniyor...' : '+ Ekle'}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -2247,8 +2292,20 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                 <div className="space-y-2">
                   {kayitliUrunler.map(u => (
                     <div key={u.id} className="flex items-center gap-3 px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all">
-                      <span className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/10 text-sm flex-shrink-0">📦</span>
-                      <span className="flex-1 text-white text-sm font-medium truncate">{u.name}</span>
+                      <span className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/10 text-sm flex-shrink-0">
+                        {u.category ? DEPO_CATEGORIES.find(c => c.key === u.category)?.icon || '📦' : '📦'}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm font-medium truncate">{u.name}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {u.category && (
+                            <span className="text-white/40 text-xs">{DEPO_CATEGORIES.find(c => c.key === u.category)?.label}</span>
+                          )}
+                          {(u.minStockLevel ?? 0) > 0 && (
+                            <span className="text-yellow-400/70 text-xs">⚠️ min {u.minStockLevel}</span>
+                          )}
+                        </div>
+                      </div>
                       <button
                         onClick={() => handleDeleteUrun(u)}
                         className="px-3 py-1 bg-red-500/20 border border-red-400/40 rounded-lg text-red-300 hover:bg-red-500/30 text-xs font-semibold transition-all flex-shrink-0"
@@ -2364,12 +2421,24 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                 {kayitliUrunler.length > 0 ? (
                   <select
                     value={formData.productName}
-                    onChange={e => setFormData(prev => ({ ...prev, productName: e.target.value }))}
+                    onChange={e => {
+                      const selected = kayitliUrunler.find(u => u.name === e.target.value);
+                      setFormData(prev => ({
+                        ...prev,
+                        productName: e.target.value,
+                        // Kayıtlı üründe kategori varsa otomatik doldur (mevcut değeri ezmemek için yalnızca yeni seçimde güncelle)
+                        ...(selected?.category ? { category: selected.category, consumptionType: selected.category === 'sarf' ? prev.consumptionType : undefined } : {}),
+                        // Kayıtlı üründe kritik stok varsa otomatik doldur
+                        ...(selected?.minStockLevel ? { minStockLevel: selected.minStockLevel } : {}),
+                      }));
+                    }}
                     className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400"
                   >
                     <option value="" className="bg-slate-800">Ürün seçin...</option>
                     {kayitliUrunler.map(u => (
-                      <option key={u.id} value={u.name} className="bg-slate-800">{u.name}</option>
+                      <option key={u.id} value={u.name} className="bg-slate-800">
+                        {u.name}{u.category ? ` · ${DEPO_CATEGORIES.find(c => c.key === u.category)?.label || u.category}` : ''}{u.minStockLevel ? ` (min: ${u.minStockLevel})` : ''}
+                      </option>
                     ))}
                     {formData.productName && !kayitliUrunler.some(u => u.name === formData.productName) && (
                       <option value={formData.productName} className="bg-slate-800">{formData.productName} (listede yok)</option>
@@ -2392,7 +2461,6 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                 { label: 'Maliyet (₺)', key: 'cost', type: 'number', placeholder: '0' },
                 { label: 'Alım Tarihi', key: 'purchaseDate', type: 'date', placeholder: '' },
                 { label: 'Adet', key: 'quantity', type: 'number', placeholder: '0' },
-                { label: 'Kritik Stok Seviyesi (alarm eşiği)', key: 'minStockLevel', type: 'number', placeholder: 'Örn. 5 — bu adete düşünce alarm verir' },
               ].map(field => (
                 <div key={field.key}>
                   <label className="block text-white/70 text-sm mb-1">{field.label}</label>
@@ -2437,31 +2505,17 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                   <p className="text-white/40 text-xs mt-1">Henüz firma yok. Ana Depo sekmesindeki "Firma Yönetimi" bölümünden firma ekleyebilirsiniz.</p>
                 )}
               </div>
-              <div>
-                  <label className="block text-white/70 text-sm mb-2">Kategori *</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(isAsistan ? DEPO_CATEGORIES.filter(c => ASISTAN_CATEGORIES.includes(c.key)) : DEPO_CATEGORIES).map(cat => {
-                      const selected = formData.category === cat.key;
-                      return (
-                        <button
-                          key={cat.key}
-                          type="button"
-                          onClick={() => setFormData(prev => ({
-                            ...prev,
-                            category: cat.key,
-                            // Sarf dışı kategorilerde tüketim türü kullanılmaz
-                            consumptionType: cat.key === 'sarf' ? prev.consumptionType : undefined,
-                          }))}
-                          className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium transition-all ${
-                            selected ? 'bg-green-500/15 border-green-400/60 text-white' : 'bg-white/5 border-white/15 text-white/60 hover:bg-white/10'
-                          }`}
-                        >
-                          <span className="text-base">{cat.icon}</span>{cat.label}
-                        </button>
-                      );
-                    })}
+              {/* Kategori — Ürün Yönetimi'nden otomatik gelir, salt okunur göster */}
+              {formData.category && (
+                <div>
+                  <label className="block text-white/70 text-sm mb-1">Kategori</label>
+                  <div className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/15 rounded-xl text-white/70 text-sm">
+                    <span>{DEPO_CATEGORIES.find(c => c.key === formData.category)?.icon}</span>
+                    <span>{DEPO_CATEGORIES.find(c => c.key === formData.category)?.label}</span>
+                    <span className="ml-auto text-white/30 text-xs">Otomatik</span>
                   </div>
                 </div>
+              )}
               {(formData.category === 'sarf' || (!formData.category && editingUrun)) && (
                 <div>
                   <label className="block text-white/70 text-sm mb-2">Tüketim Türü *</label>

@@ -91,6 +91,8 @@ interface Patient {
   pharmacyRemovedItems?: Array<{ name: string }>;
   pharmacySaleDate?: string;
   pharmacyStatus?: string;
+  generalNotes?: string;
+  patientNotes?: Array<{ text: string; savedAt: string; savedBy?: string }>;
 }
 
 interface PrescriptionMed {
@@ -155,6 +157,9 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
   const [changeReason, setChangeReason] = useState('');
   const [instructedBy, setInstructedBy] = useState('');
   const [savingPrescription, setSavingPrescription] = useState(false);
+  // ── Genel Notlar state ────────────────────────────────────────────────────
+  const [generalNotes, setGeneralNotes] = useState<string>('');
+  const [savingNotes, setSavingNotes] = useState(false);
   // Live copy of the patient doc so prescription/pharmacy data (Alındı status,
   // overrides, change history) stays current after sales/edits without a refresh.
   const [livePatient, setLivePatient] = useState<Patient | null>(null);
@@ -398,6 +403,36 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
       toast.error('Reçete güncellenirken hata oluştu.');
     } finally {
       setSavingPrescription(false);
+    }
+  };
+
+  const handleSaveNotes = async () => {
+    if (!patient?.id) return;
+    const trimmed = generalNotes.trim();
+    if (!trimmed) {
+      toast.error('Not boş olamaz.');
+      return;
+    }
+    setSavingNotes(true);
+    try {
+      const newEntry = {
+        text: trimmed,
+        savedAt: new Date().toISOString(),
+        savedBy: doctorProfile?.fullName || 'Kullanıcı',
+      };
+      await updateDoc(doc(db, 'patients', patient.id), {
+        generalNotes: trimmed,
+        patientNotes: arrayUnion(newEntry),
+        updatedAt: new Date().toISOString(),
+      });
+      setGeneralNotes('');
+      onPatientUpdated?.();
+      toast.success('Not kaydedildi.');
+    } catch (e) {
+      console.error('Not kaydedilirken hata:', e);
+      toast.error('Not kaydedilirken hata oluştu.');
+    } finally {
+      setSavingNotes(false);
     }
   };
 
@@ -2396,10 +2431,24 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
                     <div>
                       <label className="text-sm text-gray-600">Genel Notlar</label>
                       <textarea
+                        value={generalNotes}
+                        onChange={(e) => setGeneralNotes(e.target.value)}
                         className="w-full mt-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                         rows={4}
                         placeholder="Hasta hakkında notlar ekleyin..."
                       />
+                      <div className="flex justify-end mt-2">
+                        <button
+                          onClick={handleSaveNotes}
+                          disabled={savingNotes}
+                          className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-all flex items-center gap-2"
+                        >
+                          {savingNotes
+                            ? <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div> Kaydediliyor...</>
+                            : <>💾 Kaydet</>
+                          }
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2409,20 +2458,31 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
                     📋 Not Geçmişi
                   </h3>
                   <div className="space-y-3">
+                    {/* Kaydedilmiş notlar — en yeniden eskiye */}
+                    {livePat?.patientNotes && livePat.patientNotes.length > 0 ? (
+                      [...livePat.patientNotes]
+                        .sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime())
+                        .map((note, idx) => (
+                          <div key={idx} className="p-3 bg-purple-50 border border-purple-100 rounded-lg">
+                            <div className="flex justify-between items-start gap-2 mb-1">
+                              <span className="text-xs font-medium text-purple-600">
+                                📝 {note.savedBy || 'Kullanıcı'}
+                              </span>
+                              <span className="text-xs text-gray-400 shrink-0">{formatDate(note.savedAt)}</span>
+                            </div>
+                            <p className="text-sm text-gray-800 whitespace-pre-wrap">{note.text}</p>
+                          </div>
+                        ))
+                    ) : (
+                      <p className="text-sm text-gray-400 text-center py-4">Henüz not eklenmemiş.</p>
+                    )}
+                    {/* Sistem olayları */}
                     <div className="p-3 bg-gray-50 rounded-lg">
                       <div className="flex justify-between items-start">
-                        <p className="text-sm text-gray-800">Hasta kaydı oluşturuldu</p>
-                        <span className="text-xs text-gray-500">{formatDate(patient.createdAt)}</span>
+                        <p className="text-sm text-gray-500">Hasta kaydı oluşturuldu</p>
+                        <span className="text-xs text-gray-400">{formatDate(patient.createdAt)}</span>
                       </div>
                     </div>
-                    {patient.updatedAt !== patient.createdAt && (
-                      <div className="p-3 bg-gray-50 rounded-lg">
-                        <div className="flex justify-between items-start">
-                          <p className="text-sm text-gray-800">Hasta bilgileri güncellendi</p>
-                          <span className="text-xs text-gray-500">{formatDate(patient.updatedAt)}</span>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
