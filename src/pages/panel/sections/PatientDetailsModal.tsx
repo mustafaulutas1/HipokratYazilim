@@ -93,6 +93,24 @@ interface Patient {
   pharmacyStatus?: string;
   generalNotes?: string;
   patientNotes?: Array<{ text: string; savedAt: string; savedBy?: string }>;
+  // Payment info
+  paymentCompleted?: boolean;
+  paymentAmount?: number;
+  paymentDate?: string;
+  paymentMethod?: string;
+  paymentMethods?: Array<{ method: string; amount: number }>;
+  discountAmount?: number;
+  // Audit log of payment edits made from accounting screen
+  paymentEditHistory?: Array<{
+    editedAt: string;
+    editedBy: string;
+    editedByRole?: string;
+    editedById?: string;
+    previousAmount: number | null;
+    previousMethods: Array<{ method: string; amount: number }>;
+    newAmount: number;
+    newMethods: Array<{ method: string; amount: number }>;
+  }>;
 }
 
 interface PrescriptionMed {
@@ -875,6 +893,7 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
     { id: 'medical', label: 'Tıbbi Bilgi', icon: '🏥' },
     { id: 'treatment', label: 'Tedavi Bilgileri', icon: '💊' },
     { id: 'medications', label: 'İlaç Bilgileri', icon: '💉' },
+    { id: 'payment', label: 'Ödeme Bilgileri', icon: '💳' },
     { id: 'history', label: 'Geçmiş Kayıtları', icon: '📜' },
     // Only show media tab if hasMediaGallery is enabled in anamnez
     ...(patient.optionalScans?.hasMediaGallery ? [{ id: 'media', label: 'Fotoğraflar ve Videolar', icon: '📷' }] : []),
@@ -2586,6 +2605,168 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Payment Info Tab */}
+            {activeTab === 'payment' && (
+              <div className="space-y-6">
+                {/* Mevcut Ödeme */}
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 bg-gradient-to-r from-green-50 to-emerald-50 border-b border-gray-200">
+                    <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                      💳 Mevcut Ödeme Durumu
+                    </h3>
+                  </div>
+                  <div className="p-6">
+                    {patient.paymentCompleted ? (
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <span className="px-3 py-1 bg-green-100 border border-green-300 rounded-full text-green-700 text-sm font-semibold">✅ Ödendi</span>
+                          {patient.discountAmount && patient.discountAmount > 0 && (
+                            <span className="px-3 py-1 bg-orange-100 border border-orange-300 rounded-full text-orange-700 text-sm font-semibold">
+                              🏷️ İndirim: {patient.discountAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                            </span>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                            <p className="text-xs text-gray-500 mb-1">Ödeme Tutarı</p>
+                            <p className="text-2xl font-bold text-green-700">
+                              {(patient.paymentAmount ?? 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                            </p>
+                          </div>
+                          <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                            <p className="text-xs text-gray-500 mb-1">Ödeme Tarihi</p>
+                            <p className="text-base font-semibold text-gray-800">
+                              {patient.paymentDate ? formatDate(patient.paymentDate) : '-'}
+                            </p>
+                          </div>
+                          <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                            <p className="text-xs text-gray-500 mb-1">Ödeme Yöntemi</p>
+                            <div className="space-y-1 mt-1">
+                              {patient.paymentMethods && patient.paymentMethods.length > 0 ? (
+                                patient.paymentMethods.map((m, i) => (
+                                  <div key={i} className="flex justify-between text-sm">
+                                    <span className="text-gray-600">{
+                                      m.method === 'nakit' ? '💵 Nakit' :
+                                      m.method === 'kredi_karti' ? '💳 Kredi Kartı' :
+                                      m.method === 'banka_karti' ? '🏧 Banka Kartı' :
+                                      m.method === 'havale_eft' ? '🏦 Havale/EFT' :
+                                      m.method === 'cek' ? '📄 Çek' : m.method
+                                    }</span>
+                                    <span className="font-semibold text-gray-800">{m.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</span>
+                                  </div>
+                                ))
+                              ) : (
+                                <span className="text-sm text-gray-600">{
+                                  patient.paymentMethod === 'nakit' ? '💵 Nakit' :
+                                  patient.paymentMethod === 'kredi_karti' ? '💳 Kredi Kartı' :
+                                  patient.paymentMethod === 'banka_karti' ? '🏧 Banka Kartı' :
+                                  patient.paymentMethod === 'havale_eft' ? '🏦 Havale/EFT' :
+                                  patient.paymentMethod === 'cek' ? '📄 Çek' :
+                                  patient.paymentMethod || '-'
+                                }</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        <span className="px-3 py-1 bg-gray-100 border border-gray-300 rounded-full text-gray-600 text-sm font-medium">⏳ Ödeme Tamamlanmadı</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Düzenleme Geçmişi */}
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200">
+                    <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                      📝 Ödeme Düzenleme Geçmişi
+                      {patient.paymentEditHistory && patient.paymentEditHistory.length > 0 && (
+                        <span className="ml-2 px-2 py-0.5 bg-blue-100 border border-blue-300 rounded-full text-blue-700 text-xs font-bold">
+                          {patient.paymentEditHistory.length} kayıt
+                        </span>
+                      )}
+                    </h3>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {patient.paymentEditHistory && patient.paymentEditHistory.length > 0 ? (
+                      [...patient.paymentEditHistory]
+                        .sort((a, b) => new Date(b.editedAt).getTime() - new Date(a.editedAt).getTime())
+                        .map((entry, idx) => {
+                          const methodLabel = (m: { method: string; amount: number }) =>
+                            `${m.method === 'nakit' ? 'Nakit' : m.method === 'kredi_karti' ? 'Kredi Kartı' : m.method === 'banka_karti' ? 'Banka Kartı' : m.method === 'havale_eft' ? 'Havale/EFT' : m.method === 'cek' ? 'Çek' : m.method}: ${m.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL`;
+                          const prevTotal = entry.previousAmount ?? entry.previousMethods.reduce((s, m) => s + m.amount, 0);
+                          const amountChanged = Math.abs((entry.previousAmount ?? 0) - entry.newAmount) > 0.01;
+                          return (
+                            <div key={idx} className="p-5 hover:bg-gray-50 transition-colors">
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="flex-1 space-y-3">
+                                  {/* Kim düzenledi */}
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="w-8 h-8 rounded-full bg-blue-100 border border-blue-300 flex items-center justify-center text-blue-700 font-bold text-sm flex-shrink-0">
+                                      {(entry.editedBy || '?').charAt(0).toUpperCase()}
+                                    </span>
+                                    <div>
+                                      <span className="font-semibold text-gray-800 text-sm">{entry.editedBy || 'Bilinmiyor'}</span>
+                                      {entry.editedByRole && (
+                                        <span className="ml-2 px-2 py-0.5 bg-gray-100 border border-gray-200 rounded text-gray-500 text-xs">{entry.editedByRole}</span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Tutar değişimi */}
+                                  {amountChanged && (
+                                    <div className="flex items-center gap-2 text-sm flex-wrap">
+                                      <span className="text-gray-500">Tutar:</span>
+                                      <span className="line-through text-red-500 font-medium">
+                                        {prevTotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                                      </span>
+                                      <span className="text-gray-400">→</span>
+                                      <span className="text-green-600 font-bold">
+                                        {entry.newAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                                      </span>
+                                    </div>
+                                  )}
+
+                                  {/* Yöntem değişimi */}
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {entry.previousMethods.length > 0 && (
+                                      <div className="bg-red-50 border border-red-100 rounded-lg p-3">
+                                        <p className="text-xs text-red-500 font-medium mb-1">Önceki Yöntem</p>
+                                        {entry.previousMethods.map((m, i) => (
+                                          <p key={i} className="text-xs text-red-700">{methodLabel(m)}</p>
+                                        ))}
+                                      </div>
+                                    )}
+                                    <div className="bg-green-50 border border-green-100 rounded-lg p-3">
+                                      <p className="text-xs text-green-600 font-medium mb-1">Yeni Yöntem</p>
+                                      {entry.newMethods.map((m, i) => (
+                                        <p key={i} className="text-xs text-green-700">{methodLabel(m)}</p>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Tarih */}
+                                <div className="text-right flex-shrink-0">
+                                  <p className="text-xs text-gray-500 whitespace-nowrap">{formatDate(entry.editedAt)}</p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                    ) : (
+                      <div className="p-8 text-center text-gray-400">
+                        <div className="text-4xl mb-3">📋</div>
+                        <p className="text-sm">Henüz düzenleme geçmişi bulunmuyor.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
           </div>
