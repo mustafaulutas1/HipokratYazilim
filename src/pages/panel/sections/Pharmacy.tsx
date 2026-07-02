@@ -221,6 +221,27 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const [debtorDiscountRate, setDebtorDiscountRate] = useState<number>(20);
   const [debtorDiscountValue, setDebtorDiscountValue] = useState<number>(0);
   const [debtorDiscountApplied, setDebtorDiscountApplied] = useState<boolean>(false);
+  // ── Eczane Raporlar state'leri ────────────────────────────────────────────
+  const [isPharmacyReportModalOpen, setIsPharmacyReportModalOpen] = useState(false);
+  const [pharmacyReportPeriod, setPharmacyReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const [pharmacyReportLoading, setPharmacyReportLoading] = useState(false);
+  const [pharmacyReportFiltersOpen, setPharmacyReportFiltersOpen] = useState(false);
+  const [pharmacyReportFilters, setPharmacyReportFilters] = useState({
+    search: '',
+    method: 'all',
+    saleType: 'all' as 'all' | 'treatment' | 'direct',
+    minAmount: '',
+    maxAmount: '',
+    startDate: '',
+    endDate: '',
+    onlyDiscount: false,
+  });
+  const [pharmacyReportData, setPharmacyReportData] = useState<{
+    treatmentSales: any[];
+    directSales: any[];
+    debtPayments: any[];
+    periodStats: { totalRevenue: number; totalDiscount: number; saleCount: number; debtPaidTotal: number };
+  }>({ treatmentSales: [], directSales: [], debtPayments: [], periodStats: { totalRevenue: 0, totalDiscount: 0, saleCount: 0, debtPaidTotal: 0 } });
   const [formData, setFormData] = useState<Medication>({
     name: '',
     protocolName: '',
@@ -760,6 +781,171 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     setDebtorDiscountValue(0);
     setDebtorDiscountApplied(false);
     setShowDebtorsModal(true);
+  };
+
+  // ── Eczane Rapor Fonksiyonları ────────────────────────────────────────────
+
+  const pharmMethodLabel = (method: string) => {
+    const map: Record<string, string> = {
+      nakit: 'Nakit', kredi_karti: 'Kredi Kartı', banka_karti: 'Banka Kartı',
+      havale: 'Havale/EFT', cari: 'Cari', nakit_pos: 'Nakit POS',
+      kartkredi: 'Kredi Kartı', kartdebit: 'Banka Kartı', cek: 'Çek',
+    };
+    return map[method] || method;
+  };
+
+  const fetchPharmacyReportData = async (period: 'daily' | 'weekly' | 'monthly') => {
+    if (!doctorProfile?.clinicId) return;
+    setPharmacyReportLoading(true);
+    try {
+      const now = new Date();
+      let startDate: Date;
+      if (period === 'daily') {
+        startDate = new Date(now); startDate.setHours(0, 0, 0, 0);
+      } else if (period === 'weekly') {
+        startDate = new Date(now); startDate.setDate(now.getDate() - 6); startDate.setHours(0, 0, 0, 0);
+      } else {
+        startDate = new Date(now); startDate.setDate(1); startDate.setHours(0, 0, 0, 0);
+      }
+
+      // 1. Direkt satışlar (direct_sales koleksiyonu)
+      const dsSnap = await getDocs(query(collection(db, 'direct_sales'), where('clinicId', '==', doctorProfile.clinicId)));
+      const directSales = dsSnap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter((s: any) => {
+          const d = new Date(s.createdAt || '');
+          return d >= startDate && d <= now;
+        }) as any[];
+
+      // 2. Tedavi hastası satışları (patients koleksiyonu - pharmacyStatus=completed)
+      const pSnap = await getDocs(query(collection(db, 'patients'), where('clinicId', '==', doctorProfile.clinicId)));
+      const treatmentSales = pSnap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter((p: any) => {
+          if (p.pharmacyStatus !== 'completed' || !p.pharmacyPaymentDate) return false;
+          const d = new Date(p.pharmacyPaymentDate);
+          return d >= startDate && d <= now;
+        }) as any[];
+
+      // 3. Ödenen borçlar (pharmacy_debts koleksiyonu - isPaid=true)
+      const dbSnap = await getDocs(query(collection(db, 'pharmacy_debts'), where('clinicId', '==', doctorProfile.clinicId), where('isPaid', '==', true)));
+      const debtPayments = dbSnap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter((d: any) => {
+          const dt = new Date(d.paidAt || '');
+          return dt >= startDate && dt <= now;
+        }) as any[];
+
+      const totalRevenueDirect = directSales.reduce((s: number, d: any) => s + (d.paidAmount || d.totalAmount || 0), 0);
+      const totalRevenueTreatment = treatmentSales.reduce((s: number, p: any) => s + (p.pharmacyPaymentAmount || 0), 0);
+      const totalDiscount =
+        directSales.reduce((s: number, d: any) => s + (d.discountAmount || 0), 0) +
+        treatmentSales.reduce((s: number, p: any) => s + (p.pharmacyDiscountAmount || 0), 0);
+      const debtPaidTotal = debtPayments.reduce((s: number, d: any) => s + (d.paidAmount || d.amount || 0), 0);
+
+      setPharmacyReportData({
+        treatmentSales,
+        directSales,
+        debtPayments,
+        periodStats: {
+          totalRevenue: totalRevenueDirect + totalRevenueTreatment,
+          totalDiscount,
+          saleCount: directSales.length + treatmentSales.length,
+          debtPaidTotal,
+        },
+      });
+    } catch (e) {
+      console.error('Eczane rapor hatası:', e);
+    } finally {
+      setPharmacyReportLoading(false);
+    }
+  };
+
+  const generatePharmacyExcelReport = async () => {
+    const { utils, writeFile } = await import('xlsx');
+    const periodText = pharmacyReportPeriod === 'daily' ? 'Günlük' : pharmacyReportPeriod === 'weekly' ? 'Haftalık' : 'Aylık';
+
+    const applyFilters = (items: any[], isDirectSale: boolean) => items.filter(item => {
+      const name = isDirectSale ? (item.customerName || '') : (item.fullName || '');
+      const amount = isDirectSale ? (item.paidAmount || item.totalAmount || 0) : (item.pharmacyPaymentAmount || 0);
+      const date = isDirectSale ? item.createdAt : item.pharmacyPaymentDate;
+      const methods = isDirectSale ? (item.paymentMethods || []) : (item.pharmacyPaymentMethods || []);
+      const primaryMethod = isDirectSale ? (methods[0]?.method || 'nakit') : (item.pharmacyPaymentMethod || 'nakit');
+
+      if (pharmacyReportFilters.search && !name.toLowerCase().includes(pharmacyReportFilters.search.toLowerCase())) return false;
+      if (pharmacyReportFilters.method !== 'all') {
+        const match = methods.length > 0
+          ? methods.some((m: any) => m.method === pharmacyReportFilters.method)
+          : primaryMethod === pharmacyReportFilters.method;
+        if (!match) return false;
+      }
+      if (pharmacyReportFilters.minAmount && amount < parseFloat(pharmacyReportFilters.minAmount)) return false;
+      if (pharmacyReportFilters.maxAmount && amount > parseFloat(pharmacyReportFilters.maxAmount)) return false;
+      if (pharmacyReportFilters.startDate) {
+        const s = new Date(pharmacyReportFilters.startDate); s.setHours(0,0,0,0);
+        if (new Date(date) < s) return false;
+      }
+      if (pharmacyReportFilters.endDate) {
+        const e = new Date(pharmacyReportFilters.endDate); e.setHours(23,59,59,999);
+        if (new Date(date) > e) return false;
+      }
+      if (pharmacyReportFilters.onlyDiscount) {
+        const disc = isDirectSale ? (item.discountAmount || 0) : (item.pharmacyDiscountAmount || 0);
+        if (disc <= 0) return false;
+      }
+      return true;
+    });
+
+    const filteredDirect = pharmacyReportFilters.saleType === 'treatment' ? [] : applyFilters(pharmacyReportData.directSales, true);
+    const filteredTreatment = pharmacyReportFilters.saleType === 'direct' ? [] : applyFilters(pharmacyReportData.treatmentSales, false);
+
+    const wb = utils.book_new();
+
+    // Özet sayfası
+    const summaryRows = [
+      ['Eczane ' + periodText + ' Raporu', '', new Date().toLocaleDateString('tr-TR')],
+      [],
+      ['Kategori', 'Değer'],
+      ['Toplam Satış Adedi', filteredDirect.length + filteredTreatment.length],
+      ['Direkt Satış Geliri (TL)', filteredDirect.reduce((s: number, d: any) => s + (d.paidAmount || d.totalAmount || 0), 0).toFixed(2)],
+      ['Tedavi Hastası Geliri (TL)', filteredTreatment.reduce((s: number, p: any) => s + (p.pharmacyPaymentAmount || 0), 0).toFixed(2)],
+      ['Toplam Gelir (TL)', (filteredDirect.reduce((s: number, d: any) => s + (d.paidAmount || d.totalAmount || 0), 0) + filteredTreatment.reduce((s: number, p: any) => s + (p.pharmacyPaymentAmount || 0), 0)).toFixed(2)],
+      ['Toplam İndirim (TL)', (filteredDirect.reduce((s: number, d: any) => s + (d.discountAmount || 0), 0) + filteredTreatment.reduce((s: number, p: any) => s + (p.pharmacyDiscountAmount || 0), 0)).toFixed(2)],
+    ];
+    utils.book_append_sheet(wb, utils.aoa_to_sheet(summaryRows), 'Özet');
+
+    // Direkt satışlar sayfası
+    if (filteredDirect.length > 0) {
+      const rows = filteredDirect.map((s: any) => ({
+        'Tarih': s.createdAt ? new Date(s.createdAt).toLocaleString('tr-TR') : '-',
+        'Müşteri': s.customerName || '-',
+        'TC': s.customerTcNo || '-',
+        'Ürünler': (s.items || []).map((i: any) => `${i.name} x${i.quantity}`).join(', '),
+        'Toplam (TL)': (s.totalAmount || 0).toFixed(2),
+        'Ödenen (TL)': (s.paidAmount || 0).toFixed(2),
+        'İndirim (TL)': (s.discountAmount || 0).toFixed(2),
+        'Ödeme Yöntemi': (s.paymentMethods || []).map((m: any) => `${pharmMethodLabel(m.method)}: ${m.amount.toFixed(2)} TL`).join(' + ') || pharmMethodLabel(s.paymentMethod || 'nakit'),
+        'Not': s.note || '-',
+      }));
+      utils.book_append_sheet(wb, utils.json_to_sheet(rows), 'Direkt Satışlar');
+    }
+
+    // Tedavi hasta satışları sayfası
+    if (filteredTreatment.length > 0) {
+      const rows = filteredTreatment.map((p: any) => ({
+        'Tarih': p.pharmacyPaymentDate ? new Date(p.pharmacyPaymentDate).toLocaleString('tr-TR') : '-',
+        'Hasta': p.fullName || '-',
+        'TC': p.tcNo || '-',
+        'İlaçlar': (p.pharmacySoldItems || []).map((i: any) => `${i.name} x${i.quantity || 1}`).join(', '),
+        'Ödeme (TL)': (p.pharmacyPaymentAmount || 0).toFixed(2),
+        'İndirim (TL)': (p.pharmacyDiscountAmount || 0).toFixed(2),
+        'Ödeme Yöntemi': (p.pharmacyPaymentMethods || []).map((m: any) => `${pharmMethodLabel(m.method)}: ${m.amount.toFixed(2)} TL`).join(' + ') || pharmMethodLabel(p.pharmacyPaymentMethod || 'nakit'),
+        'Not': p.pharmacyNote || '-',
+      }));
+      utils.book_append_sheet(wb, utils.json_to_sheet(rows), 'Tedavi Hastası Satışları');
+    }
+
+    writeFile(wb, `eczane-raporu-${periodText.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   // Determine debt source type for a list of debt entries
@@ -2115,6 +2301,17 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
             }`}
           >
             🔁 Reçete Değişiklikleri
+          </button>
+
+          {/* Rapor Butonu */}
+          <button
+            onClick={() => {
+              setIsPharmacyReportModalOpen(true);
+              fetchPharmacyReportData(pharmacyReportPeriod);
+            }}
+            className="px-8 py-3 rounded-xl font-medium transition-all duration-200 bg-white/10 text-white/70 hover:bg-white/20 flex items-center gap-2"
+          >
+            📊 Raporlar
           </button>
         </div>
       </div>
@@ -5422,6 +5619,278 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                 className="px-6 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-xl text-gray-700 hover:text-gray-900 font-medium transition-all"
               >
                 Kapat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Eczane Raporlar Modal ─────────────────────────────── */}
+      {isPharmacyReportModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[80] p-4">
+          <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-200">
+            {/* Header */}
+            <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-emerald-50 to-teal-50">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-emerald-800 flex items-center gap-2">
+                    <span className="text-2xl">📊</span>
+                    Eczane Raporları
+                  </h3>
+                  <p className="text-emerald-600 text-sm mt-0.5">Günlük, haftalık ve aylık eczane satış raporları</p>
+                </div>
+                <button
+                  onClick={() => setIsPharmacyReportModalOpen(false)}
+                  className="w-9 h-9 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center text-gray-600 transition-all"
+                >✕</button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* Dönem seçici + Yenile */}
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Rapor Dönemi</label>
+                  <select
+                    value={pharmacyReportPeriod}
+                    onChange={e => {
+                      const v = e.target.value as 'daily' | 'weekly' | 'monthly';
+                      setPharmacyReportPeriod(v);
+                      fetchPharmacyReportData(v);
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="daily">Günlük Rapor</option>
+                    <option value="weekly">Haftalık Rapor</option>
+                    <option value="monthly">Aylık Rapor</option>
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <button
+                    onClick={() => fetchPharmacyReportData(pharmacyReportPeriod)}
+                    disabled={pharmacyReportLoading}
+                    className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-medium transition-all flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {pharmacyReportLoading
+                      ? <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div> Yükleniyor...</>
+                      : <>🔄 Yenile</>}
+                  </button>
+                </div>
+              </div>
+
+              {/* Filtreler */}
+              <div className="bg-gray-50 border border-gray-200 rounded-lg">
+                <div className="flex items-center justify-between p-4">
+                  <button
+                    type="button"
+                    onClick={() => setPharmacyReportFiltersOpen(o => !o)}
+                    className="flex items-center gap-2 font-semibold text-gray-800"
+                  >
+                    <span className={`text-gray-500 transition-transform ${pharmacyReportFiltersOpen ? 'rotate-90' : ''}`}>▶</span>
+                    <span>🔎</span> Filtreler
+                    {(() => {
+                      const f = pharmacyReportFilters;
+                      const cnt = [f.search, f.method !== 'all', f.saleType !== 'all', f.minAmount, f.maxAmount, f.startDate, f.endDate, f.onlyDiscount].filter(Boolean).length;
+                      return cnt > 0 ? <span className="ml-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-xs">{cnt} aktif</span> : null;
+                    })()}
+                  </button>
+                  {pharmacyReportFiltersOpen && (
+                    <button
+                      onClick={() => setPharmacyReportFilters({ search: '', method: 'all', saleType: 'all', minAmount: '', maxAmount: '', startDate: '', endDate: '', onlyDiscount: false })}
+                      className="text-xs text-gray-500 hover:text-gray-800 underline"
+                    >Filtreleri Temizle</button>
+                  )}
+                </div>
+
+                {pharmacyReportFiltersOpen && (
+                  <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="md:col-span-3">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Müşteri / Hasta Adı</label>
+                      <input
+                        type="text"
+                        value={pharmacyReportFilters.search}
+                        onChange={e => setPharmacyReportFilters(f => ({ ...f, search: e.target.value }))}
+                        placeholder="Ad ile filtrele..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Satış Tipi</label>
+                      <select
+                        value={pharmacyReportFilters.saleType}
+                        onChange={e => setPharmacyReportFilters(f => ({ ...f, saleType: e.target.value as any }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500"
+                      >
+                        <option value="all">Tümü</option>
+                        <option value="direct">Direkt Satış</option>
+                        <option value="treatment">Tedavi Hastası</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Ödeme Yöntemi</label>
+                      <select
+                        value={pharmacyReportFilters.method}
+                        onChange={e => setPharmacyReportFilters(f => ({ ...f, method: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500"
+                      >
+                        <option value="all">Tümü</option>
+                        <option value="nakit">Nakit</option>
+                        <option value="kredi_karti">Kredi Kartı</option>
+                        <option value="banka_karti">Banka Kartı</option>
+                        <option value="havale">Havale/EFT</option>
+                        <option value="cari">Cari</option>
+                      </select>
+                    </div>
+                    <div className="flex items-end">
+                      <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer py-2">
+                        <input type="checkbox" checked={pharmacyReportFilters.onlyDiscount}
+                          onChange={e => setPharmacyReportFilters(f => ({ ...f, onlyDiscount: e.target.checked }))}
+                          className="w-4 h-4 rounded border-gray-300 text-emerald-600"
+                        />
+                        Sadece indirimli satışlar
+                      </label>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Min. Tutar (TL)</label>
+                      <input type="number" value={pharmacyReportFilters.minAmount}
+                        onChange={e => setPharmacyReportFilters(f => ({ ...f, minAmount: e.target.value }))}
+                        placeholder="0" min="0"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Maks. Tutar (TL)</label>
+                      <input type="number" value={pharmacyReportFilters.maxAmount}
+                        onChange={e => setPharmacyReportFilters(f => ({ ...f, maxAmount: e.target.value }))}
+                        placeholder="—" min="0"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Başlangıç Tarihi</label>
+                      <input type="date" value={pharmacyReportFilters.startDate}
+                        onChange={e => setPharmacyReportFilters(f => ({ ...f, startDate: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Bitiş Tarihi</label>
+                      <input type="date" value={pharmacyReportFilters.endDate}
+                        onChange={e => setPharmacyReportFilters(f => ({ ...f, endDate: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Özet kartlar */}
+              {(() => {
+                const f = pharmacyReportFilters;
+                const filterItem = (item: any, isDirect: boolean) => {
+                  const name = isDirect ? (item.customerName || '') : (item.fullName || '');
+                  const amount = isDirect ? (item.paidAmount || item.totalAmount || 0) : (item.pharmacyPaymentAmount || 0);
+                  const date = isDirect ? item.createdAt : item.pharmacyPaymentDate;
+                  const methods = isDirect ? (item.paymentMethods || []) : (item.pharmacyPaymentMethods || []);
+                  const primary = isDirect ? (methods[0]?.method || 'nakit') : (item.pharmacyPaymentMethod || 'nakit');
+                  const disc = isDirect ? (item.discountAmount || 0) : (item.pharmacyDiscountAmount || 0);
+                  if (f.search && !name.toLowerCase().includes(f.search.toLowerCase())) return false;
+                  if (f.method !== 'all') {
+                    const match = methods.length > 0 ? methods.some((m: any) => m.method === f.method) : primary === f.method;
+                    if (!match) return false;
+                  }
+                  if (f.minAmount && amount < parseFloat(f.minAmount)) return false;
+                  if (f.maxAmount && amount > parseFloat(f.maxAmount)) return false;
+                  if (f.startDate) { const s = new Date(f.startDate); s.setHours(0,0,0,0); if (new Date(date) < s) return false; }
+                  if (f.endDate) { const e = new Date(f.endDate); e.setHours(23,59,59,999); if (new Date(date) > e) return false; }
+                  if (f.onlyDiscount && disc <= 0) return false;
+                  return true;
+                };
+                const fd = f.saleType === 'treatment' ? [] : pharmacyReportData.directSales.filter(s => filterItem(s, true));
+                const ft = f.saleType === 'direct' ? [] : pharmacyReportData.treatmentSales.filter(p => filterItem(p, false));
+                const totalD = fd.reduce((s: number, d: any) => s + (d.paidAmount || d.totalAmount || 0), 0);
+                const totalT = ft.reduce((s: number, p: any) => s + (p.pharmacyPaymentAmount || 0), 0);
+                const totalDisc = fd.reduce((s: number, d: any) => s + (d.discountAmount || 0), 0) + ft.reduce((s: number, p: any) => s + (p.pharmacyDiscountAmount || 0), 0);
+                const totalRev = totalD + totalT;
+
+                return (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+                        <h4 className="font-semibold text-emerald-900 mb-2 flex items-center gap-1">🛒 Direkt Satış ({fd.length})</h4>
+                        <p className="text-emerald-800 font-bold text-xl">{totalD.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</p>
+                      </div>
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <h4 className="font-semibold text-blue-900 mb-2 flex items-center gap-1">💊 Tedavi Hastası ({ft.length})</h4>
+                        <p className="text-blue-800 font-bold text-xl">{totalT.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</p>
+                      </div>
+                      <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                        <h4 className="font-semibold text-orange-900 mb-2">🏷️ Toplam İndirim</h4>
+                        <p className="text-orange-800 font-bold text-xl">{totalDisc.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</p>
+                      </div>
+                    </div>
+
+                    <div className="bg-gradient-to-r from-emerald-500 to-teal-500 rounded-xl p-5 text-white">
+                      <p className="text-white/80 text-sm mb-1">Toplam Net Gelir</p>
+                      <p className="text-3xl font-bold">{totalRev.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</p>
+                      <p className="text-white/70 text-xs mt-1">{fd.length + ft.length} satış · {pharmacyReportPeriod === 'daily' ? 'Bugün' : pharmacyReportPeriod === 'weekly' ? 'Bu hafta' : 'Bu ay'}</p>
+                    </div>
+
+                    {/* Satışlar listesi */}
+                    {(fd.length > 0 || ft.length > 0) ? (
+                      <div className="bg-white border border-gray-200 rounded-lg">
+                        <div className="p-4 border-b border-gray-100">
+                          <h4 className="font-semibold text-gray-800">Satış Listesi ({fd.length + ft.length})</h4>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto divide-y divide-gray-100">
+                          {[
+                            ...fd.map((s: any) => ({ name: s.customerName || '-', date: s.createdAt, amount: s.paidAmount || s.totalAmount || 0, discount: s.discountAmount || 0, methods: s.paymentMethods || [], primary: s.paymentMethod, type: '🛒 Direkt' })),
+                            ...ft.map((p: any) => ({ name: p.fullName || '-', date: p.pharmacyPaymentDate, amount: p.pharmacyPaymentAmount || 0, discount: p.pharmacyDiscountAmount || 0, methods: p.pharmacyPaymentMethods || [], primary: p.pharmacyPaymentMethod, type: '💊 Tedavi' })),
+                          ]
+                            .sort((a, b) => new Date(b.date || '').getTime() - new Date(a.date || '').getTime())
+                            .map((row, i) => (
+                              <div key={i} className="flex items-center justify-between px-4 py-3">
+                                <div>
+                                  <p className="text-sm font-medium text-gray-800">{row.name}</p>
+                                  <p className="text-xs text-gray-400">{row.date ? new Date(row.date).toLocaleString('tr-TR') : '-'} · <span className="text-gray-500">{row.type}</span></p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-sm font-bold text-emerald-700">{row.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</p>
+                                  {row.discount > 0 && <p className="text-xs text-orange-600">İndirim: {row.discount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</p>}
+                                  <p className="text-xs text-gray-400">
+                                    {row.methods.length > 0 ? row.methods.map((m: any) => pharmMethodLabel(m.method)).join(' + ') : pharmMethodLabel(row.primary || 'nakit')}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
+                        <div className="text-4xl mb-2">📊</div>
+                        <p className="font-semibold text-gray-600">Kayıt Bulunamadı</p>
+                        <p className="text-gray-500 text-sm mt-1">
+                          {pharmacyReportPeriod === 'daily' ? 'Bugün' : pharmacyReportPeriod === 'weekly' ? 'Bu hafta' : 'Bu ay'} için eczane satış kaydı bulunmuyor.
+                        </p>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+
+            {/* Footer */}
+            <div className="p-5 border-t border-gray-200 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setIsPharmacyReportModalOpen(false)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg text-gray-700 font-medium transition-all"
+              >Kapat</button>
+              <button
+                onClick={generatePharmacyExcelReport}
+                disabled={pharmacyReportData.directSales.length === 0 && pharmacyReportData.treatmentSales.length === 0}
+                className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-lg font-medium transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                📥 Excel İndir
               </button>
             </div>
           </div>
