@@ -1227,15 +1227,15 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
                   </div>
                   <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                     {[...katDepoItems]
-                      .filter(item => item.productName.toLowerCase().includes(materialSearch.toLowerCase()) || item.stockCode.toLowerCase().includes(materialSearch.toLowerCase()))
-                      .sort((a, b) => a.productName.localeCompare(b.productName, 'tr'))
+                      .filter(item => (item.productName ?? '').toLowerCase().includes(materialSearch.toLowerCase()) || (item.stockCode ?? '').toLowerCase().includes(materialSearch.toLowerCase()))
+                      .sort((a, b) => (a.productName ?? '').localeCompare(b.productName ?? '', 'tr'))
                       .map(item => {
                       const selected = getMaterialQty(item.id);
                       return (
                         <div key={item.id} className={`flex items-center gap-3 p-2 rounded-lg border transition-all ${selected > 0 ? 'bg-emerald-100 border-emerald-400' : 'bg-white border-gray-200'}`}>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-800 truncate">{item.productName}</p>
-                            <p className="text-xs text-gray-500">Kod: {item.stockCode} &nbsp;|&nbsp; Stok: {item.quantity}</p>
+                            <p className="text-sm font-medium text-gray-800 truncate">{item.productName ?? '-'}</p>
+                            <p className="text-xs text-gray-500">Kod: {item.stockCode ?? '-'} &nbsp;|&nbsp; Stok: {item.quantity ?? 0}</p>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
                             <button
