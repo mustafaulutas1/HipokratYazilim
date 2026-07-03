@@ -95,13 +95,19 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
   const dateISO = useMemo(() => formatDateISO(selectedDate), [selectedDate]);
 
   // Filter appointments by patient name for calendar view
+  const [hideCancelled, setHideCancelled] = useState(false);
+
   const filteredAppointments = useMemo(() => {
-    if (!calendarPatientFilter.trim()) return appointments;
-    const searchTerm = calendarPatientFilter.toLowerCase().trim();
-    return appointments.filter(apt => 
-      apt.patientName?.toLowerCase().includes(searchTerm)
-    );
-  }, [appointments, calendarPatientFilter]);
+    let list = appointments;
+    if (calendarPatientFilter.trim()) {
+      const searchTerm = calendarPatientFilter.toLowerCase().trim();
+      list = list.filter(apt => apt.patientName?.toLowerCase().includes(searchTerm));
+    }
+    if (hideCancelled) {
+      list = list.filter(apt => apt.status !== 'cancelled');
+    }
+    return list;
+  }, [appointments, calendarPatientFilter, hideCancelled]);
 
   // Get week range for weekly view
   const getWeekRange = (date: Date) => {
@@ -1150,9 +1156,22 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
 
         {/* Yaklaşan Randevular */}
         <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-          <h2 className="text-xl font-bold text-white mb-2">
-            {calendarPatientFilter ? 'Tüm Randevular' : viewMode === 'day' ? 'Yaklaşan Randevular' : 'Randevular'}
-          </h2>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-xl font-bold text-white">
+              {calendarPatientFilter ? 'Tüm Randevular' : viewMode === 'day' ? 'Yaklaşan Randevular' : 'Randevular'}
+            </h2>
+            <button
+              onClick={() => setHideCancelled(prev => !prev)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                hideCancelled
+                  ? 'bg-red-500/30 border-red-400/60 text-red-200 hover:bg-red-500/40'
+                  : 'bg-white/10 border-white/20 text-white/60 hover:bg-white/20'
+              }`}
+              title={hideCancelled ? 'İptal edilenleri göster' : 'İptal edilenleri gizle'}
+            >
+              {hideCancelled ? '🚫 İptal Edilenler Gizli' : '👁️ İptal Edilenler Görünür'}
+            </button>
+          </div>
           {calendarPatientFilter && (
             <p className="text-white/50 text-xs mb-4">Geçmiş ve gelecek tüm randevular gösteriliyor</p>
           )}
