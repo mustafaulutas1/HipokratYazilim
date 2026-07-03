@@ -43,6 +43,10 @@ interface TreatmentPatient {
   treatmentNotAppliedReason?: string;
   treatmentApplied?: boolean;
   treatmentCompletedAt?: string;
+  treatmentPartiallyApplied?: boolean;
+  appliedTreatments?: string[];
+  unselectedTreatments?: string[];
+  unselectedTreatmentReason?: string;
   appointmentType?: string; // 'tedavi' or 'kontrol'
   routineAnamnezRequired?: boolean;
   routineAnamnezTemplates?: string[];
@@ -139,6 +143,10 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
   const [selectedMaterials, setSelectedMaterials] = useState<SelectedMaterial[]>([]);
   const [katDepoLoading, setKatDepoLoading] = useState(false);
   const [materialSearch, setMaterialSearch] = useState('');
+  // ── Tamamlanan tedavi detay modal state'leri ─────────────────────────────
+  const [completedDetailPatient, setCompletedDetailPatient] = useState<TreatmentPatient | null>(null);
+  const [completedDetailMaterials, setCompletedDetailMaterials] = useState<any[]>([]);
+  const [completedDetailLoading, setCompletedDetailLoading] = useState(false);
 
   useEffect(() => {
     if (!doctorProfile?.clinicId) return;
@@ -342,6 +350,39 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
 
   const getMaterialQty = (productId: string) =>
     selectedMaterials.find(m => m.productId === productId)?.quantity ?? 0;
+
+  // Tamamlanan tedavi detay verilerini çek (katDepoKullanimlar koleksiyonundan)
+  const fetchCompletedDetail = async (patient: TreatmentPatient) => {
+    setCompletedDetailPatient(patient);
+    setCompletedDetailLoading(true);
+    setCompletedDetailMaterials([]);
+    try {
+      // Önce patientId ile ara (yeni kayıtlar)
+      const snap = await getDocs(query(
+        collection(db, 'katDepoKullanimlar'),
+        where('patientId', '==', patient.id)
+      ));
+      let records: any[] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      // patientId yoksa (eski kayıtlar) patientName ile fallback
+      if (records.length === 0) {
+        const snapByName = await getDocs(query(
+          collection(db, 'katDepoKullanimlar'),
+          where('patientName', '==', patient.fullName),
+          where('clinicId', '==', patient.clinicId || '')
+        ));
+        records = snapByName.docs.map(d => ({ id: d.id, ...d.data() }));
+      }
+
+      records.sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime());
+      setCompletedDetailMaterials(records);
+    } catch (e) {
+      console.error('Kullanım kayıtları alınamadı:', e);
+      setCompletedDetailMaterials([]);
+    } finally {
+      setCompletedDetailLoading(false);
+    }
+  };
 
   const handleMarkAsEmergency = (patient: TreatmentPatient) => {
     setEmergencyPatient(patient);
@@ -585,6 +626,7 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
           await addDoc(collection(db, 'katDepoKullanimlar'), {
             nurseName: doctorProfile?.fullName || '',
             nurseId: doctorProfile?.clinicId || '',
+            patientId: selectedPatient.id,
             patientName: selectedPatient.fullName,
             treatmentName: selectedPatient.treatmentOptions?.protocolName || 'Tedavi',
             appliedApplications: selectedTreatments,
@@ -955,6 +997,18 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
                     >
                       <span className="text-lg">💊</span>
                       Ek Tedavi Talep Et
+                    </button>
+                  </div>
+                )}
+
+                {activeListType === 'completed_treatment' && (
+                  <div className="flex items-center gap-2 ml-4">
+                    <button
+                      onClick={() => fetchCompletedDetail(patient)}
+                      className="px-4 py-2 bg-blue-500/20 border border-blue-400 rounded-xl text-blue-200 hover:bg-blue-500/30 transition-all duration-200 flex items-center gap-2"
+                    >
+                      <span className="text-lg">🔍</span>
+                      Detay
                     </button>
                   </div>
                 )}
@@ -1478,6 +1532,140 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
           patientName={additionalTreatmentPatient.fullName}
           doctorProfile={doctorProfile}
         />
+      )}
+
+      {/* ─── Tamamlanan Tedavi Detay Modalı ─────────────────────────────── */}
+      {completedDetailPatient && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1a1f37] border border-white/20 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-blue-600/40 to-indigo-600/40 border-b border-white/10">
+              <div>
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  🔍 Tedavi Detayı
+                </h3>
+                <p className="text-white/60 text-sm mt-0.5">
+                  {completedDetailPatient.fullName} · {completedDetailPatient.tcNo}
+                </p>
+              </div>
+              <button
+                onClick={() => { setCompletedDetailPatient(null); setCompletedDetailMaterials([]); }}
+                className="w-9 h-9 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-white transition-all"
+              >✕</button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              {/* Genel bilgiler */}
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-2">
+                <h4 className="text-white/80 font-semibold text-sm mb-3">📋 Tedavi Özeti</h4>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <span className="text-white/40 text-xs">Tamamlanma Tarihi</span>
+                    <p className="text-white font-medium">{formatDate(completedDetailPatient.treatmentCompletedAt || completedDetailPatient.updatedAt)}</p>
+                  </div>
+                  <div>
+                    <span className="text-white/40 text-xs">Durum</span>
+                    <p className={`font-medium ${completedDetailPatient.treatmentPartiallyApplied ? 'text-orange-300' : completedDetailPatient.treatmentApplied ? 'text-green-300' : 'text-red-300'}`}>
+                      {completedDetailPatient.treatmentPartiallyApplied ? '⚠️ Kısmi Uygulama' : completedDetailPatient.treatmentApplied ? '✅ Tam Uygulama' : '❌ Uygulanmadı'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-white/40 text-xs">Protokol</span>
+                    <p className="text-white">{completedDetailPatient.treatmentOptions?.protocolName || 'Belirtilmemiş'}</p>
+                  </div>
+                  {completedDetailPatient.assignedDoctorName && (
+                    <div>
+                      <span className="text-white/40 text-xs">Uygulayan</span>
+                      <p className="text-white">{completedDetailPatient.assignedDoctorName}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Uygulanan tedaviler */}
+              {completedDetailPatient.appliedTreatments && completedDetailPatient.appliedTreatments.length > 0 && (
+                <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4">
+                  <h4 className="text-green-300 font-semibold text-sm mb-3">✅ Uygulanan Tedaviler</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {completedDetailPatient.appliedTreatments.map((t, i) => (
+                      <span key={i} className="px-3 py-1 bg-green-500/20 border border-green-400/40 rounded-full text-green-200 text-xs">
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Uygulanmayan tedaviler */}
+              {completedDetailPatient.unselectedTreatments && completedDetailPatient.unselectedTreatments.length > 0 && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
+                  <h4 className="text-red-300 font-semibold text-sm mb-2">❌ Uygulanmayan Tedaviler</h4>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {completedDetailPatient.unselectedTreatments.map((t, i) => (
+                      <span key={i} className="px-3 py-1 bg-red-500/20 border border-red-400/40 rounded-full text-red-200 text-xs">
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                  {completedDetailPatient.unselectedTreatmentReason && (
+                    <p className="text-red-200/70 text-xs">Neden: {completedDetailPatient.unselectedTreatmentReason}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Tedavi notu */}
+              {completedDetailPatient.treatmentNotes && (
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                  <h4 className="text-white/70 font-semibold text-sm mb-2">📝 Tedavi Notu</h4>
+                  <p className="text-white/80 text-sm whitespace-pre-wrap">{completedDetailPatient.treatmentNotes}</p>
+                </div>
+              )}
+
+              {/* Kullanılan malzemeler */}
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                <h4 className="text-white/80 font-semibold text-sm mb-3">🧪 Kullanılan Malzemeler</h4>
+                {completedDetailLoading ? (
+                  <div className="flex items-center gap-2 text-white/50 text-sm">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white/50"></div>
+                    Yükleniyor...
+                  </div>
+                ) : completedDetailMaterials.length === 0 ? (
+                  <p className="text-white/40 text-sm">Bu tedavi için malzeme kaydı bulunamadı.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {completedDetailMaterials.map((record, ri) => (
+                      <div key={ri} className="space-y-1">
+                        {record.items && record.items.length > 0 && (
+                          <>
+                            <p className="text-white/40 text-xs">{record.date ? new Date(record.date).toLocaleDateString('tr-TR') : ''} · {record.nurseName || record.performerName || ''}</p>
+                            <div className="flex flex-wrap gap-2">
+                              {record.items.map((item: any, ii: number) => (
+                                <span key={ii} className="px-3 py-1 bg-indigo-500/20 border border-indigo-400/40 rounded-full text-indigo-200 text-xs">
+                                  {item.productName} × {item.usedQty || item.plannedQty || item.quantity || 1}
+                                </span>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-white/10 flex justify-end">
+              <button
+                onClick={() => { setCompletedDetailPatient(null); setCompletedDetailMaterials([]); }}
+                className="px-5 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl text-white/80 hover:text-white font-medium transition-all"
+              >
+                Kapat
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
