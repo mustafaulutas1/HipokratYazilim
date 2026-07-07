@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { collection, getDocs, query, where, doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import AddPatientModal from './AddPatientModal';
@@ -56,14 +56,18 @@ interface PatientsProps {
   doctorProfile?: any;
 }
 
+const PATIENTS_PER_PAGE = 10;
+
 const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterTodayAppointments, setFilterTodayAppointments] = useState(false);
   const [todayAppointmentPatientIds, setTodayAppointmentPatientIds] = useState<Set<string>>(new Set());
-  const [patients, setPatients] = useState<Patient[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]); // Firebase cursor pagination için
+  const [allPatients, setAllPatients] = useState<Patient[]>([]); // arama/filtre/stats için tam liste
   const [treatmentCompletedPatients, setTreatmentCompletedPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
@@ -93,62 +97,66 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
     setTodayAppointmentPatientIds(ids);
   };
 
-  // Fetch patients from Firestore
-  const fetchPatients = async () => {
+  // Sayfa bazlı yükleme — allPatients'tan slice alır (index bağımlılığı yok)
+  const fetchPage = useCallback(async (clinicId: string, page: number) => {
     try {
       setLoading(true);
-
-      // Check if doctorProfile and clinicId exist
-      if (!doctorProfile?.clinicId) {
-        setPatients([]);
-        return;
-      }
-
-      const patientsRef = collection(db, 'patients');
       const q = query(
-        patientsRef,
-        where('clinicId', '==', doctorProfile.clinicId)
+        collection(db, 'patients'),
+        where('clinicId', '==', clinicId)
       );
-      const querySnapshot = await getDocs(q);
+      const snap = await getDocs(q);
+      const allData: Patient[] = snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as Patient))
+        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 
-      const patientsData: Patient[] = [];
-      querySnapshot.forEach((doc) => {
-        patientsData.push({
-          id: doc.id,
-          ...doc.data()
-        } as Patient);
-      });
+      // allPatients'ı da güncelle (fetchAllPatients ile senkron)
+      setAllPatients(allData);
+      const completed = allData
+        .filter(p => p.status === 'treatment_completed' && p.paymentCompleted === true)
+        .sort((a, b) => new Date(b.treatmentCompletedAt || b.createdAt || 0).getTime() - new Date(a.treatmentCompletedAt || a.createdAt || 0).getTime());
+      setTreatmentCompletedPatients(completed);
 
-      // Sort manually by createdAt (newest first)
-      patientsData.sort((a, b) => {
-        const dateA = new Date(a.createdAt || 0).getTime();
-        const dateB = new Date(b.createdAt || 0).getTime();
-        return dateB - dateA;
-      });
-
-      // Filter treatment completed patients (ready for discharge)
-      const completedPatients = patientsData.filter(patient =>
-        patient.status === 'treatment_completed' && patient.paymentCompleted === true
-      ).sort((a, b) => {
-        const dateA = new Date(a.treatmentCompletedAt || a.createdAt || 0).getTime();
-        const dateB = new Date(b.treatmentCompletedAt || b.createdAt || 0).getTime();
-        return dateB - dateA;
-      });
-
-      setTreatmentCompletedPatients(completedPatients);
-      setPatients(patientsData);
-    } catch (error) {
-      console.error('Error fetching patients:', error);
+      // O sayfanın dilimini göster
+      const start = (page - 1) * PATIENTS_PER_PAGE;
+      setPatients(allData.slice(start, start + PATIENTS_PER_PAGE));
+    } catch (e) {
+      console.error('fetchPage error:', e);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // İlk yükleme ve yenileme
+  const fetchPatients = useCallback(async () => {
+    const clinicId = doctorProfile?.clinicId;
+    if (!clinicId) return;
+    setCurrentPage(1);
+    await fetchPage(clinicId, 1);
+  }, [doctorProfile?.clinicId, fetchPage]);
 
   useEffect(() => {
     if (doctorProfile?.clinicId) {
       fetchPatients();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doctorProfile?.clinicId]);
+
+  // Sayfa değişince patients dilimini güncelle (allPatients zaten yüklü)
+  useEffect(() => {
+    if (allPatients.length === 0) return;
+    const hasFilter = searchTerm.trim() !== '' || filterStatus !== 'all' || filterTodayAppointments;
+    if (!hasFilter) {
+      const start = (currentPage - 1) * PATIENTS_PER_PAGE;
+      setPatients(allPatients.slice(start, start + PATIENTS_PER_PAGE));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage]);
+
+  // Arama/filtre değiştiğinde sayfayı sıfırla
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterStatus, filterTodayAppointments]);
   // Calculate age from birth date
   const calculateAge = (birthDate: string) => {
     const today = new Date();
@@ -174,6 +182,8 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
     try {
       await deleteDoc(doc(db, 'patients', patient.id));
       setPatients(prev => prev.filter(p => p.id !== patient.id));
+      setAllPatients(prev => prev.filter(p => p.id !== patient.id));
+      setTreatmentCompletedPatients(prev => prev.filter(p => p.id !== patient.id));
     } catch (error) {
       console.error('Hasta silinirken hata:', error);
       alert('Hasta silinirken bir hata oluştu.');
@@ -213,20 +223,39 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
     setFilterTodayAppointments(prev => !prev);
   };
 
-  const filteredPatients = patients.filter(patient => {
-    const matchesSearch = patient.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (patient.tcNo && patient.tcNo.includes(searchTerm)) ||
-      (patient.email && patient.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (patient.phone && patient.phone.includes(searchTerm));
+  const filteredPatients = useMemo(() => {
+    const hasFilter = searchTerm.trim() !== '' || filterStatus !== 'all' || filterTodayAppointments;
 
-    const matchesFilter = filterStatus === 'all' ||
-      (filterStatus === 'active' && patient.status !== 'passive') ||
-      (filterStatus === 'passive' && patient.status === 'passive');
+    // Arama/filtre aktifse tüm listede ara, yoksa sadece o anki sayfada filtrele
+    const source = hasFilter ? allPatients : patients;
 
-    const matchesTodayAppointment = !filterTodayAppointments || todayAppointmentPatientIds.has(patient.id);
+    return source.filter(patient => {
+      const matchesSearch = !searchTerm.trim() ||
+        patient.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (patient.tcNo && patient.tcNo.includes(searchTerm)) ||
+        (patient.email && patient.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (patient.phone && patient.phone.includes(searchTerm));
 
-    return matchesSearch && matchesFilter && matchesTodayAppointment;
-  });
+      const matchesFilter = filterStatus === 'all' ||
+        (filterStatus === 'active' && patient.status !== 'passive') ||
+        (filterStatus === 'passive' && patient.status === 'passive');
+
+      const matchesTodayAppointment = !filterTodayAppointments || todayAppointmentPatientIds.has(patient.id);
+
+      return matchesSearch && matchesFilter && matchesTodayAppointment;
+    });
+  }, [searchTerm, filterStatus, filterTodayAppointments, allPatients, patients, todayAppointmentPatientIds]);
+
+  const hasActiveFilter = searchTerm.trim() !== '' || filterStatus !== 'all' || filterTodayAppointments;
+
+  // Client-side pagination (arama/filtre aktifken)
+  const totalPages = hasActiveFilter
+    ? Math.ceil(filteredPatients.length / PATIENTS_PER_PAGE)
+    : Math.ceil(allPatients.length / PATIENTS_PER_PAGE);
+
+  const displayedPatients = hasActiveFilter
+    ? filteredPatients.slice((currentPage - 1) * PATIENTS_PER_PAGE, currentPage * PATIENTS_PER_PAGE)
+    : filteredPatients; // Firebase cursor pagination zaten sayfalı veriyi getiriyor
 
   if (loading) {
     return (
@@ -286,15 +315,15 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {[
-          { title: 'Toplam Hasta', value: patients.length.toString(), icon: '👥', color: 'from-blue-500 to-cyan-500' },
+          { title: 'Toplam Hasta', value: allPatients.length.toString(), icon: '👥', color: 'from-blue-500 to-cyan-500' },
           {
-            title: 'Bu Ay Yeni', value: patients.filter(p => {
+            title: 'Bu Ay Yeni', value: allPatients.filter(p => {
               const createdAt = new Date(p.createdAt);
               const now = new Date();
               return createdAt.getMonth() === now.getMonth() && createdAt.getFullYear() === now.getFullYear();
             }).length.toString(), icon: '🆕', color: 'from-yellow-500 to-orange-500'
           },
-          { title: 'Pasif Hasta', value: patients.filter(p => p.status === 'passive').length.toString(), icon: '⏸️', color: 'from-gray-500 to-gray-600' }
+          { title: 'Pasif Hasta', value: allPatients.filter(p => p.status === 'passive').length.toString(), icon: '⏸️', color: 'from-gray-500 to-gray-600' }
         ].map((stat, index) => (
           <div key={index} className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-5">
             <div className="flex items-center gap-3">
@@ -411,7 +440,7 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
             </div>
             <div>
               <div className="text-2xl font-bold text-white" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.4)' }}>
-                {patients.filter(p => (p as any).dischargeSurvey).length}
+                {allPatients.filter(p => (p as any).dischargeSurvey).length}
               </div>
               <div className="text-purple-100 text-sm font-semibold tracking-wide">Memnuniyet Anketi</div>
             </div>
@@ -549,7 +578,7 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10">
-              {filteredPatients.map((patient) => {
+              {displayedPatients.map((patient) => {
                 const needsMediaUpload = patient.optionalScans?.hasMediaGallery && (!patient.mediaFiles || patient.mediaFiles.length === 0);
                 return (
                   <tr key={patient.id} className={`transition-colors duration-200 ${needsMediaUpload
@@ -632,9 +661,67 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
           </table>
         </div>
 
-        {filteredPatients.length === 0 && (
+        {displayedPatients.length === 0 && (
           <div className="p-8 text-center">
             <div className="text-white/60">Hasta bulunamadı</div>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="p-4 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="text-white/60 text-sm">
+              {hasActiveFilter
+                ? `${filteredPatients.length} sonuçtan ${(currentPage - 1) * PATIENTS_PER_PAGE + 1}–${Math.min(currentPage * PATIENTS_PER_PAGE, filteredPatients.length)} gösteriliyor`
+                : `${allPatients.length} hastadan sayfa ${currentPage} / ${totalPages}`
+              }
+            </div>
+            <div className="flex items-center gap-1">
+              {/* Önceki */}
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-2 rounded-lg text-sm font-medium bg-white/10 border border-white/20 text-white/80 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200"
+              >
+                ← Önceki
+              </button>
+
+              {/* Sayfa numaraları */}
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(page => page === 1 || page === totalPages || Math.abs(page - currentPage) <= 2)
+                .reduce<(number | 'ellipsis')[]>((acc, page, idx, arr) => {
+                  if (idx > 0 && page - (arr[idx - 1] as number) > 1) acc.push('ellipsis');
+                  acc.push(page);
+                  return acc;
+                }, [])
+                .map((item, idx) =>
+                  item === 'ellipsis' ? (
+                    <span key={`ellipsis-${idx}`} className="px-2 py-2 text-white/40 text-sm">…</span>
+                  ) : (
+                    <button
+                      key={item}
+                      onClick={() => setCurrentPage(item as number)}
+                      className={`w-9 h-9 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        currentPage === item
+                          ? 'bg-green-500 text-white shadow-lg shadow-green-500/30 border border-green-400'
+                          : 'bg-white/10 border border-white/20 text-white/80 hover:bg-white/20'
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  )
+                )
+              }
+
+              {/* Sonraki */}
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-2 rounded-lg text-sm font-medium bg-white/10 border border-white/20 text-white/80 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200"
+              >
+                Sonraki →
+              </button>
+            </div>
           </div>
         )}
       </div>
