@@ -33,9 +33,12 @@ interface UsersProps {
   doctorProfile?: any;
 }
 
+const USERS_PER_PAGE = 10;
+
 const Users: React.FC<UsersProps> = ({ doctorProfile }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -208,6 +211,17 @@ const Users: React.FC<UsersProps> = ({ doctorProfile }) => {
     const matchesRole = filterRole === 'all' || user.role === filterRole;
     return matchesSearch && matchesRole;
   });
+
+  const totalPages = Math.ceil(filteredUsers.length / USERS_PER_PAGE);
+  const displayedUsers = filteredUsers.slice(
+    (currentPage - 1) * USERS_PER_PAGE,
+    currentPage * USERS_PER_PAGE
+  );
+
+  // Arama/filtre değiştiğinde sayfayı sıfırla
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterRole]);
 
   const getRoleColor = (role: string) => {
     switch (role) {
@@ -388,7 +402,7 @@ const Users: React.FC<UsersProps> = ({ doctorProfile }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10">
-              {filteredUsers.map((user) => (
+              {displayedUsers.map((user) => (
                 <tr key={user.id} className="hover:bg-white/5">
                   <td className="px-6 py-4">
                     <div>
@@ -475,6 +489,58 @@ const Users: React.FC<UsersProps> = ({ doctorProfile }) => {
             </div>
           )}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="p-4 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="text-white/60 text-sm">
+              {filteredUsers.length} kullanıcıdan {(currentPage - 1) * USERS_PER_PAGE + 1}–{Math.min(currentPage * USERS_PER_PAGE, filteredUsers.length)} gösteriliyor
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-2 rounded-lg text-sm font-medium bg-white/10 border border-white/20 text-white/80 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200"
+              >
+                ← Önceki
+              </button>
+
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(page => page === 1 || page === totalPages || Math.abs(page - currentPage) <= 2)
+                .reduce<(number | 'ellipsis')[]>((acc, page, idx, arr) => {
+                  if (idx > 0 && page - (arr[idx - 1] as number) > 1) acc.push('ellipsis');
+                  acc.push(page);
+                  return acc;
+                }, [])
+                .map((item, idx) =>
+                  item === 'ellipsis' ? (
+                    <span key={`ellipsis-${idx}`} className="px-2 py-2 text-white/40 text-sm">…</span>
+                  ) : (
+                    <button
+                      key={item}
+                      onClick={() => setCurrentPage(item as number)}
+                      className={`w-9 h-9 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        currentPage === item
+                          ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30 border border-blue-400'
+                          : 'bg-white/10 border border-white/20 text-white/80 hover:bg-white/20'
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  )
+                )
+              }
+
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-2 rounded-lg text-sm font-medium bg-white/10 border border-white/20 text-white/80 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200"
+              >
+                Sonraki →
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modals */}
