@@ -139,18 +139,60 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
     return () => clearInterval(interval);
   }, []);
 
+  // Helper function to fetch appointments with date range filters (lazy loading).
+  // IMPORTANT: Requires a Firestore composite index on the 'appointments' collection:
+  //   Field 1: clinicId  (Ascending)
+  //   Field 2: dateISO   (Ascending)
+  // Create it at: Firebase Console → Firestore → Indexes → Composite → Add index
+  const fetchAppointmentsInRange = async (startDate: string, endDate: string) => {
+    if (!doctorProfile?.clinicId) {
+      console.error('❌ Appointments: No clinicId found in doctorProfile');
+      return [];
+    }
+
+    console.log('🔍 Appointments: Fetching appointments for clinicId:', doctorProfile.clinicId, 'from', startDate, 'to', endDate);
+
+    // Lazy loading: only fetch documents within the visible date range
+    const q = query(
+      collection(db, 'appointments'),
+      where('clinicId', '==', doctorProfile.clinicId),
+      where('dateISO', '>=', startDate),
+      where('dateISO', '<=', endDate)
+    );
+
+    const snap = await getDocs(q);
+    const list = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+
+    list.sort((a, b) => {
+      const dateCompare = String(a.dateISO || '').localeCompare(String(b.dateISO || ''));
+      if (dateCompare !== 0) return dateCompare;
+      return String(a.start || '').localeCompare(String(b.start || ''));
+    });
+
+    // Additional filters (call center filters)
+    let filteredList = list;
+    if (filterPatientName) {
+      filteredList = filteredList.filter(a =>
+        a.patientName?.toLowerCase().includes(filterPatientName.toLowerCase())
+      );
+    }
+    if (filterStartDate) {
+      filteredList = filteredList.filter(a => a.dateISO >= filterStartDate);
+    }
+    if (filterEndDate) {
+      filteredList = filteredList.filter(a => a.dateISO <= filterEndDate);
+    }
+    if (filterStatus !== 'all') {
+      filteredList = filteredList.filter(a => a.status === filterStatus);
+    }
+
+    console.log('📅 Appointments: Found appointments:', filteredList.length);
+    return filteredList;
+  };
+
   // Fetch appointments based on view mode
   useEffect(() => {
     const fetchAppointments = async () => {
-      // Check if doctorProfile and clinicId exist
-      if (!doctorProfile?.clinicId) {
-        console.error('❌ Appointments: No clinicId found in doctorProfile');
-        setAppointments([]);
-        return;
-      }
-      
-      console.log('🔍 Appointments: Fetching appointments for clinicId:', doctorProfile.clinicId);
-      
       let startDate: string, endDate: string;
       
       if (viewMode === 'day') {
@@ -164,47 +206,9 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
         startDate = formatDateISO(start);
         endDate = formatDateISO(end);
       }
-      
-      // Fetch appointments with only clinicId filter to avoid composite index requirement
-      // Then filter by date on client side
-      const qDay = query(
-        collection(db, 'appointments'),
-        where('clinicId', '==', doctorProfile.clinicId)
-      );
-      const snap = await getDocs(qDay);
-      
-      // Client-side filtering by date range (clinic-wide; clinicId already scopes the query)
-      const allAppointments = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-      const list = allAppointments.filter(apt => {
-        const aptDate = apt.dateISO || '';
-        return aptDate >= startDate && aptDate <= endDate;
-      });
-      
-      list.sort((a,b) => {
-        const dateCompare = String(a.dateISO||'').localeCompare(String(b.dateISO||''));
-        if (dateCompare !== 0) return dateCompare;
-        return String(a.start||'').localeCompare(String(b.start||''));
-      });
-      
-      // Filtreleme
-      let filteredList = list;
-      if (filterPatientName) {
-        filteredList = filteredList.filter(a =>
-          a.patientName?.toLowerCase().includes(filterPatientName.toLowerCase())
-        );
-      }
-      if (filterStartDate) {
-        filteredList = filteredList.filter(a => a.dateISO >= filterStartDate);
-      }
-      if (filterEndDate) {
-        filteredList = filteredList.filter(a => a.dateISO <= filterEndDate);
-      }
-      if (filterStatus !== 'all') {
-        filteredList = filteredList.filter(a => a.status === filterStatus);
-      }
 
-      console.log('📅 Appointments: Found appointments:', filteredList.length);
-      setAppointments(filteredList);
+      const list = await fetchAppointmentsInRange(startDate, endDate);
+      setAppointments(list);
     };
     fetchAppointments();
   }, [dateISO, viewMode, selectedDate, doctorProfile?.clinicId, filterPatientName, filterStartDate, filterEndDate, filterStatus]);
@@ -1255,15 +1259,20 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
         }}
         onAdded={() => {
           (async () => {
-            if (!doctorProfile?.clinicId) return;
-            const qDay = query(
-              collection(db, 'appointments'),
-              where('clinicId', '==', doctorProfile.clinicId)
-            );
-            const snap = await getDocs(qDay);
-            const allAppointments = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-            const list = allAppointments.filter(apt => apt.dateISO === dateISO);
-            list.sort((a,b) => String(a.start||'').localeCompare(String(b.start||'')));
+            // Refresh appointments for the currently visible date range
+            let startDate: string, endDate: string;
+            if (viewMode === 'day') {
+              startDate = endDate = dateISO;
+            } else if (viewMode === 'week') {
+              const { start, end } = getWeekRange(selectedDate);
+              startDate = formatDateISO(start);
+              endDate = formatDateISO(end);
+            } else {
+              const { start, end } = getMonthRange(selectedDate);
+              startDate = formatDateISO(start);
+              endDate = formatDateISO(end);
+            }
+            const list = await fetchAppointmentsInRange(startDate, endDate);
             setAppointments(list);
 
             // If scheduling from a routine program, increment scheduledSessions
@@ -1322,29 +1331,37 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
         appointment={viewedAppointment}
         onCancelled={() => {
           (async () => {
-            if (!doctorProfile?.clinicId) return;
-            const qDay = query(
-              collection(db, 'appointments'),
-              where('clinicId', '==', doctorProfile.clinicId)
-            );
-            const snap = await getDocs(qDay);
-            const allAppointments = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-            const list = allAppointments.filter(apt => apt.dateISO === dateISO);
-            list.sort((a,b) => String(a.start||'').localeCompare(String(b.start||'')));
+            let startDate: string, endDate: string;
+            if (viewMode === 'day') {
+              startDate = endDate = dateISO;
+            } else if (viewMode === 'week') {
+              const { start, end } = getWeekRange(selectedDate);
+              startDate = formatDateISO(start);
+              endDate = formatDateISO(end);
+            } else {
+              const { start, end } = getMonthRange(selectedDate);
+              startDate = formatDateISO(start);
+              endDate = formatDateISO(end);
+            }
+            const list = await fetchAppointmentsInRange(startDate, endDate);
             setAppointments(list);
           })();
         }}
         onStatusUpdated={() => {
           (async () => {
-            if (!doctorProfile?.clinicId) return;
-            const qDay = query(
-              collection(db, 'appointments'),
-              where('clinicId', '==', doctorProfile.clinicId)
-            );
-            const snap = await getDocs(qDay);
-            const allAppointments = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-            const list = allAppointments.filter(apt => apt.dateISO === dateISO);
-            list.sort((a,b) => String(a.start||'').localeCompare(String(b.start||'')));
+            let startDate: string, endDate: string;
+            if (viewMode === 'day') {
+              startDate = endDate = dateISO;
+            } else if (viewMode === 'week') {
+              const { start, end } = getWeekRange(selectedDate);
+              startDate = formatDateISO(start);
+              endDate = formatDateISO(end);
+            } else {
+              const { start, end } = getMonthRange(selectedDate);
+              startDate = formatDateISO(start);
+              endDate = formatDateISO(end);
+            }
+            const list = await fetchAppointmentsInRange(startDate, endDate);
             setAppointments(list);
           })();
         }}
@@ -1363,15 +1380,19 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
         onClose={() => { setOpenMoveModal(false); setMovingAppointment(null); }}
         onMoved={() => {
           (async () => {
-            if (!doctorProfile?.clinicId) return;
-            const qDay = query(
-              collection(db, 'appointments'),
-              where('clinicId', '==', doctorProfile.clinicId)
-            );
-            const snap = await getDocs(qDay);
-            const allAppointments = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-            const list = allAppointments.filter(apt => apt.dateISO === dateISO);
-            list.sort((a,b) => String(a.start||'').localeCompare(String(b.start||'')));
+            let startDate: string, endDate: string;
+            if (viewMode === 'day') {
+              startDate = endDate = dateISO;
+            } else if (viewMode === 'week') {
+              const { start, end } = getWeekRange(selectedDate);
+              startDate = formatDateISO(start);
+              endDate = formatDateISO(end);
+            } else {
+              const { start, end } = getMonthRange(selectedDate);
+              startDate = formatDateISO(start);
+              endDate = formatDateISO(end);
+            }
+            const list = await fetchAppointmentsInRange(startDate, endDate);
             setAppointments(list);
           })();
         }}
