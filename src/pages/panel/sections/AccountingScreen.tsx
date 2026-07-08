@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { collection, query, where, onSnapshot, updateDoc, doc, getDocs, writeBatch, arrayUnion } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { utils, writeFile } from 'xlsx';
@@ -185,6 +185,80 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
   const [debtNote, setDebtNote] = useState<string>('');
   const [debtPaymentNote, setDebtPaymentNote] = useState<string>('');
   const [debtSearchQuery, setDebtSearchQuery] = useState<string>('');
+
+  // ── Pagination ────────────────────────────────────────────────────────────
+  const ITEMS_PER_PAGE = 10;
+  const [pendingPage, setPendingPage] = useState(1);
+  const [completedPage, setCompletedPage] = useState(1);
+  const [notAppliedPage, setNotAppliedPage] = useState(1);
+  const [debtPage, setDebtPage] = useState(1);
+
+  // Sekme değiştiğinde ilgili sayfayı sıfırla
+  useEffect(() => { setPendingPage(1); }, [pendingPaymentPatients.length]);
+  useEffect(() => { setCompletedPage(1); }, [paidPatients.length]);
+  useEffect(() => { setNotAppliedPage(1); }, [notAppliedTreatmentPatients.length]);
+  useEffect(() => { setDebtPage(1); }, [debtPatients.length]);
+  // Debt araması değişince sayfa 1'e dön
+  useEffect(() => { setDebtPage(1); }, [debtSearchQuery]);
+
+  // Borçlu hastalar için filtreli liste
+  const filteredDebtPatients = useMemo(
+    () => debtPatients.filter(p =>
+      p.fullName?.toLowerCase().includes(debtSearchQuery.toLowerCase())
+    ),
+    [debtPatients, debtSearchQuery]
+  );
+
+  // Her sekmenin görüntülenen (mevcut sayfaya ait) dilimi
+  const pendingPageItems = useMemo(
+    () => pendingPaymentPatients.slice((pendingPage - 1) * ITEMS_PER_PAGE, pendingPage * ITEMS_PER_PAGE),
+    [pendingPaymentPatients, pendingPage]
+  );
+  const completedPageItems = useMemo(
+    () => paidPatients.slice((completedPage - 1) * ITEMS_PER_PAGE, completedPage * ITEMS_PER_PAGE),
+    [paidPatients, completedPage]
+  );
+  const notAppliedPageItems = useMemo(
+    () => notAppliedTreatmentPatients.slice((notAppliedPage - 1) * ITEMS_PER_PAGE, notAppliedPage * ITEMS_PER_PAGE),
+    [notAppliedTreatmentPatients, notAppliedPage]
+  );
+  const debtPageItems = useMemo(
+    () => filteredDebtPatients.slice((debtPage - 1) * ITEMS_PER_PAGE, debtPage * ITEMS_PER_PAGE),
+    [filteredDebtPatients, debtPage]
+  );
+
+  // Aktif sekmenin görüntülenen kayıtları
+  const activePageItems = useMemo(() => {
+    if (activeListType === 'pending_payment') return pendingPageItems;
+    if (activeListType === 'completed_payment') return completedPageItems;
+    if (activeListType === 'not_applied_treatment') return notAppliedPageItems;
+    return debtPageItems;
+  }, [activeListType, pendingPageItems, completedPageItems, notAppliedPageItems, debtPageItems]);
+
+  // Aktif sekmenin toplam kayıt sayısı ve toplam sayfa sayısı
+  const activeTotalCount = useMemo(() => {
+    if (activeListType === 'pending_payment') return pendingPaymentPatients.length;
+    if (activeListType === 'completed_payment') return paidPatients.length;
+    if (activeListType === 'not_applied_treatment') return notAppliedTreatmentPatients.length;
+    return filteredDebtPatients.length;
+  }, [activeListType, pendingPaymentPatients.length, paidPatients.length, notAppliedTreatmentPatients.length, filteredDebtPatients.length]);
+
+  const activeTotalPages = Math.ceil(activeTotalCount / ITEMS_PER_PAGE);
+
+  const activePage = useMemo(() => {
+    if (activeListType === 'pending_payment') return pendingPage;
+    if (activeListType === 'completed_payment') return completedPage;
+    if (activeListType === 'not_applied_treatment') return notAppliedPage;
+    return debtPage;
+  }, [activeListType, pendingPage, completedPage, notAppliedPage, debtPage]);
+
+  const setActivePage = (page: number) => {
+    if (activeListType === 'pending_payment') setPendingPage(page);
+    else if (activeListType === 'completed_payment') setCompletedPage(page);
+    else if (activeListType === 'not_applied_treatment') setNotAppliedPage(page);
+    else setDebtPage(page);
+  };
+  // ─────────────────────────────────────────────────────────────────────────
   const [reportPeriod, setReportPeriod] = useState<string>('daily');
   // Report modal filters — applied on top of the loaded period; they drive both the
   // on-screen lists/summary and the exported Excel (only matching rows are exported).
@@ -247,9 +321,14 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       console.log('💰 AccountingScreen: Total patients in clinic:', allClinicPatients.length);
       
       // Filter patients with treatment_decided status (pending payment)
+      // Ayrıca treatment_continue + additionalTreatmentPending = true olan hastalar da bekleyen ödemeye girer
       const pendingPayments = allClinicPatients.filter(patient =>
-        patient.status === 'treatment_decided' &&
-        !patient.paymentCompleted
+        (
+          // Standart: tedavi kararı verilmiş, ödeme bekliyor
+          (patient.status === 'treatment_decided' && !patient.paymentCompleted) ||
+          // Ek tedavi: doktor ek tedavi istedi, ödeme henüz alınmadı
+          (patient.additionalTreatmentPending === true && !patient.paymentCompleted)
+        )
       ).sort((a, b) => {
         const dateA = new Date(a.treatmentStartedAt || a.createdAt).getTime();
         const dateB = new Date(b.treatmentStartedAt || b.createdAt).getTime();
@@ -266,7 +345,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         const dateA = new Date(b.paymentDate || b.updatedAt || b.createdAt).getTime();
         const dateB = new Date(a.paymentDate || a.updatedAt || a.createdAt).getTime();
         return dateA - dateB; // Most recent payments first
-      }).slice(0, 50); // Limit to last 50 payments
+      });
 
       console.log('💰 AccountingScreen: Completed payment patients:', completedPayments.length);
       setPaidPatients(completedPayments);
@@ -2079,12 +2158,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
         </div>
 
         <div className="divide-y divide-white/10">
-          {(activeListType === 'pending_payment' ? pendingPaymentPatients : 
-            activeListType === 'completed_payment' ? paidPatients : 
-            activeListType === 'debt_patients' ? debtPatients.filter(p => 
-              p.fullName?.toLowerCase().includes(debtSearchQuery.toLowerCase())
-            ) :
-            notAppliedTreatmentPatients).map((patient) => (
+          {activePageItems.map((patient) => (
             <div key={patient.id} className="p-6 hover:bg-white/5 transition-all duration-200">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
@@ -2381,10 +2455,7 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
             </div>
           ))}
 
-          {(activeListType === 'pending_payment' ? pendingPaymentPatients : 
-            activeListType === 'completed_payment' ? paidPatients : 
-            activeListType === 'not_applied_treatment' ? notAppliedTreatmentPatients :
-            debtPatients).length === 0 && (
+          {activeTotalCount === 0 && (
             <div className="p-12 text-center">
               <div className="text-6xl mb-4">
                 {activeListType === 'pending_payment' ? '⏳' : 
@@ -2410,6 +2481,62 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
             </div>
           )}
         </div>
+
+        {/* Pagination */}
+        {activeTotalPages > 1 && (
+          <div className="px-6 py-4 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="text-white/60 text-sm">
+              {activeTotalCount} kayıttan {(activePage - 1) * ITEMS_PER_PAGE + 1}–{Math.min(activePage * ITEMS_PER_PAGE, activeTotalCount)} gösteriliyor
+              {' '}• Sayfa {activePage} / {activeTotalPages}
+            </div>
+            <div className="flex items-center gap-1">
+              {/* Önceki */}
+              <button
+                onClick={() => setActivePage(Math.max(1, activePage - 1))}
+                disabled={activePage === 1}
+                className="px-3 py-2 rounded-lg text-sm font-medium bg-white/10 border border-white/20 text-white/80 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200"
+              >
+                ← Önceki
+              </button>
+
+              {/* Sayfa numaraları */}
+              {Array.from({ length: activeTotalPages }, (_, i) => i + 1)
+                .filter(page => page === 1 || page === activeTotalPages || Math.abs(page - activePage) <= 2)
+                .reduce<(number | 'ellipsis')[]>((acc, page, idx, arr) => {
+                  if (idx > 0 && page - (arr[idx - 1] as number) > 1) acc.push('ellipsis');
+                  acc.push(page);
+                  return acc;
+                }, [])
+                .map((item, idx) =>
+                  item === 'ellipsis' ? (
+                    <span key={`ellipsis-${idx}`} className="px-2 py-2 text-white/40 text-sm select-none">…</span>
+                  ) : (
+                    <button
+                      key={item}
+                      onClick={() => setActivePage(item as number)}
+                      className={`w-9 h-9 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        activePage === item
+                          ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30 border border-blue-400'
+                          : 'bg-white/10 border border-white/20 text-white/80 hover:bg-white/20'
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  )
+                )
+              }
+
+              {/* Sonraki */}
+              <button
+                onClick={() => setActivePage(Math.min(activeTotalPages, activePage + 1))}
+                disabled={activePage === activeTotalPages}
+                className="px-3 py-2 rounded-lg text-sm font-medium bg-white/10 border border-white/20 text-white/80 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200"
+              >
+                Sonraki →
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Payment Modal */}
