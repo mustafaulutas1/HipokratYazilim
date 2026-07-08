@@ -50,6 +50,7 @@ interface Patient {
     [key: string]: any;
   };
   mediaFiles?: any[];
+  photoURL?: string;
 }
 
 interface PatientsProps {
@@ -496,10 +497,16 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-gradient-to-br from-emerald-400 to-green-500 rounded-full flex items-center justify-center shadow-lg">
-                        <span className="text-white font-bold text-lg">
-                          {patient.fullName.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                        </span>
+                      <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 shadow-lg">
+                        {patient.photoURL ? (
+                          <img src={patient.photoURL} alt={patient.fullName} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-br from-emerald-400 to-green-500 flex items-center justify-center">
+                            <span className="text-white font-bold text-lg">
+                              {patient.fullName.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                            </span>
+                          </div>
+                        )}
                       </div>
                       <div>
                         <h3 className="text-white font-semibold">{patient.fullName}</h3>
@@ -587,10 +594,16 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
                     }`}>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                          <span className="text-white font-semibold">
-                            {patient.fullName.split(' ').map(n => n[0]).join('')}
-                          </span>
+                        <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0">
+                          {patient.photoURL ? (
+                            <img src={patient.photoURL} alt={patient.fullName} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+                              <span className="text-white font-semibold">
+                                {patient.fullName.split(' ').map(n => n[0]).join('')}
+                              </span>
+                            </div>
+                          )}
                         </div>
                         <div>
                           <div className="text-white font-semibold flex items-center gap-2">

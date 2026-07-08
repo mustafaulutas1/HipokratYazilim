@@ -111,6 +111,8 @@ interface Patient {
     newAmount: number;
     newMethods: Array<{ method: string; amount: number }>;
   }>;
+  // Profile photo
+  photoURL?: string;
 }
 
 interface PrescriptionMed {
@@ -169,6 +171,35 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<MediaFile | null>(null);
 
+  // ── Profil fotoğrafı ──────────────────────────────────────────────────────
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [localPhotoURL, setLocalPhotoURL] = useState<string | null>(null);
+  const photoInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !patient) return;
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowed.includes(file.type)) { toast.error('Sadece JPG, PNG, WEBP veya GIF yükleyebilirsiniz.'); return; }
+    if (file.size > 5 * 1024 * 1024) { toast.error('Dosya 5 MB\'dan küçük olmalıdır.'); return; }
+    setUploadingPhoto(true);
+    try {
+      const storageRef = ref(storage, `patients/${patient.id}/profile_${Date.now()}_${file.name}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      await updateDoc(doc(db, 'patients', patient.id), { photoURL: url, updatedAt: new Date().toISOString() });
+      setLocalPhotoURL(url);
+      onPatientUpdated?.();
+      toast.success('Profil fotoğrafı güncellendi.');
+    } catch (err) {
+      console.error('Photo upload error:', err);
+      toast.error('Fotoğraf yüklenirken hata oluştu.');
+    } finally {
+      setUploadingPhoto(false);
+      if (photoInputRef.current) photoInputRef.current.value = '';
+    }
+  };
+
   // ── Prescription (İlaç Bilgileri) state ──────────────────────────────────
   const [showPrescriptionEditor, setShowPrescriptionEditor] = useState(false);
   const [editMeds, setEditMeds] = useState<PrescriptionMed[]>([]);
@@ -196,6 +227,9 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
 
   // The effective patient: live doc if available, otherwise the passed-in prop.
   const livePat: Patient | null = livePatient ?? patient;
+
+  // Profil fotoğrafı: önce local state (yeni yüklendi), sonra live Firestore, sonra prop
+  const currentPhotoURL = localPhotoURL ?? livePat?.photoURL ?? null;
   // Dropdown option sources for the prescription editor.
   const [medicationOptions, setMedicationOptions] = useState<string[]>([]);
   const [staffOptions, setStaffOptions] = useState<string[]>([]);
@@ -909,10 +943,42 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
         <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-t-2xl">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-indigo-500 rounded-full flex items-center justify-center shadow-lg">
-                <span className="text-white text-2xl font-bold">
-                  {patient.fullName.split(' ').map(n => n[0]).join('')}
-                </span>
+              {/* Profil fotoğrafı — hover'da kalem gösterir */}
+              <div className="relative group">
+                <div
+                  className="w-16 h-16 rounded-full overflow-hidden shadow-lg cursor-pointer ring-2 ring-white/50 group-hover:ring-purple-400 transition-all"
+                  onClick={() => !uploadingPhoto && photoInputRef.current?.click()}
+                  title="Profil fotoğrafını değiştir"
+                >
+                  {currentPhotoURL ? (
+                    <img src={currentPhotoURL} alt={patient.fullName} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-purple-500 to-indigo-500 flex items-center justify-center">
+                      <span className="text-white text-2xl font-bold">
+                        {patient.fullName.split(' ').map(n => n[0]).join('')}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                {/* Hover overlay — kalem ikonu */}
+                <div
+                  className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                  onClick={() => !uploadingPhoto && photoInputRef.current?.click()}
+                >
+                  {uploadingPhoto ? (
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
+                  ) : (
+                    <span className="text-white text-lg">✏️</span>
+                  )}
+                </div>
+                {/* Hidden file input */}
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  className="hidden"
+                  onChange={handlePhotoChange}
+                />
               </div>
               <div>
                 <h2 className="text-3xl font-bold text-gray-800">{patient.fullName}</h2>
