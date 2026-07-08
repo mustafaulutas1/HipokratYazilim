@@ -148,6 +148,12 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const [filterCategory, setFilterCategory] = useState('all');
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  // Pagination — tüm listeler için ortak sayfa boyutu
+  const MED_PAGE_SIZE = 10;
+  const [medPage, setMedPage] = useState(0);
+  const [dsHistoryPage, setDsHistoryPage] = useState(0);
+  const [debtPage, setDebtPage] = useState(0);
+  const [devPage, setDevPage] = useState(0);
   // Payment modal states
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [pharmacyPaymentAmount, setPharmacyPaymentAmount] = useState<string>('');
@@ -2105,6 +2111,26 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     }));
   };
 
+  // Arama veya kategori değişince ilaçlar listesini 1. sayfaya döndür
+  useEffect(() => {
+    setMedPage(0);
+  }, [searchTerm, filterCategory, sortBy, sortOrder]);
+
+  // Direkt satış geçmişi araması değişince 1. sayfaya döndür
+  useEffect(() => {
+    setDsHistoryPage(0);
+  }, [dsHistorySearch]);
+
+  // Eczane borçları filtre/sıralama değişince 1. sayfaya döndür
+  useEffect(() => {
+    setDebtPage(0);
+  }, [pharmacyDebtSearchTerm, pharmacyDebtSortBy, pharmacyDebtTypeFilter]);
+
+  // Tıbbi cihazlar sıralama değişince 1. sayfaya döndür
+  useEffect(() => {
+    setDevPage(0);
+  }, [searchTerm, filterCategory, sortBy, sortOrder]);
+
   // Filter and sort medications
   const filteredAndSortedMedications = savedMedications
     .filter(med => {
@@ -2581,7 +2607,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                     </h3>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {filteredAndSortedMedications.map((medication) => (
+                    {filteredAndSortedMedications.slice(medPage * MED_PAGE_SIZE, (medPage + 1) * MED_PAGE_SIZE).map((medication) => (
                       <div 
                         key={medication.id} 
                         className={`bg-white/5 border rounded-xl p-4 transition-all duration-200 hover:bg-white/10 ${
@@ -2681,6 +2707,30 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       </div>
                     ))}
                   </div>
+
+                  {/* Pagination — 10'dan fazla ilaç varsa göster */}
+                  {filteredAndSortedMedications.length > MED_PAGE_SIZE && (
+                    <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/10">
+                      <button
+                        onClick={() => setMedPage(p => Math.max(0, p - 1))}
+                        disabled={medPage === 0}
+                        className="px-4 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed border border-white/20 rounded-xl text-white text-sm font-semibold transition-all"
+                      >
+                        ← Önceki
+                      </button>
+                      <span className="text-white/60 text-sm">
+                        {medPage + 1} / {Math.ceil(filteredAndSortedMedications.length / MED_PAGE_SIZE)}
+                        <span className="text-white/40 ml-2">({filteredAndSortedMedications.length} ilaç)</span>
+                      </span>
+                      <button
+                        onClick={() => setMedPage(p => Math.min(Math.ceil(filteredAndSortedMedications.length / MED_PAGE_SIZE) - 1, p + 1))}
+                        disabled={medPage >= Math.ceil(filteredAndSortedMedications.length / MED_PAGE_SIZE) - 1}
+                        className="px-4 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed border border-white/20 rounded-xl text-white text-sm font-semibold transition-all"
+                      >
+                        Sonraki →
+                      </button>
+                    </div>
+                  )}
                 </>
               )
               ) : activeTab === 'devices' ? (
@@ -2701,7 +2751,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                     </h3>
                   
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {filteredAndSortedDevices.map((device) => (
+                      {filteredAndSortedDevices.slice(devPage * MED_PAGE_SIZE, (devPage + 1) * MED_PAGE_SIZE).map((device) => (
                         <div 
                           key={device.id} 
                           className={`bg-white/5 border rounded-xl p-4 transition-all duration-200 hover:bg-white/10 ${
@@ -2789,6 +2839,30 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                         </div>
                       ))}
                     </div>
+
+                    {/* Pagination — tıbbi cihazlar */}
+                    {filteredAndSortedDevices.length > MED_PAGE_SIZE && (
+                      <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/10">
+                        <button
+                          onClick={() => setDevPage(p => Math.max(0, p - 1))}
+                          disabled={devPage === 0}
+                          className="px-4 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed border border-white/20 rounded-xl text-white text-sm font-semibold transition-all"
+                        >
+                          ← Önceki
+                        </button>
+                        <span className="text-white/60 text-sm">
+                          {devPage + 1} / {Math.ceil(filteredAndSortedDevices.length / MED_PAGE_SIZE)}
+                          <span className="text-white/40 ml-2">({filteredAndSortedDevices.length} cihaz)</span>
+                        </span>
+                        <button
+                          onClick={() => setDevPage(p => Math.min(Math.ceil(filteredAndSortedDevices.length / MED_PAGE_SIZE) - 1, p + 1))}
+                          disabled={devPage >= Math.ceil(filteredAndSortedDevices.length / MED_PAGE_SIZE) - 1}
+                          className="px-4 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed border border-white/20 rounded-xl text-white text-sm font-semibold transition-all"
+                        >
+                          Sonraki →
+                        </button>
+                      </div>
+                    )}
                   </>
                 )
               ) : null}
@@ -3076,8 +3150,8 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                       return type === 'treatment_patient' || type === 'mixed';
                     }).length})
                   </h3>
-                  <div className="space-y-3">
-                    {patientsWithDebt
+                  {(() => {
+                    const filteredDebts = patientsWithDebt
                       .filter(patient => {
                         const matchesSearch =
                           patient.patientName.toLowerCase().includes(pharmacyDebtSearchTerm.toLowerCase()) ||
@@ -3096,104 +3170,134 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                         } else {
                           return a.patientName.localeCompare(b.patientName);
                         }
-                      })
-                      .map((patient) => (
-                        <div
-                          key={patient.tcNo}
-                          className="bg-white/5 border border-red-400/30 hover:border-red-400/50 rounded-xl p-5 transition-all duration-200 hover:bg-white/10"
-                        >
-                          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                            {/* Patient Info */}
-                            <div className="flex items-start gap-4 flex-1">
-                              <div className="w-12 h-12 rounded-full flex items-center justify-center text-xl text-white bg-gradient-to-br from-red-500 to-orange-600">
-                                👤
-                              </div>
-                              <div className="flex-1">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <h4 className="text-lg font-semibold text-white">{patient.patientName}</h4>
-                                  <DebtTypeBadge debts={patient.debts} />
-                                </div>
-                                <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-white/60">
-                                  <span>TC: {patient.tcNo}</span>
-                                  {patient.phone && <span>📱 {patient.phone}</span>}
-                                  <span>Son Borç: {new Date(patient.lastDebtDate).toLocaleDateString('tr-TR')}</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Debt Stats */}
-                            <div className="flex flex-wrap items-center gap-4 md:flex-col md:items-end">
-                              <div className={`rounded-lg px-4 py-2 text-white font-semibold ${
-                                getPatientDebtType(patient.debts) === 'direct_sale'
-                                  ? 'bg-teal-700'
-                                  : getPatientDebtType(patient.debts) === 'mixed'
-                                  ? 'bg-orange-700'
-                                  : 'bg-purple-700'
-                              }`}>
-                                <div className="text-xs opacity-70">Toplam Borç</div>
-                                <div className="text-lg">
-                                  {patient.totalDebt.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
-                                </div>
-                              </div>
-                              <div className="bg-yellow-600 rounded-lg px-4 py-2 text-white font-semibold">
-                                <div className="text-xs text-yellow-200">İşlem Sayısı</div>
-                                <div className="text-lg">{patient.debtCount}</div>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Debt Details + Pay Button */}
-                          <div className="mt-4 pt-4 border-t border-white/10 flex flex-col gap-3">
-                            <button
-                              onClick={() => handleOpenDebtPaymentFromDebtList(patient)}
-                              className="w-full py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 shadow-lg hover:shadow-green-500/25"
+                      });
+                    return (
+                      <>
+                        <div className="space-y-3">
+                          {filteredDebts.slice(debtPage * MED_PAGE_SIZE, (debtPage + 1) * MED_PAGE_SIZE).map((patient) => (
+                            <div
+                              key={patient.tcNo}
+                              className="bg-white/5 border border-red-400/30 hover:border-red-400/50 rounded-xl p-5 transition-all duration-200 hover:bg-white/10"
                             >
-                              💳 Borç Öde
-                            </button>
-                            <details className="cursor-pointer group">
-                              <summary className="flex items-center justify-between text-sm text-white/70 hover:text-white transition-colors">
-                                <span className="flex items-center gap-2">
-                                  <span>📝</span>
-                                  Borç Detayları ({patient.debtCount})
-                                </span>
-                                <span className="text-lg group-open:rotate-180 transition-transform">›</span>
-                              </summary>
-                              <div className="mt-3 space-y-2">
-                                {patient.debts.map((debt: any, idx: number) => (
-                                  <div key={idx} className={`rounded-lg p-3 border ${
-                                    (debt.debtSource === 'direct_sale' || debt.reason?.includes('Direkt'))
-                                      ? 'bg-teal-900/30 border-teal-500/20'
-                                      : 'bg-purple-900/30 border-purple-500/20'
-                                  }`}>
-                                    <div className="flex items-center justify-between">
-                                      <div className="text-sm">
-                                        <div className="flex items-center gap-2 mb-0.5">
-                                          {(debt.debtSource === 'direct_sale' || debt.reason?.includes('Direkt'))
-                                            ? <span className="text-teal-300 text-xs">🛒 Eczane Satışı</span>
-                                            : <span className="text-purple-300 text-xs">💊 Tedavi Hastası</span>
-                                          }
-                                        </div>
-                                        <p className="text-white font-medium">
-                                          {debt.amount?.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
-                                        </p>
-                                        <p className="text-white/50 text-xs">
-                                          {new Date(debt.createdAt).toLocaleDateString('tr-TR')} {new Date(debt.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
-                                        </p>
-                                      </div>
-                                      {debt.reason && (
-                                        <div className="text-right">
-                                          <p className="text-white/60 text-xs">{debt.reason}</p>
-                                        </div>
-                                      )}
+                              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                                {/* Patient Info */}
+                                <div className="flex items-start gap-4 flex-1">
+                                  <div className="w-12 h-12 rounded-full flex items-center justify-center text-xl text-white bg-gradient-to-br from-red-500 to-orange-600">
+                                    👤
+                                  </div>
+                                  <div className="flex-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <h4 className="text-lg font-semibold text-white">{patient.patientName}</h4>
+                                      <DebtTypeBadge debts={patient.debts} />
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-white/60">
+                                      <span>TC: {patient.tcNo}</span>
+                                      {patient.phone && <span>📱 {patient.phone}</span>}
+                                      <span>Son Borç: {new Date(patient.lastDebtDate).toLocaleDateString('tr-TR')}</span>
                                     </div>
                                   </div>
-                                ))}
+                                </div>
+
+                                {/* Debt Stats */}
+                                <div className="flex flex-wrap items-center gap-4 md:flex-col md:items-end">
+                                  <div className={`rounded-lg px-4 py-2 text-white font-semibold ${
+                                    getPatientDebtType(patient.debts) === 'direct_sale'
+                                      ? 'bg-teal-700'
+                                      : getPatientDebtType(patient.debts) === 'mixed'
+                                      ? 'bg-orange-700'
+                                      : 'bg-purple-700'
+                                  }`}>
+                                    <div className="text-xs opacity-70">Toplam Borç</div>
+                                    <div className="text-lg">
+                                      {patient.totalDebt.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                                    </div>
+                                  </div>
+                                  <div className="bg-yellow-600 rounded-lg px-4 py-2 text-white font-semibold">
+                                    <div className="text-xs text-yellow-200">İşlem Sayısı</div>
+                                    <div className="text-lg">{patient.debtCount}</div>
+                                  </div>
+                                </div>
                               </div>
-                            </details>
-                          </div>
+
+                              {/* Debt Details + Pay Button */}
+                              <div className="mt-4 pt-4 border-t border-white/10 flex flex-col gap-3">
+                                <button
+                                  onClick={() => handleOpenDebtPaymentFromDebtList(patient)}
+                                  className="w-full py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 shadow-lg hover:shadow-green-500/25"
+                                >
+                                  💳 Borç Öde
+                                </button>
+                                <details className="cursor-pointer group">
+                                  <summary className="flex items-center justify-between text-sm text-white/70 hover:text-white transition-colors">
+                                    <span className="flex items-center gap-2">
+                                      <span>📝</span>
+                                      Borç Detayları ({patient.debtCount})
+                                    </span>
+                                    <span className="text-lg group-open:rotate-180 transition-transform">›</span>
+                                  </summary>
+                                  <div className="mt-3 space-y-2">
+                                    {patient.debts.map((debt: any, idx: number) => (
+                                      <div key={idx} className={`rounded-lg p-3 border ${
+                                        (debt.debtSource === 'direct_sale' || debt.reason?.includes('Direkt'))
+                                          ? 'bg-teal-900/30 border-teal-500/20'
+                                          : 'bg-purple-900/30 border-purple-500/20'
+                                      }`}>
+                                        <div className="flex items-center justify-between">
+                                          <div className="text-sm">
+                                            <div className="flex items-center gap-2 mb-0.5">
+                                              {(debt.debtSource === 'direct_sale' || debt.reason?.includes('Direkt'))
+                                                ? <span className="text-teal-300 text-xs">🛒 Eczane Satışı</span>
+                                                : <span className="text-purple-300 text-xs">💊 Tedavi Hastası</span>
+                                              }
+                                            </div>
+                                            <p className="text-white font-medium">
+                                              {debt.amount?.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL
+                                            </p>
+                                            <p className="text-white/50 text-xs">
+                                              {new Date(debt.createdAt).toLocaleDateString('tr-TR')} {new Date(debt.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                                            </p>
+                                          </div>
+                                          {debt.reason && (
+                                            <div className="text-right">
+                                              <p className="text-white/60 text-xs">{debt.reason}</p>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </details>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                  </div>
+
+                        {/* Pagination — eczane borçları */}
+                        {filteredDebts.length > MED_PAGE_SIZE && (
+                          <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/10">
+                            <button
+                              onClick={() => setDebtPage(p => Math.max(0, p - 1))}
+                              disabled={debtPage === 0}
+                              className="px-4 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed border border-white/20 rounded-xl text-white text-sm font-semibold transition-all"
+                            >
+                              ← Önceki
+                            </button>
+                            <span className="text-white/60 text-sm">
+                              {debtPage + 1} / {Math.ceil(filteredDebts.length / MED_PAGE_SIZE)}
+                              <span className="text-white/40 ml-2">({filteredDebts.length} hasta)</span>
+                            </span>
+                            <button
+                              onClick={() => setDebtPage(p => Math.min(Math.ceil(filteredDebts.length / MED_PAGE_SIZE) - 1, p + 1))}
+                              disabled={debtPage >= Math.ceil(filteredDebts.length / MED_PAGE_SIZE) - 1}
+                              className="px-4 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed border border-white/20 rounded-xl text-white text-sm font-semibold transition-all"
+                            >
+                              Sonraki →
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </>
               )}
             </div>
@@ -3325,7 +3429,7 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-white/5">
-                            {filtered.map((sale) => (
+                            {filtered.slice(dsHistoryPage * MED_PAGE_SIZE, (dsHistoryPage + 1) * MED_PAGE_SIZE).map((sale) => (
                               <tr key={sale.id} className="hover:bg-white/5 transition-colors">
                                 <td className="px-4 py-3 text-white/70 text-sm whitespace-nowrap">
                                   {sale.createdAt ? new Date(sale.createdAt).toLocaleDateString('tr-TR') : '-'}
@@ -3403,6 +3507,30 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
                           </tbody>
                         </table>
                       </div>
+
+                      {/* Pagination — direkt satış geçmişi */}
+                      {filtered.length > MED_PAGE_SIZE && (
+                        <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/10">
+                          <button
+                            onClick={() => setDsHistoryPage(p => Math.max(0, p - 1))}
+                            disabled={dsHistoryPage === 0}
+                            className="px-4 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed border border-white/20 rounded-xl text-white text-sm font-semibold transition-all"
+                          >
+                            ← Önceki
+                          </button>
+                          <span className="text-white/60 text-sm">
+                            {dsHistoryPage + 1} / {Math.ceil(filtered.length / MED_PAGE_SIZE)}
+                            <span className="text-white/40 ml-2">({filtered.length} satış)</span>
+                          </span>
+                          <button
+                            onClick={() => setDsHistoryPage(p => Math.min(Math.ceil(filtered.length / MED_PAGE_SIZE) - 1, p + 1))}
+                            disabled={dsHistoryPage >= Math.ceil(filtered.length / MED_PAGE_SIZE) - 1}
+                            className="px-4 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed border border-white/20 rounded-xl text-white text-sm font-semibold transition-all"
+                          >
+                            Sonraki →
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
