@@ -55,6 +55,10 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
   const [nextAppRequests, setNextAppRequests] = useState<any[]>([]);
   const [schedulingReqId, setSchedulingReqId] = useState<string | null>(null);
 
+  // Sağ panel listesi pagination
+  const PAGE_SIZE = 10;
+  const [listPage, setListPage] = useState(0);
+
 
   // Utils for time math
   const timeToMinutes = (t: string) => {
@@ -108,6 +112,11 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
     }
     return list;
   }, [appointments, calendarPatientFilter, hideCancelled]);
+
+  // Filtre, tarih veya görünüm modu değişince listeyi 1. sayfaya döndür
+  useEffect(() => {
+    setListPage(0);
+  }, [viewMode, selectedDate, filterPatientName, filterStartDate, filterEndDate, filterStatus, calendarPatientFilter, hideCancelled]);
 
   // Get week range for weekly view
   const getWeekRange = (date: Date) => {
@@ -1212,7 +1221,7 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
             ) : filteredAppointments.length === 0 ? (
               <div className="text-white/40 text-center py-8">Randevu bulunamadı</div>
             ) : (
-              filteredAppointments.map((appointment) => (
+              filteredAppointments.slice(listPage * PAGE_SIZE, (listPage + 1) * PAGE_SIZE).map((appointment) => (
                 <div
                   key={appointment.id}
                   className="bg-white/5 rounded-xl p-4 cursor-pointer hover:bg-white/10 transition-colors"
@@ -1236,6 +1245,30 @@ const Appointments: React.FC<AppointmentsProps> = ({ doctorProfile, onSectionCha
               ))
             )}
           </div>
+
+          {/* Pagination — sadece normal liste için (hasta filtresi aktif değilken) */}
+          {!calendarPatientFilter && filteredAppointments.length > PAGE_SIZE && (
+            <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/10">
+              <button
+                onClick={() => setListPage(p => Math.max(0, p - 1))}
+                disabled={listPage === 0}
+                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed border border-white/20 rounded-lg text-white text-sm font-semibold transition-all"
+              >
+                ← Önceki
+              </button>
+              <span className="text-white/60 text-sm">
+                {listPage + 1} / {Math.ceil(filteredAppointments.length / PAGE_SIZE)}
+                <span className="text-white/40 ml-2">({filteredAppointments.length} randevu)</span>
+              </span>
+              <button
+                onClick={() => setListPage(p => Math.min(Math.ceil(filteredAppointments.length / PAGE_SIZE) - 1, p + 1))}
+                disabled={listPage >= Math.ceil(filteredAppointments.length / PAGE_SIZE) - 1}
+                className="px-3 py-1.5 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed border border-white/20 rounded-lg text-white text-sm font-semibold transition-all"
+              >
+                Sonraki →
+              </button>
+            </div>
+          )}
         </div>
       </div>
       </>}
