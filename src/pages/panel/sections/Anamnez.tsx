@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { collection, getDocs, query, where, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import AnamrezFormModal from './AnamrezFormModal';
@@ -87,6 +87,27 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
   const [activeTab, setActiveTab] = useState<'pending' | 'completed' | 'pastHistory' | 'routine'>('pending');
   const [, setIsEditMode] = useState(false);
   const [, setEditingAnamrezRecord] = useState<AnamrezRecord | null>(null);
+
+  // ── Pagination ────────────────────────────────────────────────────────────
+  const ITEMS_PER_PAGE = 10;
+  const [pendingPage, setPendingPage] = useState(1);
+  const [completedPage, setCompletedPage] = useState(1);
+  const [pastHistoryPage, setPastHistoryPage] = useState(1);
+  const [routinePage, setRoutinePage] = useState(1);
+
+  // Arama değişince ilgili sekmenin sayfasını sıfırla
+  useEffect(() => { setPendingPage(1); }, [searchTerm]);
+  useEffect(() => { setCompletedPage(1); }, [completedSearchTerm]);
+  useEffect(() => { setPastHistoryPage(1); }, [pastHistorySearchTerm]);
+  useEffect(() => { setRoutinePage(1); }, [routineSearchTerm]);
+  // Sekme değişince sayfayı sıfırla
+  useEffect(() => {
+    setPendingPage(1);
+    setCompletedPage(1);
+    setPastHistoryPage(1);
+    setRoutinePage(1);
+  }, [activeTab]);
+  // ─────────────────────────────────────────────────────────────────────────
 
   // Fetch anamnez records and patients
   const fetchData = async () => {
@@ -189,6 +210,90 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
   const filteredRoutineRecords = routineAnamnezRecords.filter(record =>
     record.patientName.toLowerCase().includes(routineSearchTerm.toLowerCase())
   );
+
+  // ── Sayfalı dilimler ──────────────────────────────────────────────────────
+  const pagedPendingRecords = useMemo(
+    () => filteredPendingRecords.slice((pendingPage - 1) * ITEMS_PER_PAGE, pendingPage * ITEMS_PER_PAGE),
+    [filteredPendingRecords, pendingPage]
+  );
+  const pagedCompletedRecords = useMemo(
+    () => filteredCompletedRecords.slice((completedPage - 1) * ITEMS_PER_PAGE, completedPage * ITEMS_PER_PAGE),
+    [filteredCompletedRecords, completedPage]
+  );
+  const pagedPastHistoryRecords = useMemo(
+    () => filteredPastHistoryRecords.slice((pastHistoryPage - 1) * ITEMS_PER_PAGE, pastHistoryPage * ITEMS_PER_PAGE),
+    [filteredPastHistoryRecords, pastHistoryPage]
+  );
+  const pagedRoutineRecords = useMemo(
+    () => filteredRoutineRecords.slice((routinePage - 1) * ITEMS_PER_PAGE, routinePage * ITEMS_PER_PAGE),
+    [filteredRoutineRecords, routinePage]
+  );
+
+  // Pagination UI yardımcısı — ortak yapı
+  const renderPagination = (
+    total: number,
+    currentPage: number,
+    setPage: (p: number) => void,
+    accentColor: string // tailwind color key: orange | green | purple | pink
+  ) => {
+    const totalPages = Math.ceil(total / ITEMS_PER_PAGE);
+    if (totalPages <= 1) return null;
+    const colorMap: Record<string, string> = {
+      orange: 'bg-orange-500 border-orange-400 shadow-orange-500/30',
+      green:  'bg-green-500  border-green-400  shadow-green-500/30',
+      purple: 'bg-purple-500 border-purple-400 shadow-purple-500/30',
+      pink:   'bg-pink-500   border-pink-400   shadow-pink-500/30',
+    };
+    const activeClass = colorMap[accentColor] ?? colorMap.orange;
+    return (
+      <div className="pt-3 flex flex-col items-center gap-2">
+        <p className="text-white/50 text-xs">
+          {total} kayıttan {(currentPage - 1) * ITEMS_PER_PAGE + 1}–{Math.min(currentPage * ITEMS_PER_PAGE, total)} · Sayfa {currentPage}/{totalPages}
+        </p>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setPage(Math.max(1, currentPage - 1))}
+            disabled={currentPage === 1}
+            className="px-2 py-1 rounded-lg text-xs bg-white/10 border border-white/20 text-white/70 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+          >
+            ←
+          </button>
+          {Array.from({ length: totalPages }, (_, i) => i + 1)
+            .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+            .reduce<(number | 'ellipsis')[]>((acc, p, idx, arr) => {
+              if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push('ellipsis');
+              acc.push(p);
+              return acc;
+            }, [])
+            .map((item, idx) =>
+              item === 'ellipsis' ? (
+                <span key={`e-${idx}`} className="px-1 text-white/30 text-xs">…</span>
+              ) : (
+                <button
+                  key={item}
+                  onClick={() => setPage(item as number)}
+                  className={`w-7 h-7 rounded-lg text-xs font-medium transition-all ${
+                    currentPage === item
+                      ? `${activeClass} text-white shadow-lg border`
+                      : 'bg-white/10 border border-white/20 text-white/70 hover:bg-white/20'
+                  }`}
+                >
+                  {item}
+                </button>
+              )
+            )}
+          <button
+            onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+            disabled={currentPage === totalPages}
+            className="px-2 py-1 rounded-lg text-xs bg-white/10 border border-white/20 text-white/70 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+          >
+            →
+          </button>
+        </div>
+      </div>
+    );
+  };
+  // ─────────────────────────────────────────────────────────────────────────
 
   // Get patient by ID
   const getPatientById = (patientId: string): Patient | undefined => {
@@ -415,14 +520,15 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
               </div>
 
               {/* Pending Anamnez Records List */}
-              <div className="space-y-2 max-h-96 overflow-y-auto admin-panel-scrollbar">
+              <div className="space-y-2">
                 {filteredPendingRecords.length === 0 ? (
                   <div className="text-center py-8">
                     <div className="text-white/50 text-lg mb-2">📋</div>
                     <p className="text-white/70 text-sm">Anamnez bekleyen kayıt bulunmuyor.</p>
                   </div>
                 ) : (
-                  filteredPendingRecords.map((record) => {
+                  <>
+                  {pagedPendingRecords.map((record) => {
                     return (
                       <div
                         key={record.id}
@@ -464,7 +570,9 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                         </div>
                       </div>
                     );
-                  })
+                  })}
+                  {renderPagination(filteredPendingRecords.length, pendingPage, setPendingPage, 'orange')}
+                  </>
                 )}
               </div>
             </>
@@ -489,14 +597,15 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
               </div>
 
               {/* Completed Anamnez Records List */}
-              <div className="space-y-2 max-h-96 overflow-y-auto admin-panel-scrollbar">
+              <div className="space-y-2">
                 {filteredCompletedRecords.length === 0 ? (
                   <div className="text-center py-8">
                     <div className="text-white/50 text-lg mb-2">✅</div>
                     <p className="text-white/70 text-sm">Tamamlanan anamnez kaydı bulunmuyor.</p>
                   </div>
                 ) : (
-                  filteredCompletedRecords.map((record) => {
+                  <>
+                  {pagedCompletedRecords.map((record) => {
                     return (
                       <div
                         key={record.id}
@@ -527,7 +636,9 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                         </div>
                       </div>
                     );
-                  })
+                  })}
+                  {renderPagination(filteredCompletedRecords.length, completedPage, setCompletedPage, 'green')}
+                  </>
                 )}
               </div>
             </>
@@ -549,14 +660,15 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                   />
                 </div>
               </div>
-              <div className="space-y-2 max-h-96 overflow-y-auto admin-panel-scrollbar">
+              <div className="space-y-2">
                 {filteredRoutineRecords.length === 0 ? (
                   <div className="text-center py-8">
                     <div className="text-white/50 text-lg mb-2">💜</div>
                     <p className="text-white/70 text-sm">Rutin anamnez kaydı bulunmuyor.</p>
                   </div>
                 ) : (
-                  filteredRoutineRecords.map((record) => (
+                  <>
+                  {pagedRoutineRecords.map((record) => (
                     <div
                       key={record.id}
                       onClick={() => handleSelectAnamrezRecord(record)}
@@ -583,7 +695,9 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                         </div>
                       </div>
                     </div>
-                  ))
+                  ))}
+                  {renderPagination(filteredRoutineRecords.length, routinePage, setRoutinePage, 'pink')}
+                  </>
                 )}
               </div>
             </>
@@ -608,7 +722,7 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
               </div>
 
               {/* Past History Records List */}
-              <div className="space-y-2 max-h-96 overflow-y-auto admin-panel-scrollbar">
+              <div className="space-y-2">
                 {filteredPastHistoryRecords.length === 0 ? (
                   <div className="text-center py-8">
                     <div className="text-white/50 text-lg mb-2">📜</div>
@@ -616,7 +730,8 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                     <p className="text-white/50 text-xs mt-2">Hasta Yönetimi sayfasından 📜 butonunu kullanarak geçmiş kayıt ekleyebilirsiniz.</p>
                   </div>
                 ) : (
-                  filteredPastHistoryRecords.map((record) => {
+                  <>
+                  {pagedPastHistoryRecords.map((record) => {
                     return (
                       <div
                         key={record.id}
@@ -645,7 +760,9 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                         </div>
                       </div>
                     );
-                  })
+                  })}
+                  {renderPagination(filteredPastHistoryRecords.length, pastHistoryPage, setPastHistoryPage, 'purple')}
+                  </>
                 )}
               </div>
             </>
