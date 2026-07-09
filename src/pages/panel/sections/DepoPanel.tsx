@@ -29,9 +29,6 @@ const DEPO_CATEGORIES: { key: DepoCategory; label: string; icon: string; accent:
   { key: 'temizlik', label: 'Temizlik Deposu', icon: '🧹', accent: 'teal' },
   { key: 'sarf', label: 'Sarf Malzeme', icon: '💉', accent: 'rose' },
 ];
-// Asistan rolünün depoda görebileceği kategoriler
-const ASISTAN_CATEGORIES: DepoCategory[] = ['temizlik', 'kirtasiye'];
-
 interface DepoUrun {
   id?: string;
   productName: string;
