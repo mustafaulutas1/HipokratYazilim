@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, updateDoc, doc, onSnapshot, getDocs, addDoc, getDoc, increment } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import AdditionalTreatmentRequestModal from '../components/AdditionalTreatmentRequestModal';
@@ -215,7 +215,7 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
         const dateA = new Date(b.updatedAt || b.createdAt).getTime();
         const dateB = new Date(a.updatedAt || a.createdAt).getTime();
         return dateA - dateB; // Most recent treatments first
-      }).slice(0, 50); // Limit to last 50 treatments
+      });
 
       console.log('🏥 TreatmentPanel: Completed treatment patients:', completedTreatments.length);
       setCompletedTreatmentPatients(completedTreatments);
@@ -702,6 +702,25 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
       )
     : activeList;
 
+  // ── Pagination ────────────────────────────────────────────────────────────
+  const ITEMS_PER_PAGE = 10;
+  const [pendingPage, setPendingPage] = useState(1);
+  const [completedPage, setCompletedPage] = useState(1);
+
+  // Liste veya arama değişince sayfayı sıfırla
+  useEffect(() => { setPendingPage(1); }, [pendingTreatmentPatients.length, patientSearch]);
+  useEffect(() => { setCompletedPage(1); }, [completedTreatmentPatients.length, patientSearch]);
+
+  const currentPage = activeListType === 'pending_treatment' ? pendingPage : completedPage;
+  const setCurrentPage = activeListType === 'pending_treatment' ? setPendingPage : setCompletedPage;
+  const totalPages = Math.ceil(filteredPatients.length / ITEMS_PER_PAGE);
+
+  const pagedPatients = useMemo(
+    () => filteredPatients.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE),
+    [filteredPatients, currentPage]
+  );
+  // ─────────────────────────────────────────────────────────────────────────
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -852,7 +871,7 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
         </div>
 
         <div className="divide-y divide-white/10">
-          {filteredPatients.map((patient) => (
+          {pagedPatients.map((patient) => (
             <div key={patient.id + '_' + ((patient as TreatmentSession)._sessionId || 'default')} className="p-6 hover:bg-white/5 transition-all duration-200">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
@@ -1047,6 +1066,56 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
                     : 'Henüz tamamlanan tedavi kaydı bulunmuyor.'
                 }
               </p>
+            </div>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="px-6 py-4 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="text-white/60 text-sm">
+                {filteredPatients.length} kayıttan {(currentPage - 1) * ITEMS_PER_PAGE + 1}–{Math.min(currentPage * ITEMS_PER_PAGE, filteredPatients.length)} gösteriliyor
+                {' '}• Sayfa {currentPage} / {totalPages}
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-2 rounded-lg text-sm font-medium bg-white/10 border border-white/20 text-white/80 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200"
+                >
+                  ← Önceki
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+                  .reduce<(number | 'ellipsis')[]>((acc, p, idx, arr) => {
+                    if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push('ellipsis');
+                    acc.push(p);
+                    return acc;
+                  }, [])
+                  .map((item, idx) =>
+                    item === 'ellipsis' ? (
+                      <span key={`e-${idx}`} className="px-2 text-white/40 text-sm select-none">…</span>
+                    ) : (
+                      <button
+                        key={item}
+                        onClick={() => setCurrentPage(item as number)}
+                        className={`w-9 h-9 rounded-lg text-sm font-medium transition-all duration-200 ${
+                          currentPage === item
+                            ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30 border border-blue-400'
+                            : 'bg-white/10 border border-white/20 text-white/80 hover:bg-white/20'
+                        }`}
+                      >
+                        {item}
+                      </button>
+                    )
+                  )}
+                <button
+                  onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-2 rounded-lg text-sm font-medium bg-white/10 border border-white/20 text-white/80 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200"
+                >
+                  Sonraki →
+                </button>
+              </div>
             </div>
           )}
         </div>
