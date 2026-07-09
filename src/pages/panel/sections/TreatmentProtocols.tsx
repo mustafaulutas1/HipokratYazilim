@@ -121,6 +121,9 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
   const [loading, setLoading] = useState(false);
   const [editingProtocol, setEditingProtocol] = useState<SavedProtocol | null>(null);
   const [isEditingStandardProtocol, setIsEditingStandardProtocol] = useState(false);
+  // Kaydedilmiş Protokoller listesi pagination
+  const PROTOCOL_PAGE_SIZE = 10;
+  const [protocolPage, setProtocolPage] = useState(0);
   
   // Application management state
   const [showApplicationModal, setShowApplicationModal] = useState(false);
@@ -556,7 +559,7 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
               </h2>
               
               <div className="space-y-4">
-                {savedProtocols.map((protocol) => (
+                {savedProtocols.slice(protocolPage * PROTOCOL_PAGE_SIZE, (protocolPage + 1) * PROTOCOL_PAGE_SIZE).map((protocol) => (
                   <div key={protocol.id} className="bg-white/5 border border-white/20 rounded-xl p-4">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
@@ -616,6 +619,30 @@ const TreatmentProtocols: React.FC<TreatmentProtocolsProps> = ({ doctorProfile }
                   </div>
                 ))}
               </div>
+
+              {/* Pagination */}
+              {savedProtocols.length > PROTOCOL_PAGE_SIZE && (
+                <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/10">
+                  <button
+                    onClick={() => setProtocolPage(p => Math.max(0, p - 1))}
+                    disabled={protocolPage === 0}
+                    className="px-4 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed border border-white/20 rounded-xl text-white text-sm font-semibold transition-all"
+                  >
+                    ← Önceki
+                  </button>
+                  <span className="text-white/60 text-sm">
+                    {protocolPage + 1} / {Math.ceil(savedProtocols.length / PROTOCOL_PAGE_SIZE)}
+                    <span className="text-white/40 ml-2">({savedProtocols.length} protokol)</span>
+                  </span>
+                  <button
+                    onClick={() => setProtocolPage(p => Math.min(Math.ceil(savedProtocols.length / PROTOCOL_PAGE_SIZE) - 1, p + 1))}
+                    disabled={protocolPage >= Math.ceil(savedProtocols.length / PROTOCOL_PAGE_SIZE) - 1}
+                    className="px-4 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed border border-white/20 rounded-xl text-white text-sm font-semibold transition-all"
+                  >
+                    Sonraki →
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </>
