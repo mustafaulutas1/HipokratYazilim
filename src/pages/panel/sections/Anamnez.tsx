@@ -191,24 +191,24 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
     fetchData();
   }, [doctorProfile]);
 
-  // Filter pending anamnez records by patient name
+  // Filter pending anamnez records by patient name (en az 3 harf gerekli)
   const filteredPendingRecords = pendingAnamrezRecords.filter(record =>
-    record.patientName.toLowerCase().includes(searchTerm.toLowerCase())
+    searchTerm.length < 3 || record.patientName.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Filter completed anamnez records by patient name
+  // Filter completed anamnez records by patient name (en az 3 harf gerekli)
   const filteredCompletedRecords = completedAnamrezRecords.filter(record =>
-    record.patientName.toLowerCase().includes(completedSearchTerm.toLowerCase())
+    completedSearchTerm.length < 3 || record.patientName.toLowerCase().includes(completedSearchTerm.toLowerCase())
   );
 
-  // Filter past history records by patient name
+  // Filter past history records by patient name (en az 3 harf gerekli)
   const filteredPastHistoryRecords = pastHistoryRecords.filter(record =>
-    record.patientName.toLowerCase().includes(pastHistorySearchTerm.toLowerCase())
+    pastHistorySearchTerm.length < 3 || record.patientName.toLowerCase().includes(pastHistorySearchTerm.toLowerCase())
   );
 
-  // Filter routine anamnez records by patient name
+  // Filter routine anamnez records by patient name (en az 3 harf gerekli)
   const filteredRoutineRecords = routineAnamnezRecords.filter(record =>
-    record.patientName.toLowerCase().includes(routineSearchTerm.toLowerCase())
+    routineSearchTerm.length < 3 || record.patientName.toLowerCase().includes(routineSearchTerm.toLowerCase())
   );
 
   // ── Sayfalı dilimler ──────────────────────────────────────────────────────
@@ -511,7 +511,7 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                   </div>
                   <input
                     type="text"
-                    placeholder="Bekleyen hasta ara..."
+                    placeholder="Bekleyen hasta ara... (min. 3 harf)"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
@@ -588,7 +588,7 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                   </div>
                   <input
                     type="text"
-                    placeholder="Tamamlanan hasta ara..."
+                    placeholder="Tamamlanan hasta ara... (min. 3 harf)"
                     value={completedSearchTerm}
                     onChange={(e) => setCompletedSearchTerm(e.target.value)}
                     className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
@@ -653,7 +653,7 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                   </div>
                   <input
                     type="text"
-                    placeholder="Rutin anamnez ara..."
+                    placeholder="Rutin anamnez ara... (min. 3 harf)"
                     value={routineSearchTerm}
                     onChange={(e) => setRoutineSearchTerm(e.target.value)}
                     className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500"
@@ -713,7 +713,7 @@ const Anamnez: React.FC<AnamrezProps> = ({ doctorProfile }) => {
                   </div>
                   <input
                     type="text"
-                    placeholder="Geçmiş kayıtlarda ara..."
+                    placeholder="Geçmiş kayıtlarda ara... (min. 3 harf)"
                     value={pastHistorySearchTerm}
                     onChange={(e) => setPastHistorySearchTerm(e.target.value)}
                     className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
