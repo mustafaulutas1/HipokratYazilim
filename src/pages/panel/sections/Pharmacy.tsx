@@ -154,6 +154,9 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
   const [dsHistoryPage, setDsHistoryPage] = useState(0);
   const [debtPage, setDebtPage] = useState(0);
   const [devPage, setDevPage] = useState(0);
+  // Yeni Satış — hasta ve ilaç listesi pagination
+  const [dsSalePtPage, setDsSalePtPage] = useState(0);
+  const [dsSaleMedPage, setDsSaleMedPage] = useState(0);
   // Payment modal states
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [pharmacyPaymentAmount, setPharmacyPaymentAmount] = useState<string>('');
@@ -2131,6 +2134,16 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
     setDevPage(0);
   }, [searchTerm, filterCategory, sortBy, sortOrder]);
 
+  // Yeni Satış — hasta araması değişince 1. sayfaya döndür
+  useEffect(() => {
+    setDsSalePtPage(0);
+  }, [dsPatientSearch, dsCustomerMode]);
+
+  // Yeni Satış — ilaç araması değişince 1. sayfaya döndür
+  useEffect(() => {
+    setDsSaleMedPage(0);
+  }, [dsAppSearch]);
+
   // Filter and sort medications
   const filteredAndSortedMedications = savedMedications
     .filter(med => {
@@ -3669,52 +3682,72 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
 
                 {/* Patient list */}
                 {dsCustomerMode === 'existing' ? (
-                  <div className="flex-1 overflow-y-auto">
-                    {dsAllPatients
-                      .filter(p =>
+                  <div className="flex-1 overflow-y-auto flex flex-col">
+                    {(() => {
+                      const filteredPts = dsAllPatients.filter(p =>
                         !dsPatientSearch.trim() ||
                         p.fullName.toLowerCase().includes(dsPatientSearch.toLowerCase()) ||
                         (p.tcNo || '').includes(dsPatientSearch)
-                      )
-                      .map(p => (
-                        <button
-                          key={p.id}
-                          onClick={() => setDsSelectedPatient(dsSelectedPatient?.id === p.id ? null : p)}
-                          className={`w-full text-left px-4 py-3 border-b border-white/5 last:border-0 transition-all ${
-                            dsSelectedPatient?.id === p.id
-                              ? 'bg-teal-500/25 border-l-4 border-l-teal-400'
-                              : 'hover:bg-white/8'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
-                              dsSelectedPatient?.id === p.id ? 'bg-teal-500 text-white' : 'bg-white/10 text-white/60'
-                            }`}>
-                              {p.fullName.charAt(0).toUpperCase()}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className={`text-sm font-medium truncate ${dsSelectedPatient?.id === p.id ? 'text-teal-300' : 'text-white'}`}>
-                                {p.fullName}
-                              </p>
-                              {p.tcNo && <p className="text-white/40 text-xs">TC: {p.tcNo}</p>}
-                            </div>
-                            {dsSelectedPatient?.id === p.id && (
-                              <span className="text-teal-400 text-xl flex-shrink-0">✓</span>
+                      );
+                      const totalPtPages = Math.ceil(filteredPts.length / MED_PAGE_SIZE);
+                      const pagePts = filteredPts.slice(dsSalePtPage * MED_PAGE_SIZE, (dsSalePtPage + 1) * MED_PAGE_SIZE);
+                      return (
+                        <>
+                          <div className="flex-1">
+                            {filteredPts.length === 0 ? (
+                              <div className="flex flex-col items-center justify-center h-40 text-white/40">
+                                <span className="text-3xl mb-2">👥</span>
+                                <p className="text-sm">Hasta bulunamadı</p>
+                              </div>
+                            ) : (
+                              pagePts.map(p => (
+                                <button
+                                  key={p.id}
+                                  onClick={() => setDsSelectedPatient(dsSelectedPatient?.id === p.id ? null : p)}
+                                  className={`w-full text-left px-4 py-3 border-b border-white/5 last:border-0 transition-all ${
+                                    dsSelectedPatient?.id === p.id
+                                      ? 'bg-teal-500/25 border-l-4 border-l-teal-400'
+                                      : 'hover:bg-white/8'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
+                                      dsSelectedPatient?.id === p.id ? 'bg-teal-500 text-white' : 'bg-white/10 text-white/60'
+                                    }`}>
+                                      {p.fullName.charAt(0).toUpperCase()}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <p className={`text-sm font-medium truncate ${dsSelectedPatient?.id === p.id ? 'text-teal-300' : 'text-white'}`}>
+                                        {p.fullName}
+                                      </p>
+                                      {p.tcNo && <p className="text-white/40 text-xs">TC: {p.tcNo}</p>}
+                                    </div>
+                                    {dsSelectedPatient?.id === p.id && (
+                                      <span className="text-teal-400 text-xl flex-shrink-0">✓</span>
+                                    )}
+                                  </div>
+                                </button>
+                              ))
                             )}
                           </div>
-                        </button>
-                      ))
-                    }
-                    {dsAllPatients.filter(p =>
-                      !dsPatientSearch.trim() ||
-                      p.fullName.toLowerCase().includes(dsPatientSearch.toLowerCase()) ||
-                      (p.tcNo || '').includes(dsPatientSearch)
-                    ).length === 0 && (
-                      <div className="flex flex-col items-center justify-center h-40 text-white/40">
-                        <span className="text-3xl mb-2">👥</span>
-                        <p className="text-sm">Hasta bulunamadı</p>
-                      </div>
-                    )}
+                          {totalPtPages > 1 && (
+                            <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-t border-white/10 bg-white/5">
+                              <button
+                                onClick={() => setDsSalePtPage(p => Math.max(0, p - 1))}
+                                disabled={dsSalePtPage === 0}
+                                className="px-3 py-1 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-white text-xs font-semibold transition-all"
+                              >← Önceki</button>
+                              <span className="text-white/50 text-xs">{dsSalePtPage + 1} / {totalPtPages}</span>
+                              <button
+                                onClick={() => setDsSalePtPage(p => Math.min(totalPtPages - 1, p + 1))}
+                                disabled={dsSalePtPage >= totalPtPages - 1}
+                                className="px-3 py-1 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-white text-xs font-semibold transition-all"
+                              >Sonraki →</button>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 ) : (
                   <div className="flex-1 flex items-center justify-center">
@@ -3758,62 +3791,80 @@ const Pharmacy: React.FC<{ doctorProfile: DoctorProfile | null }> = ({ doctorPro
 
                 {/* Medications list */}
                 <div className="flex-1 overflow-y-auto">
-                  {savedMedications
-                    .filter(m => {
+                  {(() => {
+                    const filteredMeds = savedMedications.filter(m => {
                       const display = getMedicationDisplayName(m).toLowerCase();
                       const term = dsAppSearch.toLowerCase();
                       return !term || display.includes(term) || (m.barcode || '').includes(term);
-                    })
-                    .map(m => {
-                      const inCart = dsSaleItems.find(i => i.medication.id === m.id);
-                      return (
-                        <button
-                          key={m.id}
-                          onClick={() => {
-                            setDsSaleItems(prev => {
-                              const idx = prev.findIndex(i => i.medication.id === m.id);
-                              if (idx >= 0) {
-                                const updated = [...prev];
-                                updated[idx] = { ...updated[idx], quantity: updated[idx].quantity + 1 };
-                                return updated;
-                              }
-                              return [...prev, { medication: m, quantity: 1 }];
-                            });
-                          }}
-                          className={`w-full text-left px-4 py-3 border-b border-white/5 last:border-0 transition-all hover:bg-white/10 flex items-center justify-between gap-3 ${
-                            inCart ? 'bg-emerald-500/10' : ''
-                          }`}
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className={`text-sm font-medium truncate ${inCart ? 'text-emerald-300' : 'text-white'}`}>
-                              {getMedicationDisplayName(m)}
-                            </p>
-                            {m.category && <p className="text-white/40 text-xs truncate">{m.category}</p>}
+                    });
+                    const totalMedPages = Math.ceil(filteredMeds.length / MED_PAGE_SIZE);
+                    const pageMeds = filteredMeds.slice(dsSaleMedPage * MED_PAGE_SIZE, (dsSaleMedPage + 1) * MED_PAGE_SIZE);
+                    return (
+                      <>
+                        {filteredMeds.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center h-40 text-white/40">
+                            <span className="text-3xl mb-2">💊</span>
+                            <p className="text-sm">{savedMedications.length === 0 ? 'İlaç bulunamadı' : 'Arama sonucu yok'}</p>
                           </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <span className="text-emerald-400 font-bold text-sm whitespace-nowrap">{m.price.toFixed(2)} TL</span>
-                            {inCart ? (
-                              <span className="bg-emerald-500 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center font-bold shadow">
-                                {inCart.quantity}
-                              </span>
-                            ) : (
-                              <span className="w-6 h-6 rounded-full border border-white/20 flex items-center justify-center text-white/40 text-sm">+</span>
-                            )}
+                        ) : (
+                          pageMeds.map(m => {
+                            const inCart = dsSaleItems.find(i => i.medication.id === m.id);
+                            return (
+                              <button
+                                key={m.id}
+                                onClick={() => {
+                                  setDsSaleItems(prev => {
+                                    const idx = prev.findIndex(i => i.medication.id === m.id);
+                                    if (idx >= 0) {
+                                      const updated = [...prev];
+                                      updated[idx] = { ...updated[idx], quantity: updated[idx].quantity + 1 };
+                                      return updated;
+                                    }
+                                    return [...prev, { medication: m, quantity: 1 }];
+                                  });
+                                }}
+                                className={`w-full text-left px-4 py-3 border-b border-white/5 last:border-0 transition-all hover:bg-white/10 flex items-center justify-between gap-3 ${
+                                  inCart ? 'bg-emerald-500/10' : ''
+                                }`}
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <p className={`text-sm font-medium truncate ${inCart ? 'text-emerald-300' : 'text-white'}`}>
+                                    {getMedicationDisplayName(m)}
+                                  </p>
+                                  {m.category && <p className="text-white/40 text-xs truncate">{m.category}</p>}
+                                </div>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  <span className="text-emerald-400 font-bold text-sm whitespace-nowrap">{m.price.toFixed(2)} TL</span>
+                                  {inCart ? (
+                                    <span className="bg-emerald-500 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center font-bold shadow">
+                                      {inCart.quantity}
+                                    </span>
+                                  ) : (
+                                    <span className="w-6 h-6 rounded-full border border-white/20 flex items-center justify-center text-white/40 text-sm">+</span>
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })
+                        )}
+                        {totalMedPages > 1 && (
+                          <div className="flex items-center justify-between px-3 py-2 border-t border-white/10 bg-white/5 sticky bottom-0">
+                            <button
+                              onClick={() => setDsSaleMedPage(p => Math.max(0, p - 1))}
+                              disabled={dsSaleMedPage === 0}
+                              className="px-3 py-1 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-white text-xs font-semibold transition-all"
+                            >← Önceki</button>
+                            <span className="text-white/50 text-xs">{dsSaleMedPage + 1} / {totalMedPages}</span>
+                            <button
+                              onClick={() => setDsSaleMedPage(p => Math.min(totalMedPages - 1, p + 1))}
+                              disabled={dsSaleMedPage >= totalMedPages - 1}
+                              className="px-3 py-1 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg text-white text-xs font-semibold transition-all"
+                            >Sonraki →</button>
                           </div>
-                        </button>
-                      );
-                    })
-                  }
-                  {savedMedications.filter(m => {
-                    const display = getMedicationDisplayName(m).toLowerCase();
-                    const term = dsAppSearch.toLowerCase();
-                    return !term || display.includes(term) || (m.barcode || '').includes(term);
-                  }).length === 0 && (
-                    <div className="flex flex-col items-center justify-center h-40 text-white/40">
-                      <span className="text-3xl mb-2">💊</span>
-                      <p className="text-sm">{savedMedications.length === 0 ? 'İlaç bulunamadı' : 'Arama sonucu yok'}</p>
-                    </div>
-                  )}
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
 
                 {/* Cart summary + Ödeme Yap button */}
