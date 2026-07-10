@@ -104,6 +104,7 @@ interface SelectedMaterial {
 const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
   const userRole = doctorProfile?.role || doctorProfile?.userType || '';
   const canApplyTreatment = userRole === 'admin' || userRole === 'bashemshire' || userRole === 'treatment';
+  const canDeselectTreatment = doctorProfile?.isClinicOwner === true || userRole === 'admin' || userRole === 'assistant';
 
   const [stats, setStats] = useState<TreatmentStats>({
     totalPendingTreatments: 0,
@@ -1152,7 +1153,7 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
                         <div 
                           key={index} 
                           onClick={() => {
-                            if (treatmentApplied) {
+                            if (treatmentApplied && canDeselectTreatment) {
                               if (isSelected) {
                                 setSelectedTreatments(prev => prev.filter(t => t !== application));
                               } else {
@@ -1160,12 +1161,14 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
                               }
                             }
                           }}
-                          className={`flex items-center gap-2 rounded-lg px-3 py-2 border cursor-pointer transition-all duration-200 ${
+                          className={`flex items-center gap-2 rounded-lg px-3 py-2 border transition-all duration-200 ${
                             !treatmentApplied 
                               ? 'bg-gray-100 border-gray-300 opacity-50 cursor-not-allowed'
-                              : isSelected 
-                                ? 'bg-white border-blue-200 hover:bg-blue-50' 
-                                : 'bg-red-50 border-red-300 hover:bg-red-100'
+                              : !canDeselectTreatment
+                                ? 'bg-white border-blue-200 cursor-default'
+                                : isSelected 
+                                  ? 'bg-white border-blue-200 hover:bg-blue-50 cursor-pointer' 
+                                  : 'bg-red-50 border-red-300 hover:bg-red-100 cursor-pointer'
                           }`}
                         >
                           <div className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold ${
