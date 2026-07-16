@@ -9,6 +9,7 @@ interface TreatmentPanelProps {
     fullName: string;
     role?: string;
     userType?: string;
+    isClinicOwner?: boolean;
   } | null;
 }
 
