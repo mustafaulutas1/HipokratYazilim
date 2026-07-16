@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { collection, query, where, getDocs, onSnapshot, orderBy, limit, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../../firebase/config';
 import { todayLocalDate } from '../../../utils/dateUtils';
@@ -136,24 +136,36 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
         const dateA = new Date(a.createdAt || 0).getTime();
         const dateB = new Date(b.createdAt || 0).getTime();
         return dateB - dateA;
-      }).slice(0, 10);
+      });
 
       console.log('👥 AssistantPanel: Patients with completed anamnez:', completedPatients.length);
-      
+
       // Fetch anamnez records for these patients to get their diagnosis systems
       if (completedPatients.length > 0) {
         const patientIds = completedPatients.map(p => p.id);
-        const anamrezQuery = query(
-          collection(db, 'anamrezRecords'),
-          where('patientId', 'in', patientIds)
+
+        // Firestore 'in' sorgusu en fazla 30 değer kabul eder, id'leri parçalara böl
+        const idChunks: string[][] = [];
+        for (let i = 0; i < patientIds.length; i += 30) {
+          idChunks.push(patientIds.slice(i, i + 30));
+        }
+
+        const anamrezSnapshots = await Promise.all(
+          idChunks.map(chunk =>
+            getDocs(query(
+              collection(db, 'anamrezRecords'),
+              where('patientId', 'in', chunk)
+            ))
+          )
         );
-        
-        const anamrezSnapshot = await getDocs(anamrezQuery);
-        const anamrezRecords = anamrezSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as AnamrezRecord));
-        
+
+        const anamrezRecords = anamrezSnapshots.flatMap(snapshot =>
+          snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          } as AnamrezRecord))
+        );
+
         const patientsWithDiagnosis = completedPatients.map(patient => {
           const patientAnamrezRecords = anamrezRecords.filter(record => record.patientId === patient.id);
           const latestAnamrezRecord = patientAnamrezRecords.sort((a, b) => 
@@ -230,7 +242,7 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
         const dateA = new Date(a.createdAt || 0).getTime();
         const dateB = new Date(b.createdAt || 0).getTime();
         return dateB - dateA;
-      }).slice(0, 20);
+      });
       setTreatmentCompletedPatients(treatmentCompletedFiltered);
 
       // Fetch emergency patients
@@ -482,6 +494,38 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
         return waitingPatients;
     }
   };
+
+  // ── Arama + Pagination ────────────────────────────────────────────────────
+  const ITEMS_PER_PAGE = 10;
+  const [currentPage, setCurrentPage] = useState(1);
+  const [patientSearch, setPatientSearch] = useState('');
+
+  const activeList = getCurrentPatientList();
+  const normalizedSearch = patientSearch.trim().toLocaleLowerCase('tr');
+  const currentPatientList = useMemo(
+    () => normalizedSearch
+      ? activeList.filter(p =>
+          (p.fullName || '').toLocaleLowerCase('tr').includes(normalizedSearch) ||
+          (p.tcNo || '').toLocaleLowerCase('tr').includes(normalizedSearch) ||
+          (p.phone || '').toLocaleLowerCase('tr').includes(normalizedSearch)
+        )
+      : activeList,
+    [activeList, normalizedSearch]
+  );
+
+  const totalPages = Math.ceil(currentPatientList.length / ITEMS_PER_PAGE);
+
+  // Sekme veya arama değişince sayfayı sıfırla
+  useEffect(() => { setCurrentPage(1); }, [activeListType, patientSearch]);
+  useEffect(() => {
+    setCurrentPage(p => Math.min(p, Math.max(1, totalPages)));
+  }, [totalPages]);
+
+  const pagedPatients = useMemo(
+    () => currentPatientList.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE),
+    [currentPatientList, currentPage]
+  );
+  // ─────────────────────────────────────────────────────────────────────────
 
   const getCurrentListTitle = () => {
     switch (activeListType) {
@@ -925,14 +969,38 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Patients Waiting for Treatment */}
         <div className="lg:col-span-2 bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-          <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-            <span className="text-2xl">{getCurrentListIcon()}</span>
-            {getCurrentListTitle()} ({getCurrentPatientList().length})
-          </h3>
-          
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+            <h3 className="text-xl font-bold text-white flex items-center gap-2">
+              <span className="text-2xl">{getCurrentListIcon()}</span>
+              {getCurrentListTitle()} ({currentPatientList.length}
+              {normalizedSearch && ` / ${activeList.length}`})
+            </h3>
+
+            {/* Patient Search Filter */}
+            <div className="relative w-full sm:w-72">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-base pointer-events-none">🔍</span>
+              <input
+                type="text"
+                value={patientSearch}
+                onChange={(e) => setPatientSearch(e.target.value)}
+                placeholder="Hasta ara (ad, TC, telefon)..."
+                className="w-full pl-10 pr-9 py-2.5 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/40 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400/50 focus:border-blue-400/50 transition-all duration-200"
+              />
+              {patientSearch && (
+                <button
+                  onClick={() => setPatientSearch('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-all duration-200"
+                  aria-label="Aramayı temizle"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+
           <div className="space-y-4 max-h-96 overflow-y-auto">
-            {getCurrentPatientList().length > 0 ? (
-              getCurrentPatientList().map((patient) => (
+            {pagedPatients.length > 0 ? (
+              pagedPatients.map((patient) => (
                 <div 
                   key={patient.id}
                   className="flex items-center gap-4 p-4 bg-white/5 rounded-xl hover:bg-white/10 transition-all duration-200"
@@ -1054,6 +1122,20 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
                   </div>
                 </div>
               ))
+            ) : normalizedSearch ? (
+              <div className="text-center py-8">
+                <div className="text-6xl mb-4">🔍</div>
+                <h4 className="text-white/80 text-lg font-semibold mb-2">Sonuç Bulunamadı</h4>
+                <p className="text-white/60">
+                  "{patientSearch}" aramasıyla eşleşen hasta bu listede bulunmuyor.
+                </p>
+                <button
+                  onClick={() => setPatientSearch('')}
+                  className="mt-3 px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl text-white/80 text-sm transition-all duration-200"
+                >
+                  Aramayı Temizle
+                </button>
+              </div>
             ) : (
               <div className="text-center py-8">
                 <div className="text-6xl mb-4">{getCurrentListIcon()}</div>
@@ -1081,6 +1163,57 @@ const AssistantPanel: React.FC<AssistantPanelProps> = ({ doctorProfile, onSectio
               </div>
             )}
           </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="mt-6 pt-4 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="text-white/60 text-sm">
+                {normalizedSearch && 'Arama sonucu: '}
+                {currentPatientList.length} kayıttan {(currentPage - 1) * ITEMS_PER_PAGE + 1}–{Math.min(currentPage * ITEMS_PER_PAGE, currentPatientList.length)} gösteriliyor
+                {' '}• Sayfa {currentPage} / {totalPages}
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-2 rounded-lg text-sm font-medium bg-white/10 border border-white/20 text-white/80 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200"
+                >
+                  ← Önceki
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+                  .reduce<(number | 'ellipsis')[]>((acc, p, idx, arr) => {
+                    if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push('ellipsis');
+                    acc.push(p);
+                    return acc;
+                  }, [])
+                  .map((item, idx) =>
+                    item === 'ellipsis' ? (
+                      <span key={`ellipsis-${idx}`} className="px-1 text-white/40 text-sm">…</span>
+                    ) : (
+                      <button
+                        key={item}
+                        onClick={() => setCurrentPage(item as number)}
+                        className={`w-9 h-9 rounded-lg text-sm font-medium transition-all duration-200 ${
+                          currentPage === item
+                            ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30 border border-blue-400'
+                            : 'bg-white/10 border border-white/20 text-white/80 hover:bg-white/20'
+                        }`}
+                      >
+                        {item}
+                      </button>
+                    )
+                  )}
+                <button
+                  onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-2 rounded-lg text-sm font-medium bg-white/10 border border-white/20 text-white/80 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200"
+                >
+                  Sonraki →
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Quick Actions */}
