@@ -337,25 +337,37 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
         if (!editingUrun.stockCode) payload.stockCode = generateStockCode();
         await updateDoc(doc(db, colName, editingUrun.id), { ...payload, updatedAt: new Date().toISOString() });
       } else {
-        // Aynı ürün adı + firma adı + kategori kombinasyonu zaten varsa
-        // yeni kart açmak yerine mevcut kartın üzerine ekle.
-        const mevcut = (activeDepo === 'ana' ? anaDepoUrunler : katDepoUrunler).find(u =>
-          u.productName.trim().toLocaleLowerCase('tr') === formData.productName.trim().toLocaleLowerCase('tr') &&
-          (u.companyName || '').trim().toLocaleLowerCase('tr') === (formData.companyName || '').trim().toLocaleLowerCase('tr') &&
-          (u.category || '') === (formData.category || '')
+        // Aynı ürün adına sahip TÜM kartları bul (kategorisiz eskiler dahil)
+        const nameLower = formData.productName.trim().toLocaleLowerCase('tr');
+        const eslesenler = (activeDepo === 'ana' ? anaDepoUrunler : katDepoUrunler).filter(u =>
+          u.productName.trim().toLocaleLowerCase('tr') === nameLower
         );
-        if (mevcut?.id) {
-          // Mevcut kartı güncelle: adet üzerine ekle, maliyet ve kritik stok seviyesini güncelle
-          await updateDoc(doc(db, colName, mevcut.id), {
-            quantity: mevcut.quantity + (formData.quantity || 0),
+
+        if (eslesenler.length > 0) {
+          // En çok stoğu olan kartı "ana kart" seç; diğerlerini ona birleştir
+          const anaKart = eslesenler.reduce((best, u) => u.quantity > best.quantity ? u : best, eslesenler[0]);
+          const digerler = eslesenler.filter(u => u.id !== anaKart.id);
+
+          // Diğer kartların stoklarını topla
+          const digerToplamQty = digerler.reduce((s, u) => s + (u.quantity || 0), 0);
+
+          // Ana kartı güncelle
+          await updateDoc(doc(db, colName, anaKart.id!), {
+            quantity: anaKart.quantity + digerToplamQty + (formData.quantity || 0),
             cost: formData.cost,
+            category: formData.category,
             minStockLevel: formData.minStockLevel,
             purchaseDate: formData.purchaseDate,
             ...(formData.consumptionType ? { consumptionType: formData.consumptionType } : {}),
             updatedAt: new Date().toISOString(),
           });
+
+          // Fazla kartları sil
+          for (const d of digerler) {
+            if (d.id) await deleteDoc(doc(db, colName, d.id));
+          }
         } else {
-          // Gerçekten yeni ürün — otomatik artan stok kodu ata.
+          // Hiç kart yok — gerçekten yeni ürün
           await addDoc(collection(db, colName), { ...payload, stockCode: generateStockCode(), clinicId: doctorProfile.clinicId, createdBy: doctorProfile.fullName, createdAt: new Date().toISOString() });
         }
       }
