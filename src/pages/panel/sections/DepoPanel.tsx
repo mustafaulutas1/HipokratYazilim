@@ -7,6 +7,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { loadTurkishPdfFont } from '../../../utils/pdfFont';
+import { toast } from 'react-toastify';
 
 interface DepoPanelProps {
   doctorProfile?: {
@@ -58,6 +59,7 @@ interface KayitliUrun {
   id?: string;
   name: string;
   category?: DepoCategory;
+  consumptionType?: 'islem-bazli' | 'genel-bazli';
   minStockLevel?: number;
   clinicId: string;
   createdBy: string;
@@ -358,6 +360,16 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
         }
       }
       setShowAddModal(false);
+
+      // Kategori seçildiyse, aynı isimdeki kayitliUrun kaydını da sync et (farklıysa güncelle)
+      if (formData.category && !editingUrun) {
+        const kayitli = kayitliUrunler.find(u => u.name.trim().toLocaleLowerCase('tr') === formData.productName.trim().toLocaleLowerCase('tr'));
+        if (kayitli?.id && kayitli.category !== formData.category) {
+          try {
+            await updateDoc(doc(db, 'depoKayitliUrunler', kayitli.id), { category: formData.category });
+          } catch { /* sessizce geç */ }
+        }
+      }
     } catch (e) { console.error(e); alert('Kayıt sırasında hata oluştu.'); }
     finally { setSaving(false); }
   };
@@ -414,6 +426,42 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
     if (!urun.id) return;
     if (!confirm(`"${urun.name}" ürünü silinecek. Emin misiniz?`)) return;
     await deleteDoc(doc(db, 'depoKayitliUrunler', urun.id));
+  };
+
+  // Ürün Yönetimi — kategori güncelle + depoUrunler'deki aynı isimlileri sync et
+  const handleUpdateUrunCategory = async (urun: KayitliUrun, category: DepoCategory) => {
+    if (!urun.id || !doctorProfile?.clinicId) return;
+    try {
+      // 1) KayitliUrun kaydını güncelle
+      await updateDoc(doc(db, 'depoKayitliUrunler', urun.id), { category });
+
+      // 2) Ana depo stok kayıtlarını sync et
+      const anaQ = query(
+        collection(db, 'depoUrunler'),
+        where('clinicId', '==', doctorProfile.clinicId),
+        where('productName', '==', urun.name)
+      );
+      const anaSnap = await getDocs(anaQ);
+      const syncPromises: Promise<void>[] = [];
+      anaSnap.forEach(d => syncPromises.push(updateDoc(d.ref, { category })));
+
+      // 3) Kat depo stok kayıtlarını sync et
+      const katQ = query(
+        collection(db, 'katDepoUrunler'),
+        where('clinicId', '==', doctorProfile.clinicId),
+        where('productName', '==', urun.name)
+      );
+      const katSnap = await getDocs(katQ);
+      katSnap.forEach(d => syncPromises.push(updateDoc(d.ref, { category })));
+
+      await Promise.all(syncPromises);
+
+      const total = anaSnap.size + katSnap.size;
+      toast.success(`"${urun.name}" kategorisi güncellendi${total > 0 ? ` · ${total} stok kaydı senkronize edildi` : ''}`);
+    } catch (e) {
+      console.error(e);
+      toast.error('Kategori güncellenirken hata oluştu.');
+    }
   };
 
   // Malzeme Talebi — talep gönder
@@ -2212,6 +2260,11 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                 <h3 className="text-white font-bold text-lg leading-tight">Ürün Yönetimi</h3>
                 <p className="text-white/50 text-xs">Ürün eklerken seçilecek ürün adlarını buradan yönetin</p>
               </div>
+              {kayitliUrunler.filter(u => !u.category).length > 0 && (
+                <span className="px-2.5 py-1 bg-yellow-500/20 border border-yellow-400/40 rounded-full text-yellow-300 text-xs font-semibold flex items-center gap-1">
+                  ❓ {kayitliUrunler.filter(u => !u.category).length} kategorisiz
+                </span>
+              )}
               <button onClick={() => setShowUrunModal(false)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white/60 hover:text-white transition-all text-lg">✕</button>
             </div>
 
@@ -2278,6 +2331,11 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
               <div className="flex items-center justify-between mb-3">
                 <p className="text-white/70 text-sm font-semibold">Kayıtlı Ürünler</p>
                 <span className="px-2 py-0.5 bg-white/10 border border-white/20 rounded-full text-white/60 text-xs">{kayitliUrunler.length} ürün</span>
+                {kayitliUrunler.filter(u => !u.category).length > 0 && (
+                  <span className="px-2 py-0.5 bg-yellow-500/20 border border-yellow-400/30 rounded-full text-yellow-300 text-xs ml-1">
+                    {kayitliUrunler.filter(u => !u.category).length} kategorisiz ↓
+                  </span>
+                )}
               </div>
               {kayitliUrunler.length === 0 ? (
                 <div className="py-10 text-center text-white/40">
@@ -2287,30 +2345,62 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {kayitliUrunler.map(u => (
-                    <div key={u.id} className="flex items-center gap-3 px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all">
-                      <span className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/10 text-sm flex-shrink-0">
-                        {u.category ? DEPO_CATEGORIES.find(c => c.key === u.category)?.icon || '📦' : '📦'}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-white text-sm font-medium truncate">{u.name}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          {u.category && (
-                            <span className="text-white/40 text-xs">{DEPO_CATEGORIES.find(c => c.key === u.category)?.label}</span>
-                          )}
-                          {(u.minStockLevel ?? 0) > 0 && (
-                            <span className="text-yellow-400/70 text-xs">⚠️ min {u.minStockLevel}</span>
+                  {/* Kategorisiz ürünler önce — sarı uyarıyla */}
+                  {(() => {
+                    const uncategorized = kayitliUrunler.filter(u => !u.category);
+                    const categorized = kayitliUrunler.filter(u => u.category);
+                    const all = [...uncategorized, ...categorized];
+                    return all.map(u => (
+                      <div key={u.id} className={`flex items-start gap-3 px-3 py-2.5 border rounded-xl transition-all ${!u.category ? 'bg-yellow-500/10 border-yellow-400/30' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}>
+                        <span className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/10 text-sm flex-shrink-0 mt-0.5">
+                          {u.category ? DEPO_CATEGORIES.find(c => c.key === u.category)?.icon || '📦' : '❓'}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-sm font-medium truncate">{u.name}</p>
+                          {!u.category ? (
+                            <div className="mt-1.5 flex flex-wrap gap-1.5">
+                              <span className="text-yellow-400 text-xs mr-1">Kategori seç:</span>
+                              {DEPO_CATEGORIES.map(cat => (
+                                <button
+                                  key={cat.key}
+                                  onClick={() => handleUpdateUrunCategory(u, cat.key)}
+                                  className="flex items-center gap-1 px-2 py-0.5 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg text-xs text-white/80 hover:text-white transition-all"
+                                >
+                                  {cat.icon} {cat.label}
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                              <span className="text-white/40 text-xs">{DEPO_CATEGORIES.find(c => c.key === u.category)?.icon} {DEPO_CATEGORIES.find(c => c.key === u.category)?.label}</span>
+                              {(u.minStockLevel ?? 0) > 0 && <span className="text-yellow-400/70 text-xs">⚠️ min {u.minStockLevel}</span>}
+                              {/* Kategoriyi değiştir */}
+                              <div className="relative group">
+                                <button className="text-white/30 hover:text-white/70 text-xs transition-all">✏️ değiştir</button>
+                                <div className="absolute left-0 top-5 z-50 hidden group-hover:flex flex-col gap-1 bg-slate-800 border border-white/20 rounded-xl p-2 shadow-xl min-w-max">
+                                  {DEPO_CATEGORIES.filter(cat => cat.key !== u.category).map(cat => (
+                                    <button
+                                      key={cat.key}
+                                      onClick={() => handleUpdateUrunCategory(u, cat.key)}
+                                      className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/10 rounded-lg text-xs text-white/80 hover:text-white transition-all text-left"
+                                    >
+                                      {cat.icon} {cat.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
                           )}
                         </div>
+                        <button
+                          onClick={() => handleDeleteUrun(u)}
+                          className="px-3 py-1 bg-red-500/20 border border-red-400/40 rounded-lg text-red-300 hover:bg-red-500/30 text-xs font-semibold transition-all flex-shrink-0 mt-0.5"
+                        >
+                          Sil
+                        </button>
                       </div>
-                      <button
-                        onClick={() => handleDeleteUrun(u)}
-                        className="px-3 py-1 bg-red-500/20 border border-red-400/40 rounded-lg text-red-300 hover:bg-red-500/30 text-xs font-semibold transition-all flex-shrink-0"
-                      >
-                        Sil
-                      </button>
-                    </div>
-                  ))}
+                    ));
+                  })()}
                 </div>
               )}
             </div>
@@ -2451,7 +2541,8 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                         setFormData(prev => ({
                           ...prev,
                           productName: e.target.value,
-                          ...(selected?.category ? { category: selected.category, consumptionType: selected.category === 'sarf' ? prev.consumptionType : undefined } : {}),
+                          ...(selected?.category ? { category: selected.category } : {}),
+                          ...(selected?.category === 'sarf' && selected?.consumptionType ? { consumptionType: selected.consumptionType } : selected?.category === 'sarf' ? {} : { consumptionType: undefined }),
                           ...(selected?.minStockLevel ? { minStockLevel: selected.minStockLevel } : {}),
                         }));
                       }}
@@ -2542,48 +2633,154 @@ const DepoPanel: React.FC<DepoPanelProps> = ({ doctorProfile }) => {
                   <p className="text-white/40 text-xs mt-1">Henüz firma yok. Ana Depo sekmesindeki "Firma Yönetimi" bölümünden firma ekleyebilirsiniz.</p>
                 )}
               </div>
-              {/* Kategori — Ürün Yönetimi'nden otomatik gelir, salt okunur göster */}
-              {formData.category && (
-                <div>
-                  <label className="block text-white/70 text-sm mb-1">Kategori</label>
+              {/* Kategori — otomatik gelir; gelmediyse manuel seçim */}
+              <div>
+                <label className="block text-white/70 text-sm mb-1">
+                  Kategori <span className="text-red-400">*</span>
+                </label>
+                {formData.category ? (
                   <div className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/15 rounded-xl text-white/70 text-sm">
                     <span>{DEPO_CATEGORIES.find(c => c.key === formData.category)?.icon}</span>
                     <span>{DEPO_CATEGORIES.find(c => c.key === formData.category)?.label}</span>
-                    <span className="ml-auto text-white/30 text-xs">Otomatik</span>
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, category: undefined, consumptionType: undefined }))}
+                      className="ml-auto text-white/30 hover:text-white/70 text-xs transition-all"
+                      title="Kategoriyi değiştir"
+                    >
+                      ✏️ değiştir
+                    </button>
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {DEPO_CATEGORIES.map(cat => (
+                      <button
+                        key={cat.key}
+                        type="button"
+                        onClick={async () => {
+                          // 1) Form state'e anında yaz
+                          setFormData(prev => ({ ...prev, category: cat.key }));
+
+                          if (!formData.productName.trim() || !doctorProfile?.clinicId) return;
+                          const nameLower = formData.productName.trim().toLocaleLowerCase('tr');
+
+                          try {
+                            // 2) KayitliUrun kaydı varsa güncelle
+                            const kayitli = kayitliUrunler.find(u => u.name.trim().toLocaleLowerCase('tr') === nameLower);
+                            if (kayitli?.id) {
+                              await updateDoc(doc(db, 'depoKayitliUrunler', kayitli.id), { category: cat.key });
+                            } else {
+                              // Kayitli ürün yoksa yeni ekle — bir sonraki seçimde otomatik gelsin
+                              await addDoc(collection(db, 'depoKayitliUrunler'), {
+                                name: formData.productName.trim(),
+                                category: cat.key,
+                                clinicId: doctorProfile.clinicId,
+                                createdBy: doctorProfile.fullName,
+                                createdAt: new Date().toISOString(),
+                              });
+                            }
+
+                            // 3) Ana/kat depo stok kayıtlarını da sync et
+                            const anaQ = query(collection(db, 'anaDepoUrunler'), where('clinicId', '==', doctorProfile.clinicId), where('productName', '==', formData.productName.trim()));
+                            const katQ = query(collection(db, 'katDepoUrunler'), where('clinicId', '==', doctorProfile.clinicId), where('productName', '==', formData.productName.trim()));
+                            const [anaSnap, katSnap] = await Promise.all([getDocs(anaQ), getDocs(katQ)]);
+                            const syncAll: Promise<void>[] = [];
+                            anaSnap.forEach(d => syncAll.push(updateDoc(d.ref, { category: cat.key })));
+                            katSnap.forEach(d => syncAll.push(updateDoc(d.ref, { category: cat.key })));
+                            await Promise.all(syncAll);
+                          } catch (e) {
+                            console.error('Kategori sync hatası:', e);
+                          }
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-white/20 bg-white/5 hover:bg-white/15 text-white/70 hover:text-white text-sm font-medium transition-all"
+                      >
+                        <span>{cat.icon}</span>{cat.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               {(formData.category === 'sarf' || (!formData.category && editingUrun)) && (
                 <div>
-                  <label className="block text-white/70 text-sm mb-2">Tüketim Türü *</label>
-                  <div className="flex flex-col gap-2">
-                    <label className="flex items-center gap-3 cursor-pointer p-3 rounded-xl border transition-all hover:bg-white/5"
-                      style={{ borderColor: formData.consumptionType === 'islem-bazli' ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.15)', background: formData.consumptionType === 'islem-bazli' ? 'rgba(99,102,241,0.1)' : undefined }}>
-                      <div
-                        onClick={() => setFormData(prev => ({ ...prev, consumptionType: prev.consumptionType === 'islem-bazli' ? undefined : 'islem-bazli' }))}
-                        className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 transition-all cursor-pointer ${formData.consumptionType === 'islem-bazli' ? 'bg-indigo-500 border-indigo-500' : 'border-white/30'}`}
+                  <label className="block text-white/70 text-sm mb-2">Tüketim Türü <span className="text-red-400">*</span></label>
+
+                  {formData.consumptionType ? (
+                    /* Seçili — özet göster + değiştir butonu */
+                    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-white/15 bg-white/5 text-white/80 text-sm">
+                      <span>{formData.consumptionType === 'islem-bazli' ? '⚙️ İşlem Bazlı Tüketim' : '📦 Genel Bazlı Tüketim'}</span>
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, consumptionType: undefined }))}
+                        className="ml-auto text-white/30 hover:text-white/70 text-xs transition-all"
+                        title="Tüketim türünü değiştir"
                       >
-                        {formData.consumptionType === 'islem-bazli' && <span className="text-white text-xs font-bold">✓</span>}
-                      </div>
-                      <div onClick={() => setFormData(prev => ({ ...prev, consumptionType: prev.consumptionType === 'islem-bazli' ? undefined : 'islem-bazli' }))}>
-                        <p className="text-white text-sm font-medium">⚙️ İşlem Bazlı Tüketim</p>
-                        <p className="text-white/50 text-xs">Belirli bir işlem/tedaviye bağlı tüketim</p>
-                      </div>
-                    </label>
-                    <label className="flex items-center gap-3 cursor-pointer p-3 rounded-xl border transition-all hover:bg-white/5"
-                      style={{ borderColor: formData.consumptionType === 'genel-bazli' ? 'rgba(34,197,94,0.6)' : 'rgba(255,255,255,0.15)', background: formData.consumptionType === 'genel-bazli' ? 'rgba(34,197,94,0.1)' : undefined }}>
-                      <div
-                        onClick={() => setFormData(prev => ({ ...prev, consumptionType: prev.consumptionType === 'genel-bazli' ? undefined : 'genel-bazli' }))}
-                        className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 transition-all cursor-pointer ${formData.consumptionType === 'genel-bazli' ? 'bg-green-500 border-green-500' : 'border-white/30'}`}
-                      >
-                        {formData.consumptionType === 'genel-bazli' && <span className="text-white text-xs font-bold">✓</span>}
-                      </div>
-                      <div onClick={() => setFormData(prev => ({ ...prev, consumptionType: prev.consumptionType === 'genel-bazli' ? undefined : 'genel-bazli' }))}>
-                        <p className="text-white text-sm font-medium">📦 Genel Bazlı Tüketim</p>
-                        <p className="text-white/50 text-xs">Genel kullanım ve genel tüketim ürünleri</p>
-                      </div>
-                    </label>
-                  </div>
+                        ✏️ değiştir
+                      </button>
+                    </div>
+                  ) : (
+                    /* Seçili değil — kartları göster */
+                    <div className="flex flex-col gap-2">
+                      {([
+                        { key: 'islem-bazli' as const, label: 'İşlem Bazlı Tüketim', icon: '⚙️', desc: 'Belirli bir işlem/tedaviye bağlı tüketim', color: 'rgba(99,102,241,0.6)', bg: 'rgba(99,102,241,0.1)', activeBg: 'bg-indigo-500 border-indigo-500' },
+                        { key: 'genel-bazli' as const, label: 'Genel Bazlı Tüketim', icon: '📦', desc: 'Genel kullanım ve genel tüketim ürünleri', color: 'rgba(34,197,94,0.6)', bg: 'rgba(34,197,94,0.1)', activeBg: 'bg-green-500 border-green-500' },
+                      ] as const).map(opt => (
+                        <label
+                          key={opt.key}
+                          className="flex items-center gap-3 cursor-pointer p-3 rounded-xl border transition-all hover:bg-white/5"
+                          style={{ borderColor: 'rgba(255,255,255,0.15)' }}
+                        >
+                          <div
+                            onClick={async () => {
+                              setFormData(prev => ({ ...prev, consumptionType: opt.key }));
+                              // Kayitli ürün kaydını da hemen güncelle
+                              if (formData.productName.trim() && doctorProfile?.clinicId) {
+                                try {
+                                  const kayitli = kayitliUrunler.find(u => u.name.trim().toLocaleLowerCase('tr') === formData.productName.trim().toLocaleLowerCase('tr'));
+                                  if (kayitli?.id) {
+                                    await updateDoc(doc(db, 'depoKayitliUrunler', kayitli.id), { consumptionType: opt.key });
+                                  } else {
+                                    // Kayitli yoksa oluştur
+                                    await addDoc(collection(db, 'depoKayitliUrunler'), {
+                                      name: formData.productName.trim(),
+                                      category: formData.category,
+                                      consumptionType: opt.key,
+                                      clinicId: doctorProfile.clinicId,
+                                      createdBy: doctorProfile.fullName,
+                                      createdAt: new Date().toISOString(),
+                                    });
+                                  }
+                                  // Stok kayıtlarını da sync et
+                                  const anaQ = query(collection(db, 'anaDepoUrunler'), where('clinicId', '==', doctorProfile.clinicId), where('productName', '==', formData.productName.trim()));
+                                  const katQ = query(collection(db, 'katDepoUrunler'), where('clinicId', '==', doctorProfile.clinicId), where('productName', '==', formData.productName.trim()));
+                                  const [anaSnap, katSnap] = await Promise.all([getDocs(anaQ), getDocs(katQ)]);
+                                  const all: Promise<void>[] = [];
+                                  anaSnap.forEach(d => all.push(updateDoc(d.ref, { consumptionType: opt.key })));
+                                  katSnap.forEach(d => all.push(updateDoc(d.ref, { consumptionType: opt.key })));
+                                  await Promise.all(all);
+                                } catch (e) { console.error('consumptionType sync hatası:', e); }
+                              }
+                            }}
+                            className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 transition-all cursor-pointer border-white/30`}
+                          >
+                          </div>
+                          <div onClick={async () => {
+                            setFormData(prev => ({ ...prev, consumptionType: opt.key }));
+                            if (formData.productName.trim() && doctorProfile?.clinicId) {
+                              try {
+                                const kayitli = kayitliUrunler.find(u => u.name.trim().toLocaleLowerCase('tr') === formData.productName.trim().toLocaleLowerCase('tr'));
+                                if (kayitli?.id) {
+                                  await updateDoc(doc(db, 'depoKayitliUrunler', kayitli.id), { consumptionType: opt.key });
+                                }
+                              } catch { /* sessizce geç */ }
+                            }
+                          }}>
+                            <p className="text-white text-sm font-medium">{opt.icon} {opt.label}</p>
+                            <p className="text-white/50 text-xs">{opt.desc}</p>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

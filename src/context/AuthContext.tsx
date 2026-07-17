@@ -43,39 +43,40 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        // Kullanıcı giriş yaptığında log yaz (sadece yeni giriş ise)
-        if (!user) {
-          loggingService.logUserAction(currentUser.uid, currentUser.email || '', 'login');
-          loggingService.logSessionStart(currentUser.uid, currentUser.email || '');
-          
-          // Get stored login time or use current time
-          let loginTime = forceLogoutService.getUserLoginTime(currentUser.uid);
-          if (!loginTime) {
-            loginTime = Date.now();
-            forceLogoutService.storeUserLoginTime(currentUser.uid);
-          }
-          
-          setSessionStartTime(loginTime);
-          
-          // Check if user should be logged out (for users who were offline)
-          if (!forceLogoutChecked) {
+        // Get stored login time or use current time
+        let loginTime = forceLogoutService.getUserLoginTime(currentUser.uid);
+        if (!loginTime) {
+          loginTime = Date.now();
+          forceLogoutService.storeUserLoginTime(currentUser.uid);
+        }
+
+        setSessionStartTime(loginTime);
+
+        // Check if user should be logged out (for users who were offline)
+        if (!forceLogoutChecked) {
+          try {
             const shouldLogout = await forceLogoutService.shouldLogoutOnInit(loginTime);
             if (shouldLogout) {
               console.log('🚨 User logged in before force logout was triggered, logging out...');
               await signOut(auth);
               forceLogoutService.clearUserLoginTime();
               setForceLogoutChecked(true);
+              setUser(null);
               setLoading(false);
               return;
             }
-            setForceLogoutChecked(true);
+          } catch (e) {
+            // force logout check failed — ignore, let user in
           }
+          setForceLogoutChecked(true);
         }
+
+        // Log login only when transitioning from null → user
+        try {
+          loggingService.logUserAction(currentUser.uid, currentUser.email || '', 'login');
+          loggingService.logSessionStart(currentUser.uid, currentUser.email || '');
+        } catch { /* log hatası giriş engellemesin */ }
       } else {
-        // Kullanıcı çıkış yaptığında log yaz (sadece önceki user varsa ve çıkış yapılmışsa)
-        if (user) {
-          // Çıkış log'u logout fonksiyonunda yazılıyor, burada tekrar yazmayalım
-        }
         setSessionStartTime(null);
         setForceLogoutChecked(false);
         forceLogoutService.clearUserLoginTime();
@@ -84,7 +85,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setLoading(false);
     });
     return unsubscribe;
-  }, [user, forceLogoutChecked]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Listen for force logout events
   useEffect(() => {
