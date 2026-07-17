@@ -69,6 +69,10 @@ interface PaymentPatient {
   updatedAt?: string;
   treatmentApplied?: boolean;
   treatmentNotAppliedReason?: string;
+  paymentCancelled?: boolean;
+  paymentCancelledAt?: string;
+  paymentCancelledBy?: string;
+  paymentCancelledByRole?: string;
   treatmentNotes?: string;
   refundProcessed?: boolean;
   refundDate?: string;
@@ -140,10 +144,11 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
   });
   const [pendingPaymentPatients, setPendingPaymentPatients] = useState<PaymentPatient[]>([]);
   const [paidPatients, setPaidPatients] = useState<PaymentPatient[]>([]);
+  const [cancelledPaymentPatients, setCancelledPaymentPatients] = useState<PaymentPatient[]>([]);
   const [notAppliedTreatmentPatients, setNotAppliedTreatmentPatients] = useState<PaymentPatient[]>([]);
   const [debtPatients, setDebtPatients] = useState<PaymentPatient[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeListType, setActiveListType] = useState<'pending_payment' | 'completed_payment' | 'not_applied_treatment' | 'debt_patients'>('pending_payment');
+  const [activeListType, setActiveListType] = useState<'pending_payment' | 'completed_payment' | 'not_applied_treatment' | 'debt_patients' | 'cancelled_payment'>('pending_payment');
   const [selectedPatient, setSelectedPatient] = useState<PaymentPatient | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
@@ -192,12 +197,14 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
   const [completedPage, setCompletedPage] = useState(1);
   const [notAppliedPage, setNotAppliedPage] = useState(1);
   const [debtPage, setDebtPage] = useState(1);
+  const [cancelledPage, setCancelledPage] = useState(1);
 
   // Sekme değiştiğinde ilgili sayfayı sıfırla
   useEffect(() => { setPendingPage(1); }, [pendingPaymentPatients.length]);
   useEffect(() => { setCompletedPage(1); }, [paidPatients.length]);
   useEffect(() => { setNotAppliedPage(1); }, [notAppliedTreatmentPatients.length]);
   useEffect(() => { setDebtPage(1); }, [debtPatients.length]);
+  useEffect(() => { setCancelledPage(1); }, [cancelledPaymentPatients.length]);
   // Debt araması değişince sayfa 1'e dön
   useEffect(() => { setDebtPage(1); }, [debtSearchQuery]);
 
@@ -226,22 +233,27 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
     () => filteredDebtPatients.slice((debtPage - 1) * ITEMS_PER_PAGE, debtPage * ITEMS_PER_PAGE),
     [filteredDebtPatients, debtPage]
   );
+  const cancelledPageItems = useMemo(
+    () => cancelledPaymentPatients.slice((cancelledPage - 1) * ITEMS_PER_PAGE, cancelledPage * ITEMS_PER_PAGE),
+    [cancelledPaymentPatients, cancelledPage]
+  );
 
   // Aktif sekmenin görüntülenen kayıtları
   const activePageItems = useMemo(() => {
     if (activeListType === 'pending_payment') return pendingPageItems;
     if (activeListType === 'completed_payment') return completedPageItems;
     if (activeListType === 'not_applied_treatment') return notAppliedPageItems;
+    if (activeListType === 'cancelled_payment') return cancelledPageItems;
     return debtPageItems;
-  }, [activeListType, pendingPageItems, completedPageItems, notAppliedPageItems, debtPageItems]);
+  }, [activeListType, pendingPageItems, completedPageItems, notAppliedPageItems, debtPageItems, cancelledPageItems]);
 
-  // Aktif sekmenin toplam kayıt sayısı ve toplam sayfa sayısı
   const activeTotalCount = useMemo(() => {
     if (activeListType === 'pending_payment') return pendingPaymentPatients.length;
     if (activeListType === 'completed_payment') return paidPatients.length;
     if (activeListType === 'not_applied_treatment') return notAppliedTreatmentPatients.length;
+    if (activeListType === 'cancelled_payment') return cancelledPaymentPatients.length;
     return filteredDebtPatients.length;
-  }, [activeListType, pendingPaymentPatients.length, paidPatients.length, notAppliedTreatmentPatients.length, filteredDebtPatients.length]);
+  }, [activeListType, pendingPaymentPatients.length, paidPatients.length, notAppliedTreatmentPatients.length, filteredDebtPatients.length, cancelledPaymentPatients.length]);
 
   const activeTotalPages = Math.ceil(activeTotalCount / ITEMS_PER_PAGE);
 
@@ -249,13 +261,15 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
     if (activeListType === 'pending_payment') return pendingPage;
     if (activeListType === 'completed_payment') return completedPage;
     if (activeListType === 'not_applied_treatment') return notAppliedPage;
+    if (activeListType === 'cancelled_payment') return cancelledPage;
     return debtPage;
-  }, [activeListType, pendingPage, completedPage, notAppliedPage, debtPage]);
+  }, [activeListType, pendingPage, completedPage, notAppliedPage, debtPage, cancelledPage]);
 
   const setActivePage = (page: number) => {
     if (activeListType === 'pending_payment') setPendingPage(page);
     else if (activeListType === 'completed_payment') setCompletedPage(page);
     else if (activeListType === 'not_applied_treatment') setNotAppliedPage(page);
+    else if (activeListType === 'cancelled_payment') setCancelledPage(page);
     else setDebtPage(page);
   };
   // ─────────────────────────────────────────────────────────────────────────
@@ -338,9 +352,9 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
       console.log('💰 AccountingScreen: Pending payment patients:', pendingPayments.length);
       setPendingPaymentPatients(pendingPayments);
 
-      // Filter patients with completed payments
+      // Filter patients with completed payments (exclude cancelled)
       const completedPayments = allClinicPatients.filter(patient =>
-        patient.paymentCompleted === true
+        patient.paymentCompleted === true && !patient.paymentCancelled
       ).sort((a, b) => {
         const dateA = new Date(b.paymentDate || b.updatedAt || b.createdAt).getTime();
         const dateB = new Date(a.paymentDate || a.updatedAt || a.createdAt).getTime();
@@ -349,6 +363,16 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
 
       console.log('💰 AccountingScreen: Completed payment patients:', completedPayments.length);
       setPaidPatients(completedPayments);
+
+      // Filter cancelled payments
+      const cancelledPayments = allClinicPatients.filter(patient =>
+        patient.paymentCompleted === true && patient.paymentCancelled === true
+      ).sort((a, b) => {
+        const dateA = new Date(b.paymentCancelledAt || b.updatedAt || b.createdAt).getTime();
+        const dateB = new Date(a.paymentCancelledAt || a.updatedAt || a.createdAt).getTime();
+        return dateA - dateB;
+      });
+      setCancelledPaymentPatients(cancelledPayments);
 
       // Filter patients with not applied treatments (need refund)
       const notAppliedTreatments = allClinicPatients.filter(patient =>
@@ -1285,6 +1309,46 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
     }
   };
 
+  // İptal Et — yalnızca ödeme alanlarını işaretler, hasta/tedavi akışına dokunmaz
+  const handleCancelPayment = async (patient: PaymentPatient) => {
+    if (!doctorProfile?.clinicId || !patient.id) return;
+    const confirmed = window.confirm(
+      `"${patient.fullName}" adlı hastanın ödemesi iptal edilsin mi?\n\nBu işlem yalnızca ödemeyi iptal edilmiş olarak işaretler. Hasta ve tedavi akışı değişmez.`
+    );
+    if (!confirmed) return;
+    try {
+      await updateDoc(doc(db, 'patients', patient.id), {
+        paymentCancelled: true,
+        paymentCancelledAt: new Date().toISOString(),
+        paymentCancelledBy: doctorProfile?.fullName || doctorProfile?.email || '',
+        paymentCancelledByRole: doctorProfile?.role || doctorProfile?.userType || '',
+      });
+    } catch (e) {
+      console.error('Ödeme iptal edilirken hata:', e);
+      alert('Ödeme iptal edilirken bir hata oluştu.');
+    }
+  };
+
+  // Yeniden Ödeme Al — yalnızca iptal alanlarını temizler, normal akışı açar
+  const handleRestorePayment = async (patient: PaymentPatient) => {
+    if (!doctorProfile?.clinicId || !patient.id) return;
+    const confirmed = window.confirm(
+      `"${patient.fullName}" adlı hastanın iptal edilen ödemesi geri alınacak ve yeniden ödeme alınabilir hale gelecek. Devam edilsin mi?`
+    );
+    if (!confirmed) return;
+    try {
+      await updateDoc(doc(db, 'patients', patient.id), {
+        paymentCancelled: false,
+        paymentCancelledAt: null,
+        paymentCancelledBy: null,
+        paymentCancelledByRole: null,
+      });
+    } catch (e) {
+      console.error('Ödeme geri alınırken hata:', e);
+      alert('İşlem sırasında bir hata oluştu.');
+    }
+  };
+
   const matchesReportMethod = (p: PaymentPatient, kind: 'payment' | 'refund'): boolean => {
     if (reportFilters.method === 'all') return true;
     const methods = kind === 'payment' ? (p.paymentMethods || []) : (p.refundMethods || []);
@@ -2100,6 +2164,18 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
             <span className="text-lg">💳</span>
             Borçlu Hastalar ({debtPatients.length})
           </button>
+
+          <button
+            onClick={() => setActiveListType('cancelled_payment')}
+            className={`px-4 py-2 rounded-xl font-medium text-sm transition-all duration-200 flex items-center gap-2 ${
+              activeListType === 'cancelled_payment'
+                ? 'bg-red-500/30 border-2 border-red-400 text-red-200'
+                : 'bg-white/5 border border-white/20 text-white/70 hover:bg-white/10'
+            }`}
+          >
+            <span className="text-lg">❌</span>
+            İptal Edilen Ödemeler ({cancelledPaymentPatients.length})
+          </button>
         </div>
       </div>
 
@@ -2121,6 +2197,11 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
               <>
                 <span className="text-2xl">💳</span>
                 Borçlu Hastalar
+              </>
+            ) : activeListType === 'cancelled_payment' ? (
+              <>
+                <span className="text-2xl">❌</span>
+                İptal Edilen Ödemeler
               </>
             ) : (
               <>
@@ -2257,6 +2338,15 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                         >
                           ✏️ Düzenle
                         </button>
+                        {(doctorProfile?.role === 'admin' || doctorProfile?.userType === 'admin' ||
+                          doctorProfile?.role === 'assistant' || doctorProfile?.userType === 'assistant') && (
+                          <button
+                            onClick={() => handleCancelPayment(patient)}
+                            className="px-2 py-1 bg-red-500/20 border border-red-400/60 rounded-lg text-red-300 hover:bg-red-500/30 text-xs font-semibold transition-all whitespace-nowrap flex-shrink-0"
+                          >
+                            ❌ İptal Et
+                          </button>
+                        )}
                         {patient.hasDebt && patient.debtAmount && patient.debtAmount > 0 && (
                           <span className="px-3 py-1 bg-orange-500/30 border border-orange-400 rounded-full text-orange-200 text-xs font-bold whitespace-nowrap">
                             ⚠️ Borç: {patient.debtAmount.toLocaleString('tr-TR')} TL
@@ -2306,6 +2396,32 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                           </div>
                         </div>
                       )}
+                    </div>
+                  ) : activeListType === 'cancelled_payment' ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="px-3 py-1 bg-red-500/20 border border-red-400 rounded-full text-red-200 text-xs font-medium">
+                          ❌ Ödeme İptal Edildi
+                        </span>
+                      </div>
+                      <p className="text-white/60 text-sm">
+                        Ödeme: {formatCurrency(patient.paymentAmount || 0)}
+                      </p>
+                      <p className="text-white/60 text-sm">
+                        Ödeme Tarihi: {formatDate(patient.paymentDate)}
+                      </p>
+                      {patient.paymentCancelledAt && (
+                        <p className="text-red-300/70 text-xs">
+                          İptal: {formatDate(patient.paymentCancelledAt)}
+                          {patient.paymentCancelledBy ? ` — ${patient.paymentCancelledBy}` : ''}
+                        </p>
+                      )}
+                      <button
+                        onClick={() => handleRestorePayment(patient)}
+                        className="mt-1 px-3 py-1.5 bg-emerald-500/20 border border-emerald-400/60 rounded-lg text-emerald-300 hover:bg-emerald-500/30 text-xs font-semibold transition-all whitespace-nowrap"
+                      >
+                        🔄 Yeniden Ödeme Al
+                      </button>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -2460,12 +2576,14 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
               <div className="text-6xl mb-4">
                 {activeListType === 'pending_payment' ? '⏳' : 
                  activeListType === 'completed_payment' ? '✅' : 
-                 activeListType === 'not_applied_treatment' ? '⚠️' : '💳'}
+                 activeListType === 'not_applied_treatment' ? '⚠️' :
+                 activeListType === 'cancelled_payment' ? '❌' : '💳'}
               </div>
               <h3 className="text-xl font-bold text-white mb-2">
                 {activeListType === 'pending_payment' ? 'Bekleyen Ödeme Yok' : 
                  activeListType === 'completed_payment' ? 'Henüz Tamamlanan Ödeme Yok' :
                  activeListType === 'not_applied_treatment' ? 'İade Bekleyen Tedavi Yok' :
+                 activeListType === 'cancelled_payment' ? 'İptal Edilen Ödeme Yok' :
                  'Borçlu Hasta Yok'}
               </h3>
               <p className="text-white/60">
@@ -2475,6 +2593,8 @@ const AccountingScreen: React.FC<AccountingScreenProps> = ({ doctorProfile }) =>
                   ? 'Henüz tamamlanan ödeme kaydı bulunmuyor.'
                   : activeListType === 'not_applied_treatment'
                   ? 'Şu anda iade bekleyen tedavi bulunmuyor.'
+                  : activeListType === 'cancelled_payment'
+                  ? 'Henüz iptal edilmiş ödeme kaydı bulunmuyor.'
                   : 'Şu anda borcu olan hasta bulunmuyor.'
                 }
               </p>
