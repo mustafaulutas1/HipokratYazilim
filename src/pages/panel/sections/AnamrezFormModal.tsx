@@ -6,6 +6,8 @@ import { db, storage } from '../../../firebase/config';
 import { DIAGNOSIS_SYSTEMS, DIAGNOSIS_SPECIFIC_QUESTIONS, DIAGNOSIS_ILLNESSES } from '../../../constants';
 import FileUpload from '../../../components/UI/FileUpload';
 import { nowISO, todayLocalDate } from '../../../utils/dateUtils';
+import { parseLabReportPdf } from '../../../utils/biyokimyaPdfExtract';
+import type { LabParseResult } from '../../../utils/biyokimyaPdfParser';
 
 interface Patient {
   id: string;
@@ -394,6 +396,7 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   const [toxicityScanFiles, setToxicityScanFiles] = useState<File[]>([]);
   const [deviceScanFile, setDeviceScanFile] = useState<File | null>(null);
   const [biyokimyaFiles, setBiyokimyaFiles] = useState<File[]>([]);
+  const [biyokimyaParsedResults, setBiyokimyaParsedResults] = useState<Map<File, LabParseResult & { valid: true }>>(new Map());
   const [radyolojiFiles, setRadyolojiFiles] = useState<File[]>([]);
   const [patolojiFiles, setPatolojiFiles] = useState<File[]>([]);
   const [epikrizFiles, setEpikrizFiles] = useState<File[]>([]);
@@ -1066,12 +1069,29 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
   };
 
   // Biyokimya file handlers
+  const validateBiyokimyaPdf = async (file: File): Promise<string | null> => {
+    const result = await parseLabReportPdf(file);
+    if (!result.valid) return result.error;
+    setBiyokimyaParsedResults(prev => new Map(prev).set(file, result));
+    return null;
+  };
+
   const handleBiyokimyaFileUpload = (file: File) => {
     setBiyokimyaFiles(prev => [...prev, file]);
   };
 
   const handleBiyokimyaFileRemoveAt = (index: number) => {
-    setBiyokimyaFiles(prev => prev.filter((_, i) => i !== index));
+    setBiyokimyaFiles(prev => {
+      const removed = prev[index];
+      if (removed) {
+        setBiyokimyaParsedResults(prevMap => {
+          const next = new Map(prevMap);
+          next.delete(removed);
+          return next;
+        });
+      }
+      return prev.filter((_, i) => i !== index);
+    });
   };
 
   // Radyoloji file handlers
@@ -1249,7 +1269,24 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
         for (const file of biyokimyaFiles) {
           const fileRef = ref(storage, `scans/${patient.id}/biyokimya_${Date.now()}_${file.name}`);
           await uploadBytes(fileRef, file);
-          newUrls.push(await getDownloadURL(fileRef));
+          const fileUrl = await getDownloadURL(fileRef);
+          newUrls.push(fileUrl);
+
+          // Persist the parsed lab values (validated at upload time) for the trend view.
+          const parsedResult = biyokimyaParsedResults.get(file);
+          if (parsedResult) {
+            // Firestore rejects `undefined` field values anywhere in the payload (including
+            // nested inside the tests array); strip them defensively regardless of source.
+            const sanitizedTests = JSON.parse(JSON.stringify(parsedResult.tests));
+            await addDoc(collection(db, 'patients', patient.id, 'labReports'), {
+              reportDate: parsedResult.reportDate,
+              uploadedAt: nowISO(),
+              uploadedBy: doctorProfile?.fullName || '',
+              fileUrl,
+              fileName: file.name,
+              tests: sanitizedTests
+            });
+          }
         }
         const allUrls = [...existingUrls, ...newUrls];
         (updatedOptionalScans.biyokimya as any).fileUrls = allUrls;
@@ -3415,7 +3452,11 @@ const AnamrezFormModal: React.FC<AnamrezFormModalProps> = ({
                             onFileRemove={() => {}}
                             uploadedFileUrl=""
                             fileName=""
+                            validateFile={validateBiyokimyaPdf}
                           />
+                          <p className="text-xs text-gray-500">
+                            Yalnızca Ahenk Laboratuvarı biyokimya rapor formatındaki PDF dosyaları kabul edilir.
+                          </p>
                         </div>
                       )}
                     </div>

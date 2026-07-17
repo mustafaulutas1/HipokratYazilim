@@ -5,16 +5,22 @@ interface FileUploadProps {
   onFileRemove: () => void;
   uploadedFileUrl?: string;
   fileName?: string;
+  // Optional async validator, run after the built-in type/size checks. Return
+  // null to accept the file, or an error string to reject it (shown like the
+  // built-in errors, nothing is passed to onFileUpload).
+  validateFile?: (file: File) => Promise<string | null>;
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ 
-  onFileUpload, 
+const FileUpload: React.FC<FileUploadProps> = ({
+  onFileUpload,
   onFileRemove,
   uploadedFileUrl,
-  fileName
+  fileName,
+  validateFile
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -40,23 +46,36 @@ const FileUpload: React.FC<FileUploadProps> = ({
     }
   };
 
-  const handleFileSelection = (file: File) => {
+  const handleFileSelection = async (file: File) => {
     // Reset error
     setUploadError(null);
-    
+
     // Validate file type
     const validTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
     if (!validTypes.includes(file.type)) {
       setUploadError('Sadece PDF, PNG, JPG veya JPEG dosyaları yüklenebilir.');
       return;
     }
-    
+
     // Validate file size (20MB limit)
     if (file.size > 20 * 1024 * 1024) {
       setUploadError('Dosya boyutu 20MB\'dan küçük olmalıdır.');
       return;
     }
-    
+
+    if (validateFile) {
+      setIsValidating(true);
+      try {
+        const error = await validateFile(file);
+        if (error) {
+          setUploadError(error);
+          return;
+        }
+      } finally {
+        setIsValidating(false);
+      }
+    }
+
     onFileUpload(file);
   };
 
@@ -109,17 +128,24 @@ const FileUpload: React.FC<FileUploadProps> = ({
           <p className="font-medium text-gray-700 mb-1">Dosya yükle</p>
           <p className="text-sm text-gray-500 mb-4">PDF veya resim dosyasını sürükleyin veya seçin</p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <label className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors">
+            <label className={`px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors ${isValidating ? 'opacity-50 pointer-events-none' : ''}`}>
               Dosya Seç
               <input
                 type="file"
                 accept=".pdf,application/pdf,image/png,image/jpeg,image/jpg"
                 onChange={handleFileInput}
+                disabled={isValidating}
                 className="hidden"
               />
             </label>
             <p className="text-xs text-gray-500">Maksimum 20MB</p>
           </div>
+          {isValidating && (
+            <p className="mt-3 text-sm text-blue-600 flex items-center justify-center gap-2">
+              <span className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin inline-block" />
+              Dosya doğrulanıyor...
+            </p>
+          )}
           {uploadError && (
             <p className="mt-3 text-sm text-red-500">{uploadError}</p>
           )}

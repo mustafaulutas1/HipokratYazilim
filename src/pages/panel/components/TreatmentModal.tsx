@@ -1382,6 +1382,31 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
     });
   };
 
+  // Select (or, if already fully selected, deselect) every Ana Uygulama under a protocol card in one click
+  const handleSelectAllApplications = (protocol: SavedProtocol, systemName: string) => {
+    const allAppNames = protocol.phases.mainTreatments.map(mt => mt.treatment);
+    if (allAppNames.length === 0) return;
+
+    setSelectedApplicationsBySystem(prev => {
+      const current = prev[systemName] || [];
+      const allSelected = allAppNames.every(name => current.includes(name));
+      const nextSystemSelections = allSelected ? [] : Array.from(new Set([...current, ...allAppNames]));
+      return { ...prev, [systemName]: nextSystemSelections };
+    });
+
+    const currentSystemSelections = selectedApplicationsBySystem[systemName] || [];
+    const allAlreadySelected = allAppNames.every(name => currentSystemSelections.includes(name));
+    setSelectedMainApplications(prev => {
+      const set = new Set(prev);
+      if (allAlreadySelected) {
+        allAppNames.forEach(name => set.delete(name));
+      } else {
+        allAppNames.forEach(name => set.add(name));
+      }
+      return Array.from(set);
+    });
+  };
+
   // Check if all diseases have at least one treatment method selected
   const areAllDiseasesValidated = () => {
     const allTreatments = getTreatmentsForAllSystems();
@@ -2039,20 +2064,15 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                     return (
                                       <div
                                         key={protocol.id}
-                                        onClick={() =>
-                                          setSelectedProtocolBySystem((prev) => {
-                                            const current = prev[systemName];
-                                            if (current === protocol.id) {
-                                              const { [systemName]: _, ...rest } = prev;
-                                              return rest;
-                                            }
-                                            return {
-                                              ...prev,
-                                              [systemName]: protocol.id
-                                            };
-                                          })
-                                        }
-                                        className={`border-2 rounded-xl p-4 transition-all duration-200 ${
+                                        onClick={() => {
+                                          handleSelectAllApplications(protocol, systemName);
+                                          setSelectedProtocolBySystem((prev) => ({
+                                            ...prev,
+                                            [systemName]: protocol.id
+                                          }));
+                                        }}
+                                        title="Karta tıklayarak tüm ana uygulamaları seçin/kaldırın"
+                                        className={`cursor-pointer border-2 rounded-xl p-4 transition-all duration-200 ${
                                           isSelected
                                             ? 'bg-blue-50 border-blue-600 ring-2 ring-blue-400 shadow-lg'
                                             : hasAnySelection
@@ -2080,7 +2100,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                             </div>
                                           </div>
                                           <button
-                                            onClick={() => handleEditProtocol(protocolWithSequence)}
+                                            onClick={(e) => { e.stopPropagation(); handleEditProtocol(protocolWithSequence); }}
                                             className="px-3 py-1 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-xs font-medium transition-all duration-200"
                                           >
                                             ✏️ Düzenle
@@ -2101,14 +2121,14 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                         </div>
 
                                         <div className="border-t border-gray-200 pt-3">
-                                          <p className="text-xs text-gray-600 mb-2 font-medium">Ana Uygulamalar (seçim yapın):</p>
+                                          <p className="text-xs text-gray-600 mb-2 font-medium">Ana Uygulamalar (kart geneline tıklayarak tümünü seçebilir, veya tek tek seçebilirsiniz):</p>
                                           <div className="flex flex-wrap gap-2">
                                             {protocol.phases.mainTreatments.map((mainTreatment, mtIndex) => {
                                               const isSelected = systemSelections.includes(mainTreatment.treatment);
                                               return (
                                                 <button
                                                   key={mtIndex}
-                                                  onClick={() => handleMainApplicationToggle(mainTreatment.treatment, systemName)}
+                                                  onClick={(e) => { e.stopPropagation(); handleMainApplicationToggle(mainTreatment.treatment, systemName); }}
                                                   className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                                                     isSelected
                                                       ? 'bg-purple-500 text-white shadow-md'
@@ -2141,7 +2161,11 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                         {allTreatments.map((bestTreatment, systemIndex) => (
                           <div key={systemIndex} className="mb-8">
                             {/* Protocol Header */}
-                            <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-t-2xl p-6">
+                            <div
+                              onClick={() => handleSelectAllApplications(bestTreatment, bestTreatment.system)}
+                              title="Başlığa tıklayarak tüm ana uygulamaları seçin/kaldırın"
+                              className="cursor-pointer bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-t-2xl p-6"
+                            >
                               <div className="text-center">
                                 <h3 className="text-2xl font-bold mb-2 flex items-center justify-center gap-2">
                                   📊 {bestTreatment.system} - {bestTreatment.isCustomized ? 'Özelleştirilmiş' : 'Seçilen'} Tedavi Protokolü
@@ -2162,7 +2186,7 @@ const TreatmentModal: React.FC<TreatmentModalProps> = ({
                                     </span>
                                   )}
                                   <button
-                                    onClick={() => handleEditProtocol(bestTreatment)}
+                                    onClick={(e) => { e.stopPropagation(); handleEditProtocol(bestTreatment); }}
                                     className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-full font-medium transition-all duration-200 flex items-center gap-2"
                                   >
                                     ✏️ Düzenle

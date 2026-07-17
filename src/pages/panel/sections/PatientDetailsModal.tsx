@@ -4,6 +4,7 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage
 import { db, storage } from '../../../firebase/config';
 import { toast } from 'react-toastify';
 import AnamrezViewModal from './AnamrezViewModal';
+import LabTrendTab from '../components/LabTrendTab';
 
 interface PatientHistoryRecord {
   id: string;
@@ -929,6 +930,7 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
     { id: 'medications', label: 'İlaç Bilgileri', icon: '💉' },
     { id: 'payment', label: 'Ödeme Bilgileri', icon: '💳' },
     { id: 'history', label: 'Geçmiş Kayıtları', icon: '📜' },
+    { id: 'labResults', label: 'Laboratuvar Trend', icon: '🧪' },
     // Only show media tab if hasMediaGallery is enabled in anamnez
     ...(patient.optionalScans?.hasMediaGallery ? [{ id: 'media', label: 'Fotoğraflar ve Videolar', icon: '📷' }] : []),
     { id: 'address', label: 'Adres', icon: '📍' },
@@ -2323,6 +2325,11 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
                 </div>
               );
             })()}
+
+            {/* Lab Trend Tab */}
+            {activeTab === 'labResults' && (
+              <LabTrendTab patientId={patient.id} />
+            )}
 
             {/* Media Tab - Photos and Videos */}
             {activeTab === 'media' && (

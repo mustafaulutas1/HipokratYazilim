@@ -104,7 +104,7 @@ interface SelectedMaterial {
 
 const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
   const userRole = doctorProfile?.role || doctorProfile?.userType || '';
-  const canApplyTreatment = userRole === 'admin' || userRole === 'bashemshire' || userRole === 'treatment';
+  const canApplyTreatment = userRole === 'admin' || userRole === 'bashemshire' || userRole === 'treatment' || userRole === 'assistant' || userRole === 'doctor';
   const canDeselectTreatment = doctorProfile?.isClinicOwner === true || userRole === 'admin' || userRole === 'assistant';
 
   const [stats, setStats] = useState<TreatmentStats>({
@@ -998,7 +998,7 @@ const TreatmentPanel: React.FC<TreatmentPanelProps> = ({ doctorProfile }) => {
                     ) : (
                       <div className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-white/40 text-sm flex items-center gap-2">
                         <span>🔒</span>
-                        <span>Yalnızca Sistem Yöneticisi veya BaşHemşire uygulayabilir</span>
+                        <span>Yalnızca Sistem Yöneticisi, BaşHemşire, Tedavi Uzmanı, Asistan veya Doktor uygulayabilir</span>
                       </div>
                     )}
                     <button
