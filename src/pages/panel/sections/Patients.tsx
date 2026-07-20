@@ -7,6 +7,7 @@ import PatientDetailsModal from './PatientDetailsModal';
 import AnamrezFormModal from './AnamrezFormModal';
 import DischargeSurveyModal from '../components/DischargeSurveyModal';
 import SurveyAnalyticsModal from '../components/SurveyAnalyticsModal';
+import PatientScansModal from './PatientScansModal';
 
 interface TreatmentOptions {
   protocol?: string;
@@ -79,6 +80,8 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
   const [isSurveyModalOpen, setIsSurveyModalOpen] = useState(false);
   const [selectedPatientForSurvey, setSelectedPatientForSurvey] = useState<Patient | null>(null);
   const [isSurveyAnalyticsOpen, setIsSurveyAnalyticsOpen] = useState(false);
+  const [isScansModalOpen, setIsScansModalOpen] = useState(false);
+  const [selectedPatientForScans, setSelectedPatientForScans] = useState<Patient | null>(null);
 
   const fetchTodayAppointmentPatients = async () => {
     if (!doctorProfile?.clinicId) return;
@@ -632,6 +635,16 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => {
+                            setSelectedPatientForScans(patient);
+                            setIsScansModalOpen(true);
+                          }}
+                          className="p-2 bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 rounded-lg text-indigo-300 hover:text-indigo-200 transition-all duration-200"
+                          title="Tarama Dosyası Yükle"
+                        >
+                          📎
+                        </button>
+                        <button
+                          onClick={() => {
                             setSelectedPatientForDetails(patient);
                             setIsDetailsModalOpen(true);
                           }}
@@ -786,6 +799,18 @@ const Patients: React.FC<PatientsProps> = ({ doctorProfile }) => {
           setSelectedPatientForHistory(null);
         }}
         isPastHistory={true}
+      />
+
+      {/* Scans Upload Modal */}
+      <PatientScansModal
+        isOpen={isScansModalOpen}
+        onClose={() => {
+          setIsScansModalOpen(false);
+          setSelectedPatientForScans(null);
+        }}
+        patient={selectedPatientForScans}
+        doctorProfile={doctorProfile}
+        onUpdated={fetchPatients}
       />
 
       {/* Discharge Survey Modal */}

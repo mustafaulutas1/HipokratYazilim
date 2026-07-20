@@ -922,6 +922,28 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
     return new Date(dateString).toLocaleDateString('tr-TR');
   };
 
+  const scanDefinitions = [
+    { key: 'meridianScan', label: 'Meridyen Tarama', icon: '🔬' },
+    { key: 'thermalScan', label: 'Termal Tarama (IRIS-XP)', icon: '🌡️' },
+    { key: 'toxicityScan', label: 'Toksisite Ölçümü', icon: '⚗️' },
+    { key: 'biyokimya', label: 'Biyokimya', icon: '🧪' },
+    { key: 'radyoloji', label: 'Radyolojik Görüntüleme', icon: '🩻' },
+    { key: 'patoloji', label: 'Patoloji', icon: '🔭' },
+    { key: 'epikriz', label: 'Epikriz', icon: '📋' },
+  ];
+
+  const uploadedFiles = scanDefinitions.flatMap(scan => {
+    const scanData = (livePat?.optionalScans?.[scan.key] as any) || null;
+    const urls = scanData?.fileUrls?.filter((u: string) => u && u !== 'pending') ||
+      (scanData?.fileUrl && scanData.fileUrl !== 'pending' ? [scanData.fileUrl] : []);
+
+    return urls.map((url: string, idx: number) => ({
+      ...scan,
+      url,
+      index: idx + 1,
+    }));
+  });
+
   const tabs = [
     { id: 'personal', label: 'Kişisel Bilgi', icon: '👤' },
     { id: 'contact', label: 'İletişim', icon: '📞' },
@@ -931,6 +953,7 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
     { id: 'payment', label: 'Ödeme Bilgileri', icon: '💳' },
     { id: 'history', label: 'Geçmiş Kayıtları', icon: '📜' },
     { id: 'labResults', label: 'Laboratuvar Trend', icon: '🧪' },
+    { id: 'uploadedFiles', label: 'Yüklenen Dosyalar', icon: '📎' },
     // Only show media tab if hasMediaGallery is enabled in anamnez
     ...(patient.optionalScans?.hasMediaGallery ? [{ id: 'media', label: 'Fotoğraflar ve Videolar', icon: '📷' }] : []),
     { id: 'address', label: 'Adres', icon: '📍' },
@@ -2329,6 +2352,48 @@ const PatientDetailsModal: React.FC<PatientDetailsModalProps> = ({ isOpen, onClo
             {/* Lab Trend Tab */}
             {activeTab === 'labResults' && (
               <LabTrendTab patientId={patient.id} />
+            )}
+
+            {/* Uploaded Files Tab */}
+            {activeTab === 'uploadedFiles' && (
+              <div className="space-y-4">
+                <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                    📎 Yüklenen Dosyalar
+                  </h3>
+                  <p className="text-sm text-gray-500">
+                    Bu hastaya yüklenen tarama dosyalarını buradan görüntüleyebilirsiniz.
+                  </p>
+
+                  {uploadedFiles.length === 0 ? (
+                    <div className="mt-6 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-8 text-center text-gray-500">
+                      Henüz bu hastaya yüklenmiş tarama dosyası bulunmuyor.
+                    </div>
+                  ) : (
+                    <div className="mt-6 space-y-3">
+                      {uploadedFiles.map((file, index) => (
+                        <div key={`${file.key}-${index}`} className="flex flex-col gap-2 rounded-xl border border-gray-200 bg-gray-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="text-xl">{file.icon}</span>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-gray-800">{file.label} · Dosya {file.index}</p>
+                              <p className="text-xs text-gray-500 truncate" title={file.url}>{file.url}</p>
+                            </div>
+                          </div>
+                          <a
+                            href={file.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                          >
+                            Görüntüle
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
 
             {/* Media Tab - Photos and Videos */}
